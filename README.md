@@ -80,6 +80,56 @@ Then invoke any skill from Claude Code:
 
 ---
 
+## Contributing
+
+Contributions are welcome. All content in this repo is Markdown — there is no code to compile or test suite to run. The bar for a good contribution is whether Claude follows the guidance accurately and produces better outcomes than it would without it.
+
+### What to contribute
+
+- **Fixes** — Incorrect advice, outdated API references, broken examples, typos
+- **Additions** — Missing patterns, platforms, or frameworks that belong in an existing guide
+- **New platform guides** — A new `architect/` subdirectory for a platform not yet covered (e.g., `watchOS`, `tvOS`, `embedded`, `visionOS`)
+- **New skills** — A complete `SKILL.md` for a workflow not yet covered
+
+### What not to contribute
+
+- Promotional content, vendor recommendations without technical rationale
+- Vague or aspirational guidance ("always write clean code") without actionable specifics
+- Anything that contradicts the SSD core invariant (shippable state at all times)
+
+### How to submit
+
+1. Fork the repo
+2. Make your changes on a branch
+3. Open a pull request with a clear description of what changed and why
+
+### Writing style
+
+These files are read by Claude, not rendered as a website. Write for clarity and precision over prose elegance.
+
+- **Be specific.** "Use PostgreSQL" is better than "use a relational database."
+- **Give the rule, then the rationale.** State the decision first, explain why second.
+- **Include the counter-case.** Every "always do X" is more useful when paired with "except when Y."
+- **Concrete examples over abstractions.** A short code block or table beats three paragraphs.
+- **Match the existing tone.** Direct, opinionated, no hedging.
+
+### File structure conventions
+
+Each skill or guide follows this pattern:
+
+```
+skill-name/
+└── SKILL.md          — the skill itself (invoked by /skill-name in Claude Code)
+
+architect/
+└── platform/
+    └── GUIDE.md      — platform-specific reference, loaded by the architect skill
+```
+
+`SKILL.md` files begin with the license block (see any existing file). `GUIDE.md` files do not need the license block — they are reference material, not standalone skills.
+
+---
+
 ## License
 
 © 2026 Alex Horovitz. Shareware license — free for personal and internal organizational use. See [LICENSE](LICENSE) for details.
