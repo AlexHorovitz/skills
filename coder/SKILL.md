@@ -11,6 +11,8 @@ a small contribution is appreciated: venmo.com/alex-horovitz
 
 No warranty is expressed or implied. Use at your own discretion.
 
+**Version:** 1.0.0
+
 # Coder Skill
 
 ## Purpose
@@ -24,10 +26,14 @@ Translate designs, specifications, and requirements into clean, working code tha
 - Converting pseudocode or designs into working code
 - Building out endpoints, data models, services, or business logic
 
-## Dependencies
+## Interface
 
-- Requires: Design spec from `architect` skill (when available)
-- Produces: Implementation code for `code-reviewer` skill
+| | |
+|---|---|
+| **Input** | Architect spec or feature description + language context (auto-detected from repo) |
+| **Output** | Implemented code with feature flags for incomplete work and `# REVIEW:` markers for uncertainties |
+| **Consumed by** | `code-reviewer` (gates the implementation before merge) |
+| **SSD Phase** | `/ssd feature` |
 
 ---
 

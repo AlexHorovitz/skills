@@ -11,6 +11,8 @@ a small contribution is appreciated: venmo.com/alex-horovitz
 
 No warranty is expressed or implied. Use at your own discretion.
 
+**Version:** 1.0.0
+
 # SSD Meta-Skill
 
 ## Purpose
@@ -18,6 +20,15 @@ Orchestrate the full skill chain for Shippable States Development. Every work se
 
 ## When to Use
 Invoke this skill when starting a session and you want to follow the SSD workflow. It selects and sequences sub-skills based on the phase argument you provide.
+
+## Interface
+
+| | |
+|---|---|
+| **Input** | Phase argument (`start`, `feature`, `milestone`, `audit`, `gate`, `ship`) + project context |
+| **Output** | Orchestrated session: invokes the appropriate sub-skills in sequence and enforces the shippable state invariant |
+| **Consumed by** | None — top-level orchestrator |
+| **SSD Phase** | All phases |
 
 ---
 
@@ -217,10 +228,3 @@ Three skills do "review" work. Never chain all three — pick the right tier:
 - **`codebase-skeptic`** — milestone reviews and pre-release audits
 - **`software-standards`** — comparative/adversarial evaluation only
 
----
-
-## Reference
-
-Full design rationale and workflow diagrams: `~/Development/Claude-Skills/ssd-meta-skill-proposal.md`
-
-SSD doctrine: `~/.claude/skills/methodology/SKILL.md`

@@ -11,6 +11,8 @@ a small contribution is appreciated: venmo.com/alex-horovitz
 
 No warranty is expressed or implied. Use at your own discretion.
 
+**Version:** 1.0.0
+
 # Systems Designer Skill
 
 ## Purpose
@@ -23,9 +25,14 @@ Ensure every feature and system change is production-ready by systematically eva
 - When planning infrastructure changes
 - Before major releases or migrations
 
-## Dependencies
-- Coordinates with: Architect skill (design), Reviewer skill (code quality)
-- Produces: Production readiness checklist, operational runbooks
+## Interface
+
+| | |
+|---|---|
+| **Input** | Architect spec or feature description (can also run independently against a deployed system) |
+| **Output** | Production readiness checklist covering failure modes, observability, security, performance, and deployment safety |
+| **Consumed by** | `ssd` (required before `/ssd ship`; checklist must be addressed before deploy) |
+| **SSD Phase** | `/ssd start`, `/ssd feature`, `/ssd ship` |
 
 ---
 

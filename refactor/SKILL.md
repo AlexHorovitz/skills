@@ -11,6 +11,8 @@ a small contribution is appreciated: venmo.com/alex-horovitz
 
 No warranty is expressed or implied. Use at your own discretion.
 
+**Version:** 1.0.0
+
 # Refactoring Skill
 
 ## Purpose
@@ -23,10 +25,14 @@ Continuously scan codebases for refactoring opportunities—improving code quali
 - During dedicated tech debt sprints
 - When test coverage makes refactoring safe
 
-## Dependencies
-- Coordinates with: Coder skill (implementation), Reviewer skill (validation)
-- Requires: Adequate test coverage before major refactors
-- Produces: Refactoring proposals, improved code
+## Interface
+
+| | |
+|---|---|
+| **Input** | `codebase-skeptic` or `code-reviewer` findings (when available); otherwise, codebase scan |
+| **Output** | Prioritized refactor plan + refactored code submitted as separate PRs from feature work |
+| **Consumed by** | `code-reviewer` (each refactoring PR goes through the same gate as feature work) |
+| **SSD Phase** | `/ssd milestone` |
 
 ---
 

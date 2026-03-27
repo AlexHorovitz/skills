@@ -11,6 +11,7 @@ a small contribution is appreciated: venmo.com/alex-horovitz
 
 No warranty is expressed or implied. Use at your own discretion.
 
+**Version:** 1.0.0
 
 # Code Reviewer Skill
 
@@ -23,10 +24,14 @@ Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabili
 - Post-incident code analysis
 - Pre-release security and quality reviews
 
-## Dependencies
-- Receives: Code from Coder skill
-- Coordinates with: Architect skill (design concerns), Systems Designer skill (production concerns)
-- Produces: Review report with prioritized findings
+## Interface
+
+| | |
+|---|---|
+| **Input** | Code diff, PR, or specific files under review |
+| **Output** | Findings report with severity-classified findings (BLOCKER / MAJOR / MINOR / QUESTION / SUGGESTION / NIT) |
+| **Consumed by** | `ssd` (BLOCKER or MAJOR findings block merge; clean report allows proceed) |
+| **SSD Phase** | `/ssd feature`, `/ssd milestone`, `/ssd gate` |
 
 ---
 

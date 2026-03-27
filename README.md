@@ -1,6 +1,6 @@
 # Insanely Great SSD — Claude Code Skills
 
-A free, open skill set for [Claude Code](https://claude.ai/code) that implements **Shippable States Software Development** — a pragmatic engineering discipline for solo developers and small teams. Platform-adaptive: web, iOS, Android, macOS, and headless.
+A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that implements **Shippable States Software Development** — a pragmatic engineering discipline for solo developers and small teams. Platform-adaptive: web, iOS, Android, macOS, and headless.
 
 **Core invariant:** If you can't ship it right now, you don't have a product — you have a construction site.
 
@@ -18,6 +18,27 @@ Five principles:
 3. **Feature Flags Over Feature Branches** — All work on main, behind flags, off by default.
 4. **The Ratchet Principle** — Forward progress only. No WIP commits, no "fix tomorrow."
 5. **Scope Flexibility Is a Feature** — Cutting scope is engineering judgment, not failure.
+
+---
+
+## Where to Start
+
+**Start with `/ssd`.** It is the entry point for all SSD workflow phases. The other skills are invoked automatically by `/ssd` — you do not need to call them directly unless you are working outside the SSD workflow.
+
+```
+/ssd feature    ← standard development session
+/ssd start      ← new project or major feature
+/ssd gate       ← quick shippable state check
+```
+
+### Skill Taxonomy
+
+| Type | Skills | When you invoke directly |
+|---|---|---|
+| Orchestrator | `ssd` | Always — start here |
+| Domain | `architect`, `coder`, `systems-designer`, `refactor` | When working outside the SSD workflow |
+| Review | `code-reviewer`, `codebase-skeptic`, `software-standards` | On-demand or via SSD |
+| Reference | `methodology` | When you want to understand SSD doctrine |
 
 ---
 

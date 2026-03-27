@@ -13,6 +13,8 @@ a small contribution is appreciated: venmo.com/alex-horovitz
 
 No warranty is expressed or implied. Use at your own discretion.
 
+**Version:** 1.0.0
+
 ---
 
 ## Purpose
@@ -27,11 +29,14 @@ Design scalable, maintainable software architectures that follow established pat
 - Planning API structures and integration points
 - Reviewing existing architecture for improvements
 
-## Dependencies
+## Interface
 
-- Produces: Design specs consumed by `/coder`
-- Coordinates with: `/systems-designer` (production readiness)
-- Feeds into: `/ssd start` and `/ssd feature` phases
+| | |
+|---|---|
+| **Input** | Feature brief, project description, or architectural question |
+| **Output** | Component diagram, data model, API contract, ADR (Architecture Decision Record), risk assessment |
+| **Consumed by** | `coder` (uses spec for implementation), `systems-designer` (uses spec for production readiness review) |
+| **SSD Phase** | `/ssd start`, `/ssd feature` |
 
 ---
 
