@@ -1,17 +1,6 @@
-## License
+<!-- License: See /LICENSE -->
 
-© 2026 Alex Horovitz. Shareware License.
-
-You are free to use this skill for personal and internal organizational purposes
-at no cost. Redistribution, resale, or incorporation into commercial products or
-services requires written permission from the author.
-
-If this skill saves you time, improves your work, or sparks something useful,
-a small contribution is appreciated: venmo.com/alex-horovitz
-
-No warranty is expressed or implied. Use at your own discretion.
-
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 # SSD Methodology
 

@@ -110,7 +110,7 @@ Contributions are welcome. All content in this repo is Markdown — there is no 
 - **Fixes** — Incorrect advice, outdated API references, broken examples, typos
 - **Additions** — Missing patterns, platforms, or frameworks that belong in an existing guide
 - **New platform guides** — A new `architect/` subdirectory for a platform not yet covered (e.g., `watchOS`, `tvOS`, `embedded`, `visionOS`)
-- **New framework guides** — A new `architect/web/frameworks/` file for a web framework not yet covered (e.g., `sveltekit`, `remix`, `nestjs`)
+- **New framework guides** — A new `architect/web/frameworks/` file for a web framework not yet covered (e.g., `sveltekit`, `remix`, `nestjs`). Copy `architect/web/frameworks/TEMPLATE.md` and fill in each section to ensure structural parity with existing guides
 - **New skills** — A complete `SKILL.md` for a workflow not yet covered
 
 ### What not to contribute
@@ -148,7 +148,7 @@ architect/
     └── GUIDE.md      — platform-specific reference, loaded by the architect skill
 ```
 
-`SKILL.md` files begin with the license block (see any existing file). `GUIDE.md` files do not need the license block — they are reference material, not standalone skills.
+`SKILL.md` and `GUIDE.md` files begin with a one-line license reference: `<!-- License: See /LICENSE -->`. The full license terms live in the `LICENSE` file at the repository root.
 
 ---
 

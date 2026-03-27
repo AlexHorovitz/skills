@@ -1,17 +1,6 @@
-## License
+<!-- License: See /LICENSE -->
 
-© 2026 Alex Horovitz. Shareware License.
-
-You are free to use this skill for personal and internal organizational purposes 
-at no cost. Redistribution, resale, or incorporation into commercial products or 
-services requires written permission from the author.
-
-If this skill saves you time, improves your work, or sparks something useful, 
-a small contribution is appreciated: venmo.com/alex-horovitz
-
-No warranty is expressed or implied. Use at your own discretion.
-
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 # Systems Designer Skill
 
@@ -33,6 +22,10 @@ Ensure every feature and system change is production-ready by systematically eva
 | **Output** | Production readiness checklist covering failure modes, observability, security, performance, and deployment safety |
 | **Consumed by** | `ssd` (required before `/ssd ship`; checklist must be addressed before deploy) |
 | **SSD Phase** | `/ssd start`, `/ssd feature`, `/ssd ship` |
+
+---
+
+> **Language note:** Examples in this skill are written in Python/Django for illustration. When evaluating production readiness for other stacks, adapt the patterns to the project's actual language, framework, and infrastructure. The *concerns* (failure modes, observability, deployment safety) are universal — the implementation details are not.
 
 ---
 

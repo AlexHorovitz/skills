@@ -1,17 +1,6 @@
-## License
+<!-- License: See /LICENSE -->
 
-© 2026 Alex Horovitz. Shareware License.
-
-You are free to use this skill for personal and internal organizational purposes 
-at no cost. Redistribution, resale, or incorporation into commercial products or 
-services requires written permission from the author.
-
-If this skill saves you time, improves your work, or sparks something useful, 
-a small contribution is appreciated: venmo.com/alex-horovitz
-
-No warranty is expressed or implied. Use at your own discretion.
-
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 # SSD Meta-Skill
 
@@ -109,12 +98,7 @@ The standard daily development cycle. Repeat per feature.
    - Internal users → beta → 100%
    - Remove flag and dead code once 100% stable
 
-**Shippable state invariant**: At the end of each work session:
-- [ ] All tests pass
-- [ ] Code committed and pushed
-- [ ] CI/CD pipeline green
-- [ ] Feature flags set correctly
-- [ ] No BLOCKER/MAJOR findings in code-reviewer report
+**Shippable state invariant**: At the end of each work session, verify the invariant defined in `methodology/core.md` § "The Shippable State Invariant." The canonical checklist lives there — do not maintain a separate copy here.
 
 ---
 
@@ -167,27 +151,7 @@ Fail: return to coder before proceeding.
 
 Invoke `systems-designer` deploy checklist for the feature about to ship.
 
-Confirms (adapt to platform):
-
-**Web / Headless:**
-- [ ] Migrations are safe (no table locks, reversible)
-- [ ] Feature flag configured
-- [ ] Rollback procedure documented
-- [ ] Monitoring dashboards open
-- [ ] On-call team briefed
-
-**Mobile (iOS / Android):**
-- [ ] Build archived and uploaded to TestFlight / Play Internal Testing
-- [ ] Crash reporting verified on latest build
-- [ ] Feature flags configured via remote config
-- [ ] Rollback plan: previous build available in distribution channel
-- [ ] Release notes drafted
-
-**macOS Desktop:**
-- [ ] Notarization passing
-- [ ] Distribution mechanism verified (TestFlight for Mac / signed DMG)
-- [ ] Crash reporting verified
-- [ ] Feature flags configured
+Invoke `systems-designer` to produce the platform-appropriate deploy checklist. The checklist is defined and maintained by that skill — do not duplicate it here. The systems-designer skill covers web, mobile (iOS/Android), and macOS desktop deployment readiness.
 
 ---
 
@@ -195,12 +159,14 @@ Confirms (adapt to platform):
 
 These are not suggestions. Violating them breaks SSD.
 
+The canonical hard rules are defined in `methodology/core.md` (§ "Core Principles" and § "The Engineering Mindset"). Load that file for the full doctrine. Summary for quick reference:
+
 1. **No merge without a clean `/ssd gate`** — no BLOCKER or MAJOR findings
 2. **No incomplete work on main without a feature flag** — WIP commits are banned
-3. **Tests must pass before and after every change** — "I'll fix the tests tomorrow" is not a shippable state
+3. **Tests must pass before and after every change**
 4. **Refactor only after shipping** — separate PRs, never mixed with feature work
 5. **Deploy beats perfection** — reduce scope rather than delay a deploy
-6. **Production parity from day one** — if you haven't deployed to your distribution channel yet (production server, TestFlight, Play Internal Testing, notarized build), that is your next task
+6. **Production parity from day one** — deploy to your distribution channel before anything else
 
 ---
 
