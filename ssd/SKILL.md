@@ -54,7 +54,7 @@ Then invoke `systems-designer` to produce:
 - Monitoring and observability plan
 - Initial failure mode analysis
 
-**Exit gate**: Deploy "Hello World" to production. If deployment takes more than one working day, stop and fix the deployment pipeline first.
+**Exit gate**: Deploy "Hello World" to the project's distribution channel (production URL, TestFlight, Play Internal Testing, notarized build, or container registry). If deployment takes more than one working day, stop and fix the deployment pipeline first.
 
 **Step 2: First End-to-End Slice**
 Invoke `architect` to design the thinnest single user flow (e.g., "user can log in"). Then follow the Feature Loop below for that slice.
@@ -156,12 +156,27 @@ Fail: return to coder before proceeding.
 
 Invoke `systems-designer` deploy checklist for the feature about to ship.
 
-Confirms:
+Confirms (adapt to platform):
+
+**Web / Headless:**
 - [ ] Migrations are safe (no table locks, reversible)
 - [ ] Feature flag configured
 - [ ] Rollback procedure documented
 - [ ] Monitoring dashboards open
 - [ ] On-call team briefed
+
+**Mobile (iOS / Android):**
+- [ ] Build archived and uploaded to TestFlight / Play Internal Testing
+- [ ] Crash reporting verified on latest build
+- [ ] Feature flags configured via remote config
+- [ ] Rollback plan: previous build available in distribution channel
+- [ ] Release notes drafted
+
+**macOS Desktop:**
+- [ ] Notarization passing
+- [ ] Distribution mechanism verified (TestFlight for Mac / signed DMG)
+- [ ] Crash reporting verified
+- [ ] Feature flags configured
 
 ---
 
@@ -174,7 +189,7 @@ These are not suggestions. Violating them breaks SSD.
 3. **Tests must pass before and after every change** — "I'll fix the tests tomorrow" is not a shippable state
 4. **Refactor only after shipping** — separate PRs, never mixed with feature work
 5. **Deploy beats perfection** — reduce scope rather than delay a deploy
-6. **Production parity from day one** — if you haven't deployed to production yet, that is your next task
+6. **Production parity from day one** — if you haven't deployed to your distribution channel yet (production server, TestFlight, Play Internal Testing, notarized build), that is your next task
 
 ---
 

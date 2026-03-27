@@ -57,7 +57,8 @@ Traditional development creates this pattern:
 - Production deployment
 - Data migration
 - Security hardening
-- Cross-browser testing
+- Cross-platform/device testing
+- App Store / Play Store compliance
 - Accessibility
 - Documentation
 
@@ -74,10 +75,10 @@ Your development environment must match production as closely as possible from d
 **Traditional approach**:
 ```
 Week 1-8:  Local development
-Week 9:    "Okay let's deploy to staging..."
-Week 10:   "Why doesn't it work in staging?"
-Week 11:   "Production is different from staging..."
-Week 12:   "What do you mean SSL certs take 3 days?"
+Week 9:    "Okay let's deploy to staging..."  /  "Let's submit to TestFlight..."
+Week 10:   "Why doesn't it work in staging?"  /  "Why does App Store reject our build?"
+Week 11:   "Production is different from staging..."  /  "Why doesn't notarization work?"
+Week 12:   "What do you mean SSL certs take 3 days?"  /  "Provisioning profiles expired?"
 ```
 
 **SSD approach**:
@@ -175,20 +176,27 @@ Like a ratchet, you can only move forward, never backward. If you need to save w
 
 ### Pattern 1: Deployed Day One
 
-**For web apps**:
+**Universal Day 1 checklist** (every platform):
 ```
-Day 1 checklist:
-□ Domain registered
-□ DNS configured
-□ SSL certificate installed
-□ Server provisioned (cloud, not local)
-□ Database created and accessible
-□ CI/CD pipeline working
-□ Monitoring/logging configured
-□ One route returns "Hello World"
+□ Build system producing a deployable artifact
+□ Artifact deployed to a real distribution channel
+□ CI pipeline running tests on every push
+□ Monitoring / crash reporting wired up
+□ One route or screen returns "Hello World"
 
 This is your MVP. It does nothing useful, but it's REAL.
 ```
+
+**What "Deployed Day One" means per platform:**
+
+| Step | Web | iOS | Android | macOS | Headless |
+|---|---|---|---|---|---|
+| Distribution channel | Domain + SSL + server | TestFlight | Play Internal Testing | Notarize + distribute | Container registry |
+| Deployable artifact | Deployed bundle | .ipa archive | .aab bundle | Signed .app | Docker image |
+| CI system | GitHub Actions | Xcode Cloud / GH Actions | GH Actions / Bitrise | Xcode Cloud / GH Actions | GH Actions |
+| Crash reporting | Sentry + Datadog | Crashlytics / Sentry | Crashlytics / Sentry | Sentry / Bugsnag | Sentry + metrics endpoint |
+
+For detailed Day 1 checklists per platform, see the architect platform guides (`architect/web/`, `architect/ios/`, `architect/android/`, `architect/macos/`, `architect/headless/`).
 
 **Why**: If deployment takes 2 weeks and you budget 0 weeks, you're starting 2 weeks late on day one.
 
@@ -196,24 +204,26 @@ This is your MVP. It does nothing useful, but it's REAL.
 
 Build one feature "end to end" before building any feature "fully complete."
 
-**Traditional**: Build all UI, then all backend, then connect them
-**SSD**: Build one flow through UI → backend → database → back to UI
+**Traditional**: Build all UI, then all backend/persistence, then connect them
+**SSD**: Build one flow through user action → persistence → verify → back to user
 
 **Example: Todo App**
 
 ❌ **Wrong order**:
 1. Design all UI screens (login, todo list, settings, sharing, etc.)
-2. Build all database tables
-3. Write all API endpoints
+2. Build all database tables / persistence layer
+3. Write all API endpoints / services
 4. Connect everything
 5. Discover they don't fit together
 
 ✅ **Right order**:
-1. Build login flow end-to-end (UI → API → DB → back)
+1. Build login flow end-to-end (user action → persist → relaunch → still there)
 2. Build "add todo" end-to-end
 3. Build "complete todo" end-to-end
 4. Build "delete todo" end-to-end
 5. Each step shippable (even if feature set is minimal)
+
+"End-to-end" means different things by platform: on web, UI → API → DB → response. On iOS, View → SwiftData → relaunch → verify. On Android, Compose → Room → relaunch → verify. The principle is the same: one complete flow before breadth.
 
 ### Pattern 3: Dark Launching
 
@@ -221,10 +231,28 @@ Launch features in production before they're visible to users.
 
 **Technique**:
 ```javascript
+// JavaScript (Web)
 if (featureFlags.newDashboard && user.isInternalTester) {
   return <NewDashboard />;
 }
 return <OldDashboard />;
+```
+
+```swift
+// Swift (iOS / macOS)
+if featureFlags.isEnabled("newDashboard", user: user) {
+    return NewDashboardView()
+}
+return OldDashboardView()
+```
+
+```kotlin
+// Kotlin (Android)
+if (featureFlags.isEnabled("newDashboard", user)) {
+    NewDashboardScreen()
+} else {
+    OldDashboardScreen()
+}
 ```
 
 **Benefits**:
@@ -232,6 +260,8 @@ return <OldDashboard />;
 - Gradual rollout (internal → beta → everyone)
 - Easy rollback (flip flag)
 - Development never blocks deployment
+
+**Platform note**: Web feature flags can be server-side (hot-swap, no deploy needed). Mobile and desktop feature flags use an SDK (Firebase Remote Config, LaunchDarkly) and typically take effect on next app launch. Plan accordingly — flag changes are not instant on mobile.
 
 **Critical rule**: Feature is not "done" until the flag is removed. Flag code is technical debt—pay it off quickly.
 
@@ -261,6 +291,7 @@ End each day with a shippable state.
 □ All tests pass locally
 □ Code committed and pushed
 □ CI/CD pipeline green
+□ Latest build available in distribution channel (staging URL / TestFlight / Play Internal / notarized build)
 □ Feature flags set appropriately
 □ Documentation updated if APIs changed
 □ Tomorrow's first task identified
@@ -371,13 +402,30 @@ SSD: "Here's the actual working product. It doesn't do X yet, but everything you
 
 The principles apply universally to digital work:
 
-- **Mobile apps**: Deploy to TestFlight daily
+- **Web apps**: Deploy to production server daily
+- **iOS apps**: Submit to TestFlight daily
+- **Android apps**: Push to Play Internal Testing daily
+- **macOS apps**: Archive, notarize, and distribute daily
 - **ML models**: Train and deploy to staging daily
 - **Hardware firmware**: Flash to test devices daily
 - **Content/writing**: Publish drafts to private URLs daily
 - **Infrastructure**: Apply Terraform changes to dev account daily
 
 The specific **mechanisms** differ, but the **principle** is the same: maintain production parity and shippable states.
+
+### "This won't work for mobile / desktop apps"
+
+It works. The mechanisms differ; the principle doesn't.
+
+**Deployment frequency**: You cannot deploy to the App Store daily (review takes 1-3 days). But you CAN deploy to TestFlight / Play Internal Testing daily. SSD targets the *internal deployment pipeline*, not the store review process. TestFlight is your "production" for SSD purposes until you cut a release.
+
+**Feature flags on mobile**: Use Firebase Remote Config, LaunchDarkly, or a custom remote config service. Flag changes take effect on next app launch (not instant like web). Design your flag checks to handle this gracefully.
+
+**"But App Store review takes days"**: SSD distinguishes between *internal deploy* (daily — TestFlight / Play Internal Testing) and *production release* (weekly or biweekly — App Store / Play Store). The shippable state invariant applies to the internal deploy. When you cut a store release, it should be a non-event because you've been shipping to testers daily.
+
+**macOS desktop**: Notarization is your deployment gate. Automate it in CI from Day 1 so it never becomes a bottleneck. Direct distribution (signed + notarized DMG) gives you web-like deployment frequency. Mac App Store distribution has review cycles similar to iOS.
+
+**Cross-platform projects**: If your project spans multiple platforms (e.g., iOS app + backend API), each platform maintains its own shippable state independently. The backend deploys to production; the mobile app deploys to TestFlight. Both are shippable at all times.
 
 ### "My team isn't disciplined enough"
 
@@ -418,6 +466,8 @@ SSD metrics (actually useful):
 - Once per week = decent
 - Once per day = excellent
 - Multiple times per day = world-class
+
+**Platform note:** "Deployment" means pushing to your primary distribution channel. For web, that's the production server. For mobile, that's TestFlight / Play Internal Testing (daily). For App Store / Play Store production releases, weekly is excellent — daily is not possible due to review cycles. The metric that matters is: **how quickly can a committed change reach a real tester?**
 
 If you can't deploy daily, you don't have shippable states—you have deployment problems masquerading as development problems.
 
@@ -544,7 +594,7 @@ SSD: Shippable states are the organizing principle
 
 **Problem**: "We can't ship the UI until the backend API is ready"
 
-**SSD solution**: Mock the API with proper contract
+**SSD solution**: Mock the dependency with a proper contract. The language differs, the principle doesn't.
 
 ```typescript
 // API contract (Day 1)
@@ -570,7 +620,33 @@ class ApiUserService implements UserService {
 }
 ```
 
-**Result**: UI team ships daily with mock, swaps to real API when ready. No blocking dependencies.
+The same pattern in Swift:
+
+```swift
+// Swift
+protocol UserService {
+    func getUser(id: UUID) async throws -> User
+    func updateUser(id: UUID, data: UserUpdate) async throws -> User
+}
+
+// Mock implementation (Day 1-3)
+struct MockUserService: UserService {
+    func getUser(id: UUID) async throws -> User {
+        User(id: id, name: "Test User", email: "test@example.com")
+    }
+    // ...
+}
+
+// Real implementation (Day 4+)
+struct APIUserService: UserService {
+    func getUser(id: UUID) async throws -> User {
+        // network call
+    }
+    // ...
+}
+```
+
+**Result**: UI team ships daily with mock, swaps to real implementation when ready. No blocking dependencies.
 
 ### Monorepo vs Polyrepo
 
@@ -669,9 +745,9 @@ The payoff is enormous: **no death marches, predictable delivery, high quality, 
 
 Week 1: **Foundation**
 - [ ] Set up CI/CD pipeline
-- [ ] Deploy "Hello World" to production
+- [ ] Deploy "Hello World" to your distribution channel (production server, TestFlight, Play Internal, notarized build)
 - [ ] Configure automated testing
-- [ ] Establish feature flag system
+- [ ] Establish feature flag system (server-side for web, SDK-based for mobile/desktop)
 
 Week 2: **First Feature**
 - [ ] Build one feature end-to-end
@@ -691,7 +767,9 @@ Week 4: **Optimization**
 - [ ] Remove old feature flags
 - [ ] Retrospective: what's working?
 
-**Success criteria**: On day 30, you should be able to deploy to production with confidence in under 10 minutes.
+Platform-specific Day 1 checklists are in the architect platform guides (`architect/web/`, `architect/ios/`, `architect/android/`, `architect/macos/`, `architect/headless/`).
+
+**Success criteria**: On day 30, you should be able to deploy to your distribution channel with confidence in under 10 minutes.
 
 If you can't, you've identified your constraints. Fix those first.
 

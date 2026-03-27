@@ -1,6 +1,6 @@
 # Insanely Great SSD — Claude Code Skills
 
-A free, open skill set for [Claude Code](https://claude.ai/code) that implements **Shippable States Software Development** — a pragmatic engineering discipline for solo developers and small teams.
+A free, open skill set for [Claude Code](https://claude.ai/code) that implements **Shippable States Software Development** — a pragmatic engineering discipline for solo developers and small teams. Platform-adaptive: web, iOS, Android, macOS, and headless.
 
 **Core invariant:** If you can't ship it right now, you don't have a product — you have a construction site.
 
@@ -40,7 +40,7 @@ The orchestrator. Sequences the right sub-skills for each development phase.
 
 | Skill | Role |
 |---|---|
-| `/architect` | Design: models, services, API contracts |
+| `/architect` | Design: models, services, API contracts. Platform-adaptive (web, iOS, Android, macOS, headless) |
 | `/systems-designer` | Production readiness: reliability, observability, deployment safety |
 | `/coder` | Implementation from spec (Python, Django, Swift, Go, Rust, C/C++, Obj-C) |
 | `/code-reviewer` | PR gate: BLOCKER/MAJOR findings block merge |
