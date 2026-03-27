@@ -1,4 +1,4 @@
-# Insanely Great SSD — Claude Code Skills
+# InsanelyGreat's SSD — Claude Code Skills
 
 A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that implements **Shippable States Software Development** — a pragmatic engineering discipline for solo developers and small teams. Platform-adaptive: web, iOS, Android, macOS, and headless.
 
@@ -10,7 +10,7 @@ Learn more: [insanelygreat.com](https://insanelygreat.com)
 
 ## What Is SSD?
 
-Insanely Great SSD keeps software in a deployable, production-ready state at all times. It synthesizes continuous deployment, trunk-based development, and feature flags into a workflow a single developer can actually maintain — amplified by Claude Code at every step.
+InsanelyGreat's SSD keeps software in a deployable, production-ready state at all times. It synthesizes continuous deployment, trunk-based development, and feature flags into a workflow a single developer can actually maintain — amplified by Claude Code at every step.
 
 Five principles:
 1. **Constant Production Parity** — Deploy "Hello World" on Day 1. Deployment is never "the hard part."

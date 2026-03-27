@@ -1,8 +1,14 @@
 # Changelog
 
-All notable changes to the Insanely Great SSD skills library are documented here.
+All notable changes to the InsanelyGreat's SSD skills library are documented here.
 
 Format: `[version] — date — description`
+
+---
+
+## [1.1.1] — 2026-03-27
+
+- **README, CHANGELOG** — corrected brand name from "Insanely Great SSD" to "InsanelyGreat's SSD"
 
 ---
 
