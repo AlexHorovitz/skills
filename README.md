@@ -4,7 +4,7 @@ A free, open skill set for [Claude Code](https://claude.ai/code) that implements
 
 **Core invariant:** If you can't ship it right now, you don't have a product — you have a construction site.
 
-Learn more: [insanelygreat.dev](https://insanelygreat.com)
+Learn more: [insanelygreat.com](https://insanelygreat.com)
 
 ---
 
