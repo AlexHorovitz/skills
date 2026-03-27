@@ -33,6 +33,26 @@ Before choosing a framework, decide the rendering model. This drives everything 
 
 ---
 
+## Framework Selection
+
+When the rendering strategy and stack are chosen, load the framework-specific guide for detailed project structure, routing, ORM, and deployment patterns:
+
+| Framework | Type | Language | Guide |
+|---|---|---|---|
+| Next.js (App Router) | Full-stack (SSR/SSG/SPA) | TypeScript | `frameworks/nextjs.md` |
+| Django | Backend (MPA/API) | Python | `frameworks/django.md` |
+| FastAPI | Backend (API) | Python | `frameworks/fastapi.md` |
+| Ruby on Rails | Backend (MPA/API) | Ruby | `frameworks/rails.md` |
+| Laravel | Backend (MPA/API) | PHP | `frameworks/laravel.md` |
+| Angular | Frontend (SPA) | TypeScript | `frameworks/angular.md` |
+| Vue / Nuxt | Frontend / Full-stack | TypeScript | `frameworks/vue-nuxt.md` |
+| Spring Boot | Backend (API) | Java/Kotlin | `frameworks/spring-boot.md` |
+| ASP.NET Core | Backend (API) | C# | `frameworks/aspnet-core.md` |
+
+If the framework is not in this list, apply the universal patterns in this guide and the relevant language reference from `coder/languages/`.
+
+---
+
 ## Stack Defaults
 
 Choose boring. Deviate only with a written justification.
@@ -41,7 +61,7 @@ Choose boring. Deviate only with a written justification.
 
 | Concern | Default | Only Reach For Alternative When |
 |---|---|---|
-| UI framework | React (with Next.js) | Specific reason (existing team expertise, bundle size, etc.) |
+| UI framework | Framework matching team expertise (see Framework Selection above) | Default to Next.js for new teams without a strong preference |
 | Styling | Tailwind CSS | Team has strong preference for CSS Modules or styled-components |
 | State management | React context + `useReducer` or Zustand | Global state is complex and cross-cutting |
 | Data fetching | TanStack Query (React Query) | SWR for simpler apps; raw `fetch` + `useEffect` is almost never right |

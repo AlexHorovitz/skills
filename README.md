@@ -42,7 +42,7 @@ The orchestrator. Sequences the right sub-skills for each development phase.
 |---|---|
 | `/architect` | Design: models, services, API contracts. Platform-adaptive (web, iOS, Android, macOS, headless) |
 | `/systems-designer` | Production readiness: reliability, observability, deployment safety |
-| `/coder` | Implementation from spec (Python, Django, Swift, Go, Rust, C/C++, Obj-C) |
+| `/coder` | Implementation from spec (Python, TypeScript, Swift, Ruby, Java, C#, PHP, Go, Rust, C/C++, Obj-C) |
 | `/code-reviewer` | PR gate: BLOCKER/MAJOR findings block merge |
 | `/codebase-skeptic` | Deep architectural critique through 10 expert lenses |
 | `/software-standards` | Adversarial comparative audit |
@@ -89,6 +89,7 @@ Contributions are welcome. All content in this repo is Markdown — there is no 
 - **Fixes** — Incorrect advice, outdated API references, broken examples, typos
 - **Additions** — Missing patterns, platforms, or frameworks that belong in an existing guide
 - **New platform guides** — A new `architect/` subdirectory for a platform not yet covered (e.g., `watchOS`, `tvOS`, `embedded`, `visionOS`)
+- **New framework guides** — A new `architect/web/frameworks/` file for a web framework not yet covered (e.g., `sveltekit`, `remix`, `nestjs`)
 - **New skills** — A complete `SKILL.md` for a workflow not yet covered
 
 ### What not to contribute

@@ -49,6 +49,8 @@ Before applying any patterns, identify the target platform. Ask if not stated ex
 
 For multi-platform projects (e.g., iOS + Android + API), apply the relevant guide for each layer and define the shared contract (API spec, shared data model) first.
 
+For web applications, also identify the framework. The web guide contains a Framework Selection table that loads framework-specific guidance (Next.js, Django, FastAPI, Rails, Laravel, Angular, Vue/Nuxt, Spring Boot, ASP.NET Core).
+
 ---
 
 ## Universal Principles

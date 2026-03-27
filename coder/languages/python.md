@@ -12,9 +12,12 @@ a small contribution is appreciated: venmo.com/alex-horovitz
 No warranty is expressed or implied. Use at your own discretion.
 
 
-# Python / Django — Language Reference
+# Python — Language Reference
 
-Loaded by `coder/SKILL.md` when the project is Python or Django.
+Loaded by `coder/SKILL.md` when the project is Python.
+
+For Django-specific patterns (models, views, DRF), see `architect/web/frameworks/django.md`.
+For FastAPI-specific patterns (Pydantic, async endpoints), see `architect/web/frameworks/fastapi.md`.
 
 ---
 
@@ -41,15 +44,15 @@ Module docstring explaining purpose and responsibility.
 # Standard library
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, List
+from pathlib import Path
+from typing import Optional
 
 # Third-party
-from django.db import models, transaction
-from django.core.exceptions import ValidationError
+import httpx
 
 # Local
-from apps.users.models import User
-from apps.core.utils import normalize_email
+from myapp.users.models import User
+from myapp.core.utils import normalize_email
 
 # Constants
 MAX_LOGIN_ATTEMPTS = 5
@@ -102,107 +105,78 @@ def get_active_users(
 
 ---
 
-## Django Patterns
+## Dataclasses and Domain Models
 
-### Models
+Use dataclasses for data transfer objects and domain models. Prefer frozen for immutability.
 
 ```python
-class Subscription(models.Model):
-    class Status(models.TextChoices):
-        ACTIVE    = "active",    "Active"
-        PAUSED    = "paused",    "Paused"
-        CANCELLED = "cancelled", "Cancelled"
-        EXPIRED   = "expired",   "Expired"
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import StrEnum
 
-    # Relationships first
-    user = models.ForeignKey("users.User", on_delete=models.CASCADE, related_name="subscriptions")
-    plan = models.ForeignKey("plans.Plan", on_delete=models.PROTECT, related_name="subscriptions")
 
-    # Fields grouped logically
-    status    = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE, db_index=True)
-    started_at = models.DateTimeField()
-    expires_at = models.DateTimeField(db_index=True)
-    cancelled_at = models.DateTimeField(null=True, blank=True)
+class SubscriptionStatus(StrEnum):
+    ACTIVE = "active"
+    PAUSED = "paused"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
 
-    # Audit fields last
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["user", "status"]),
-            models.Index(fields=["expires_at", "status"]),
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.user.email} — {self.plan.name} ({self.status})"
+@dataclass(frozen=True)
+class Subscription:
+    id: int
+    user_id: int
+    plan_name: str
+    status: SubscriptionStatus
+    started_at: datetime
+    expires_at: datetime
+    cancelled_at: datetime | None = None
 
     @property
     def is_valid(self) -> bool:
-        return self.status == self.Status.ACTIVE and self.expires_at > timezone.now()
-
-    def cancel(self, reason: Optional[str] = None) -> None:
-        """Cancel this subscription immediately."""
-        self.status = self.Status.CANCELLED
-        self.cancelled_at = timezone.now()
-        self.save(update_fields=["status", "cancelled_at", "updated_at"])
-        subscription_cancelled.send(sender=self.__class__, subscription=self, reason=reason)
+        return self.status == SubscriptionStatus.ACTIVE and self.expires_at > datetime.now()
 ```
 
-### Services (Business Logic)
+### Service Pattern
 
-Business logic lives in service classes, not views or models.
+Business logic lives in service classes, not in API handlers or data access code.
 
 ```python
-# services/subscription_service.py
-
 class SubscriptionService:
-    def __init__(self, user: User):
-        self.user = user
+    def __init__(self, repository: SubscriptionRepository):
+        self._repo = repository
 
-    def create_subscription(self, plan: Plan, payment_method_id: str) -> Subscription:
-        if self.user.has_active_subscription:
+    def create_subscription(self, user_id: int, plan: Plan) -> Subscription:
+        existing = self._repo.get_active_for_user(user_id)
+        if existing is not None:
             raise SubscriptionError("User already has an active subscription")
 
-        with transaction.atomic():
-            payment = PaymentService.charge(
-                user=self.user,
-                amount=plan.price,
-                payment_method_id=payment_method_id,
-            )
-            subscription = Subscription.objects.create(
-                user=self.user,
-                plan=plan,
-                status=Subscription.Status.ACTIVE,
-                started_at=timezone.now(),
-                expires_at=timezone.now() + plan.duration,
-                initial_payment=payment,
-            )
-
-        self._send_welcome_email(subscription)  # outside transaction
-        return subscription
+        subscription = Subscription(
+            id=0,
+            user_id=user_id,
+            plan_name=plan.name,
+            status=SubscriptionStatus.ACTIVE,
+            started_at=datetime.now(),
+            expires_at=datetime.now() + plan.duration,
+        )
+        return self._repo.save(subscription)
 ```
 
-### Views (Class-Based)
+### Context Managers
+
+Use context managers for resource lifecycle management.
 
 ```python
-class SubscriptionDetailView(LoginRequiredMixin, View):
-    def get(self, request: HttpRequest, subscription_id: int) -> HttpResponse:
-        subscription = self._get_subscription_or_404(request.user, subscription_id)
-        context = {
-            "subscription": subscription,
-            "available_plans": Plan.objects.active(),
-            "can_cancel": subscription.is_valid,
-        }
-        return render(request, "subscriptions/detail.html", context)
+from contextlib import contextmanager
 
-    def _get_subscription_or_404(self, user: User, subscription_id: int) -> Subscription:
-        return get_object_or_404(
-            Subscription.objects.select_related("plan"),
-            id=subscription_id,
-            user=user,
-        )
+@contextmanager
+def database_transaction(conn: Connection):
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 ```
 
 ---
@@ -265,9 +239,10 @@ class TestSubscriptionService:
 - [ ] All public functions have docstrings
 - [ ] No `print()` statements — use `logging`
 - [ ] No bare `except:` — catch specific exceptions
-- [ ] Database queries use `select_related`/`prefetch_related` where needed
-- [ ] Related database operations wrapped in `transaction.atomic()`
 - [ ] No mutable default arguments (`def f(x=[])` is a trap)
+- [ ] Dataclasses used for data transfer objects
+- [ ] `pathlib.Path` used instead of `os.path` string manipulation
+- [ ] Context managers used for resource lifecycle
 
 ---
 
@@ -275,9 +250,9 @@ class TestSubscriptionService:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| N+1 queries | Missing `select_related` | Add to queryset definition |
 | Silent failures | Bare `except` | Catch specific exceptions, log others |
 | Flaky tests | Order-dependent results | Use explicit ordering or sort in assertions |
-| Memory issues | Full queryset loaded | Use `.iterator()` or paginate |
-| Race conditions | Missing transactions | Wrap in `transaction.atomic()` |
-| Mutable default arg bug | `def f(x=[])` | Use `def f(x=None): if x is None: x = []` |
+| Memory issues | Large collection loaded | Use generators or itertools |
+| Mutable default arg bug | `def f(x=[])` | Use `def f(x: list | None = None)` |
+| Import cycle | Circular module dependencies | Move shared types to a separate module |
+| Type errors at runtime | Missing type hints | Enable mypy strict mode in CI |

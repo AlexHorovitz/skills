@@ -37,17 +37,24 @@ When invoked, **detect the project language** from context (file extensions, imp
 
 | Language | Reference File |
 |---|---|
-| Python / Django | `languages/python.md` |
+| Python | `languages/python.md` |
+| TypeScript | `languages/typescript.md` |
 | Swift | `languages/swift.md` |
+| Ruby | `languages/ruby.md` |
+| Java | `languages/java.md` |
+| C# / .NET | `languages/csharp.md` |
+| PHP | `languages/php.md` |
 | Rust | `languages/rust.md` |
+| Go | `languages/golang.md` |
 | C | `languages/c.md` |
 | C++ | `languages/cpp.md` |
-| Go | `languages/golang.md` |
 | Objective-C | `languages/objc.md` |
 
 If the language is not in this list, apply the universal principles below and use community-standard conventions for that language.
 
 If multiple languages are in use (e.g. Swift + C bridge, Go + C extension), load all relevant files and note where cross-language boundaries require extra care.
+
+If the project uses a web framework (Django, FastAPI, Next.js, Rails, Laravel, Angular, Vue/Nuxt, Spring Boot, ASP.NET Core), also load the corresponding framework architecture guide from `architect/web/frameworks/`. Language guides cover syntax and idioms; framework guides cover project structure and architectural patterns.
 
 ---
 
