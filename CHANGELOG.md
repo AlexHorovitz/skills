@@ -8,10 +8,10 @@ Format: `[version] — date — description`
 
 ## [1.3.0] — 2026-04-18
 
-### Post-v1.4-remediation skill improvements
+### Post-v1.2-remediation skill improvements
 
-Executed from `ai_working_directory/claude_skills_improvements/` plan (00-README + 01–04). The v1.4
-remediation branch in Athena shipped successfully but fresh critic runs exposed gaps in the skills
+Executed from `ai_working_directory/claude_skills_improvements/` plan (00-README + 01–04). The
+remediation branch for work shipped successfully but fresh critic runs exposed gaps in the skills
 themselves — missing operational failure-mode lenses, no loop closure, no structured hand-offs between
 skills. This release addresses those gaps.
 
