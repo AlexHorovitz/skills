@@ -109,6 +109,20 @@ confidence theater (high coverage, low signal)
 structurally resistant to testing — not just uncovered, but untestable. That is not a test problem;
 it is an architecture problem wearing a test problem's clothes.
 
+**Additional diagnostic: Incident-story attestation for defensive code.**
+
+For each fallback, circuit breaker, retry policy, or graceful-degradation branch Beck encounters, ask:
+*"What incident does this prevent?"* The answer must be one of:
+
+- A documented past incident (cite: ticket / postmortem / date)
+- A known external-dependency behavior with a citation (e.g., "Anthropic API rate limits return 429 with
+  Retry-After — tested as of 2026-01")
+- A specific regulatory or business constraint (cite policy)
+
+Fallbacks without one of these three justifications are YAGNI candidates. Flag them and let the team
+decide: keep + document, or delete. This is a stronger bar than "tests exist for this fallback."
+Tests prove the code runs; incident stories prove the code *should exist*.
+
 ---
 
 ## Michael Feathers
@@ -169,6 +183,12 @@ who has seen many systems fail for exactly these reasons.
 - Where does the domain logic live, and does it have authority over its own state?
 - Is this "service" coordinating domain logic, or is it *the* domain logic (anemic model smell)?
 - At what point does the model start lying about the domain?
+- **Has the team declared a stance on rich vs. anemic models, and is the codebase consistent with that
+  stance?** Bimodal modeling is acceptable only when each mode is intentional. Three rich FSM models and
+  twelve anemic data containers with identical service-layer patterns is a codebase that hasn't decided.
+- **For any domain concept that appears in 3+ service names, ask: does a richer model of this concept
+  want to exist?** `goal_scoring_service` + `kr_matching_service` + `kr_label_service` +
+  `kr_label_jira_service` is a `KeyResult` aggregate decomposed into verbs.
 
 **Failure vocabulary:** Anemic domain model, ubiquitous language corruption, context boundary violation,
 big service anti-pattern, fat service layer, getter/setter domain object, implicit bounded context,
@@ -242,6 +262,13 @@ that deployment risk accumulates when you deploy infrequently.
 - Is there a feature flag system, and is it used for risky changes?
 - What is the mean time to restore service after an incident?
 - Would you be comfortable deploying on a Friday afternoon?
+- **Are smoke tests / health checks / migration safety checks *enforced* or *advisory*?** A test that
+  runs but cannot block is release theatre.
+- **For each "automated" safety in CI/CD, verify the failure mode.** If the step exits nonzero, does
+  the pipeline stop, or continue? `continue-on-error: true` on a safety check is the pipeline lying to
+  the reviewer.
+- **Is the rollback drill tested?** Not "could we roll back?" but "have we rolled back in the last
+  quarter, and how long did it take?"
 
 **Failure vocabulary:** Snowflake server, manual deployment gate, release theatre, environment drift,
 irreversible migration, deployment freeze, "works on staging" failure, flag-free deploy, big-bang release,

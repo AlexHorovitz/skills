@@ -6,6 +6,80 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.3.0] — 2026-04-18
+
+### Post-v1.4-remediation skill improvements
+
+Executed from `ai_working_directory/claude_skills_improvements/` plan (00-README + 01–04). The v1.4
+remediation branch in Athena shipped successfully but fresh critic runs exposed gaps in the skills
+themselves — missing operational failure-mode lenses, no loop closure, no structured hand-offs between
+skills. This release addresses those gaps.
+
+**New skill — ssd-init (v1.1.0):**
+- First-run housekeeping for SSD projects. Creates `ssd/` (gitignored), `ssd/project.yml`,
+  `ssd/current.yml`, `docs/decisions/`, `docs/runbooks/`, `docs/architecture/`, and runs SSD
+  prerequisite checks (CI/CD, tests, flags, deployed hello-world). Idempotent — safe to re-run.
+  Prerequisite to all `/ssd` phases.
+- v1.1.0 aligns its artifact tree with the feature-centric / milestone-centric layout that every
+  other sub-skill now declares: `ssd/features/<slug>/01-architect.md … 05-deploy.md` for features,
+  `ssd/milestones/<YYYY-MM-DD-topic>/skeptic-before.md … verification.md` for milestones,
+  `ssd/audits/<YYYY-MM-DD-scope>/` for audits. Replaces v1.0.0's per-skill subdirectory layout to
+  eliminate the path mismatch that would have broken the chain.
+
+**Orchestrator (ssd v1.2.0):**
+- Declared the SSD artifact tree at `ssd/` (gitignored) + `docs/decisions/` (committed) (O1)
+- Required YAML frontmatter on every primary output, with finding_counts / gate_pass / deliverables
+  fields (O2)
+- Added `/ssd verify` phase and mandatory before/after snapshot convention for milestones (O4, O5)
+- Session continuity via `ssd/current.yml` (active workstreams, budget, last_touched) (O8)
+- Methodology-backed gate enforcement table (O9)
+- Skill-overlap priority table (coder vs python-django-coder, code-reviewer vs codebase-skeptic,
+  codebase-skeptic vs software-standards) (O11)
+
+**Review skills:**
+- **codebase-skeptic (v1.2.0)**: mandatory Phase 2.5 Operational Failure Modes Sweep (C1);
+  Forward-Looking Pass in Phase 4 (C4); Remediation Branch mode + self-verification in Operational
+  Notes (C2, O6); reciprocal `/code-reviewer` hook table (C7); Incident-Story attestation for Beck,
+  Domain-Modeling Stance for Evans, Deployment-Gate Hardening for Humble (C3, C5, C6).
+- **code-reviewer (v1.2.0)**: Phase 1.5 Prior-Review Follow-up for remediation branches (R6); Phase 3.5
+  Fix-Introduces-Edge-Cases (R2); 12 new Red Flags including LLM prompt injection, IntegrityError
+  fetch mismatch, cache-without-race-test, release theatre (R3); Verify-Before-Escalating rule for
+  sub-agent parallelization (R4); Severity Discipline (O7); Self-Verification (O6); LLM-specific
+  examples, Edge Case Inventory template, Private-state mutation anti-pattern added to examples.md
+  (R1, R5, R7).
+
+**Build / design skills:**
+- **architect (v1.1.0)**: output path + Quality Gate section mapping (A1, A2); Universal Principle 6
+  "Integration Has a First-Class Contract" (A3); eight always-ADR decisions enumerated (A4); Current
+  Scale Baseline required deliverable (A5).
+- **systems-designer (v1.2.0)**: Phase 0 input validation against architect spec (S1); three-tier
+  output with machine-check / human-review / block conditions (S2); new Concerns for AI/LLM
+  Integration (S3), Compliance & Data Lifecycle (S4), Cost Observability (S5), Chaos / Failure
+  Injection (S6).
+- **coder (v1.1.0)**: output artifact `03-coder-status.md` with test/lint/typecheck results (C1, C2);
+  Step 6.5 spec-drift check with ADR amendment prompt (C3); feature flag read from architect spec,
+  halt if absent (C4); Cross-Language Boundaries section (C5).
+- **refactor (v1.2.0)**: per-item finding citation requirement (R1); Step 4.5 Budget Check with
+  halt-and-rollback options (R2); Step 5 Loop Closure with per-item re-check (R4); Step 6
+  Systems-Designer Coordination trigger (R3).
+
+**Audit / reference skills:**
+- **software-standards (v1.1.0)**: two-mode support Comparative / Adversarial Single (ST1); 2–3
+  evidence citations required per /10 score (ST2); explicit "When NOT to Use" delineation vs.
+  codebase-skeptic (ST3); output path + frontmatter (ST4).
+- **methodology (v1.2.0)**: clarified it provides machine-checkable rule source for `/ssd gate` (M1);
+  added `/methodology score` self-adherence metric invocation (M2); audience-split expectation for
+  adoption.md (M3); date-stamped comparisons with 12-month refresh prompt (M4).
+
+**Cross-cutting:**
+- Added "Skill Hygiene Contract" section to README.md (O10): file structure, interface discipline,
+  header/license ordering, and future contract-test layer.
+- Title-first header ordering enforced across all SKILL.md files (X6).
+- License pointer already single-line since v1.2.0; Skill Hygiene Contract now requires it (X1).
+- Per-skill `## Changelog` section required + added to all touched skills (X3).
+
+---
+
 ## [1.2.0] — 2026-03-27
 
 ### Codebase review remediation

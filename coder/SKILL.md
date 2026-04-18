@@ -1,8 +1,8 @@
+# Coder Skill
+
 <!-- License: See /LICENSE -->
 
-**Version:** 1.0.0
-
-# Coder Skill
+**Version:** 1.1.0
 
 ## Purpose
 
@@ -19,10 +19,43 @@ Translate designs, specifications, and requirements into clean, working code tha
 
 | | |
 |---|---|
-| **Input** | Architect spec or feature description + language context (auto-detected from repo) |
-| **Output** | Implemented code with feature flags for incomplete work and `# REVIEW:` markers for uncertainties |
-| **Consumed by** | `code-reviewer` (gates the implementation before merge) |
+| **Input** | `ssd/features/<slug>/01-architect.md` (primary spec) + language context (auto-detected from repo). Feature flag name read from the architect spec's Feature Flag Plan section. |
+| **Output** | `ssd/features/<slug>/03-coder-status.md` (with frontmatter) + implementation commits with feature flags for incomplete work and `# REVIEW:` markers |
+| **Consumed by** | `code-reviewer` (reads `03-coder-status.md` + the diff for detailed review) |
 | **SSD Phase** | `/ssd feature` |
+
+**Required output frontmatter (`03-coder-status.md`):**
+```yaml
+---
+skill: coder
+version: 1.1.0
+produced_at: <ISO-8601>
+produced_by: <agent-name>
+project: <project-name>
+scope: <feature-slug>
+consumed_by: [code-reviewer]
+files_touched: [<path>, ...]
+tests_added: [<path>, ...]
+review_markers: <count>      # number of # REVIEW: comments
+test_results:
+  command: "<actual-test-command>"
+  exit_code: 0
+  stdout_tail: "<last 20 lines>"
+lint_results:
+  command: "<actual-lint-command>"
+  exit_code: 0
+type_check_results:
+  command: "<actual-typecheck-command>"
+  exit_code: 0
+feature_flag:
+  name: <flag-name-from-architect-spec>
+  default: off
+spec_drift: false            # true if implementation diverged from architect spec
+---
+```
+
+If `feature_flag.name` is missing from the architect spec AND the change is not pure infrastructure,
+surface this as a blocker to the user and halt — SSD requires all new code behind a flag.
 
 ---
 
@@ -128,6 +161,45 @@ Flag anything you're unsure about for the reviewer:
 # TODO: Add rate limiting once volume is known
 ```
 
+### Step 6.5: Check for Spec Drift
+
+Did your implementation differ materially from the architect spec? (Different data shape, different
+API signature, different boundary, different dependency.) If yes:
+
+- Amend the relevant ADR in `docs/decisions/`, OR
+- File an ADR supersession (new ADR marked as superseding the drifted one)
+
+Record `spec_drift: true` in the coder-status frontmatter and explain the drift in the artifact body.
+A spec-vs-impl mismatch that isn't recorded will be discovered later as a review finding or an
+incident — catch it now.
+
+### Step 7: Run Tests, Lint, Type Check
+
+Do not mark the coder phase done until:
+
+```bash
+<test-command>     # e.g., `uv run pytest` / `npm test` / `go test ./...`
+<lint-command>     # e.g., `ruff check` / `eslint .` / `golangci-lint run`
+<typecheck-command>  # e.g., `mypy .` / `tsc --noEmit` / `go vet ./...`
+```
+
+All three must exit 0. Record exit codes + last 20 lines of output in the coder-status frontmatter. If
+any step fails, fix or file a REVIEW marker — do not hand off a red build.
+
+---
+
+## Cross-Language Boundaries
+
+Projects spanning multiple languages (Swift + C bridge, Python + Rust extension, TypeScript + WASM,
+etc.) require extra care at the boundary:
+
+- Load all relevant language reference files, not just the "primary" one.
+- Match the ownership/lifetime rules at the boundary (who allocates, who frees; reference counting vs.
+  copy semantics).
+- Run each language's Quality Checklist independently — a bridge passes only when both sides pass.
+- Document the bridge contract (function signatures, ABI, marshaling) in the architect spec's
+  Integration Contract section.
+
 ---
 
 ## Universal Quality Checklist
@@ -158,3 +230,23 @@ architect → systems-designer → [coder] → code-reviewer → deploy
 **Feature flag requirement**: All incomplete or experimental work must be deployed behind a feature flag. Never commit work-in-progress directly to a live code path on main.
 
 **Review gate**: Output from this skill goes to `code-reviewer`. BLOCKER or MAJOR findings return here before merge.
+
+---
+
+## Self-Verification (before emitting `03-coder-status.md`)
+
+1. Did I actually run the test / lint / type-check commands, or am I claiming they pass from memory?
+2. Does every `# REVIEW:` marker in my diff appear in the `review_markers` count?
+3. Did I read `01-architect.md` and compare my implementation to the spec for drift (Step 6.5)?
+4. Is the feature flag name from the spec actually wired in the code AND the config?
+5. If this is a multi-language change, did I run each language's Quality Checklist independently?
+
+---
+
+## Changelog
+
+- **1.1.0** (2026-04-18) — Declared output artifact path `03-coder-status.md` and YAML frontmatter with
+  test/lint/typecheck results (C1, C2); added Step 6.5 spec-drift check with ADR amendment prompt
+  (C3); made the feature flag read from the architect spec and halt if absent (C4); added
+  Cross-Language Boundaries section (C5); added Self-Verification gate (O6).
+- **1.0.0** — Initial release.

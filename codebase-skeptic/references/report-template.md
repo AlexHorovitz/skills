@@ -229,6 +229,24 @@
 
 ## Synthesis
 
+### Remediation Drift (only when reviewing a fix-oriented branch)
+
+For each original finding, mark ✅ / 🔄 / ❌. Then list any *new* issues introduced by the fixes
+themselves.
+
+| Original finding | Status | Notes |
+|---|---|---|
+| [finding] | ✅ fixed | [commit ref] |
+| [finding] | 🔄 deferred | [why] |
+| [finding] | ❌ unaddressed | [what was expected] |
+
+**New issues introduced by fixes:**
+- [fix location → new issue]
+
+*Omit this subsection when not reviewing a remediation branch.*
+
+---
+
 ### Dominant Failure Mode
 [The single unifying problem, stated plainly. If there isn't one dominant failure mode, say so and
 name the top two or three themes instead.]

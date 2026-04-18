@@ -1,8 +1,8 @@
+# Systems Designer Skill
+
 <!-- License: See /LICENSE -->
 
-**Version:** 1.1.0
-
-# Systems Designer Skill
+**Version:** 1.2.0
 
 ## Purpose
 Ensure every feature and system change is production-ready by systematically evaluating operational concerns: reliability, observability, security, performance, deployment safety, and failure recovery.
@@ -18,10 +18,45 @@ Ensure every feature and system change is production-ready by systematically eva
 
 | | |
 |---|---|
-| **Input** | Architect spec or feature description (can also run independently against a deployed system) |
-| **Output** | Production readiness checklist covering failure modes, observability, security, performance, and deployment safety |
-| **Consumed by** | `ssd` (required before `/ssd ship`; checklist must be addressed before deploy) |
+| **Input** | `ssd/features/<slug>/01-architect.md` (primary) or a provided spec/description. Can also run independently against a deployed system. |
+| **Output** | `ssd/features/<slug>/02-systems-designer.md` — three-tier production readiness output (machine-checkable / human-review / block-conditions) with YAML frontmatter |
+| **Consumed by** | `ssd` (`/ssd ship` reads `block_conditions_met` from frontmatter; any block condition false refuses to ship) |
 | **SSD Phase** | `/ssd start`, `/ssd feature`, `/ssd ship` |
+
+**Required output frontmatter:**
+```yaml
+---
+skill: systems-designer
+version: 1.2.0
+produced_at: <ISO-8601>
+produced_by: <agent-name>
+project: <project-name>
+scope: <feature-slug>
+consumed_by: [ssd]
+machine_checked:
+  tests_exist: true
+  indexes_declared: true
+  flag_wired: true
+  migration_reversible: true
+human_review:
+  load_test: required|pass|fail|waived
+  runbook_accuracy: required|pass|waived
+  security_review: required|pass|waived
+block_conditions_met: true       # false if ANY block condition fails
+block_conditions:
+  rollback_plan_exists: true
+  observability_hooks: true
+  dependency_failure_modes_documented: true
+---
+```
+
+### Phase 0 — Input Validation
+
+Before performing any production-readiness analysis, verify the architect spec input is complete. If
+`ssd/features/<slug>/01-architect.md` is present, check that every Quality Gate section has real
+content (not stub text). If any required section is missing, produce a "send back to architect" summary
+listing the gaps and return. Do NOT fill speculative content into an empty spec — that produces false
+confidence.
 
 ---
 
@@ -371,6 +406,18 @@ def create_subscription(user, plan):
 # 6. Remove flag, delete old code
 ```
 
+### 3b. Compliance & Data Lifecycle
+
+OWASP basics are covered in §3. Compliance is separate and deploy-blocking for most production systems.
+Document each of the following or declare the item not applicable:
+
+- **PII inventory.** Which fields in the data model contain PII? Where are they read and written?
+- **Retention policy.** How long is each PII field retained? What triggers deletion?
+- **Deletion mechanism.** On user request (GDPR Art. 17 / CCPA opt-out), which systems are touched?
+  Is there a runbook?
+- **Audit log retention.** How long are access/auth events retained? Who can read them?
+- **Data residency.** For each category of data, in which regions is it stored / processed / backed up?
+
 ### 6. Operational Readiness
 
 **The on-call engineer at 3am is the ultimate stakeholder.**
@@ -461,6 +508,49 @@ kubectl get deployments -o wide
 - Response: Normal ticket queue
 ```
 
+### 7. AI / LLM Integration
+
+Required when the system calls a hosted LLM (Claude, OpenAI, etc.) or embeds a local model in a hot
+path. For production-readiness, evaluate:
+
+- **Prompt injection surface.** Every place user-controlled content enters a prompt must be escaped or
+  delimited. See `code-reviewer/examples.md` §2a for the pattern.
+- **Output schema validation.** Is the model's structured output validated (pydantic, jsonschema,
+  field-by-field) before it's trusted?
+- **Cost dashboards.** `$/request`, `$/user`, daily spend, tokens/request. Alert on >20% daily
+  deviation.
+- **Rate-limit alerts.** Alert on sustained 429s or throttling signals. Do retries compound the problem
+  or mitigate it?
+- **Schema validation failures as an SLO.** Treat a schema-validation failure rate > X% as a
+  production incident, not a warning.
+- **Model drift detection.** If outputs are scored / graded, track the score distribution over time.
+  A sudden shift is a model update or a prompt regression.
+- **Cache-key scoping.** If prompt caching is used, verify keys are user-scoped and system prompts
+  don't contain user-specific data.
+
+### 8. Chaos / Failure Injection
+
+Failure modes documented in §1 must be *exercised*, not just catalogued. For each documented failure
+mode, declare a periodic exercise (manual or automated). Even a quarterly "flip the flag off and verify"
+counts — untested fallbacks rot.
+
+Minimal exercise cadence:
+- Each external-dependency circuit breaker opens in a staging game-day ≥ quarterly
+- Each rollback procedure is dry-run ≥ quarterly
+- Each deploy-order migration is tested against a production snapshot ≥ per migration
+
+### 9. Cost Observability
+
+Beyond availability/latency/throughput, required metrics include cost:
+
+| Metric | Purpose | Alert Threshold |
+|---|---|---|
+| Monthly cloud spend (per env) | Budget adherence | > budget × 1.1 |
+| Cost per request ($) | Unit economics | > target × 1.5 |
+| Cost per user ($) | LTV sanity | > target × 1.5 |
+| Daily deviation vs 7-day avg | Runaway detection | > 20% |
+| LLM tokens per request | Drift / prompt bloat | > baseline × 1.5 |
+
 ---
 
 ## Production Readiness Review Template
@@ -519,6 +609,42 @@ Brief description of what's shipping.
 - [ ] SRE/Platform
 - [ ] Security (if applicable)
 ```
+
+### Three-Tier Output (new)
+
+The checklist above is the long-form narrative. For machine-readable gate decisions, the skill also
+produces a three-tier summary that maps into frontmatter:
+
+**Tier 1 — Machine-checkable (the skill verifies these itself):**
+- Tests exist for the new code path
+- Indexes declared for new query patterns
+- Feature flag is wired (flag name appears in code + config)
+- Migration is reversible (no destructive DDL without two-phase pattern)
+- Structured logging present at decision points
+
+**Tier 2 — Human-review (the skill flags these for a reviewer):**
+- Load-test results (pass/fail/waived)
+- Runbook accuracy (pass/waived)
+- Security review (pass/waived — required for auth/PII changes)
+
+**Tier 3 — Block conditions (any failure → cannot ship):**
+- Rollback plan exists and is documented
+- Observability hooks (logs, metrics, dashboard) exist for the new path
+- Dependency failure modes are documented
+- Destructive migrations have a tested two-phase plan
+
+A Tier 3 failure sets `block_conditions_met: false` in frontmatter. `/ssd ship` refuses to proceed.
+
+---
+
+## Changelog
+
+- **1.2.0** (2026-04-18) — Declared output artifact path and YAML frontmatter; added Phase 0 input
+  validation against architect spec (S1); three-tier output with machine-check/human-review/block
+  conditions (S2); new Concern 3b Compliance & Data Lifecycle (S4); Concern 7 AI/LLM Integration (S3);
+  Concern 8 Chaos / Failure Injection (S6); Concern 9 Cost Observability (S5).
+- **1.1.0** — Added migration-safety patterns and runbook template.
+- **1.0.0** — Initial release.
 
 ---
 

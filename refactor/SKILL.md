@@ -1,8 +1,8 @@
+# Refactoring Skill
+
 <!-- License: See /LICENSE -->
 
-**Version:** 1.1.0
-
-# Refactoring Skill
+**Version:** 1.2.0
 
 ## Purpose
 Continuously scan codebases for refactoring opportunities—improving code quality, reducing technical debt, and enhancing maintainability without changing external behavior. Be opportunistic but disciplined: refactor with purpose, not for sport.
@@ -18,10 +18,36 @@ Continuously scan codebases for refactoring opportunities—improving code quali
 
 | | |
 |---|---|
-| **Input** | `codebase-skeptic` or `code-reviewer` findings (when available); otherwise, codebase scan |
-| **Output** | Prioritized refactor plan + refactored code submitted as separate PRs from feature work |
-| **Consumed by** | `code-reviewer` (each refactoring PR goes through the same gate as feature work) |
+| **Input** | `ssd/milestones/<milestone>/skeptic-before.md` (primary, when invoked by `/ssd milestone`) or `ssd/features/<slug>/04-code-review.md`. If neither exists, perform a codebase scan. |
+| **Output** | `ssd/milestones/<milestone>/refactor-plan.md` (with frontmatter) + refactored code submitted as separate PRs from feature work |
+| **Consumed by** | `code-reviewer` (each refactoring PR goes through the same gate as feature work, with `remediation_mode: true`); `/ssd verify` (re-runs skeptic on identical scope) |
 | **SSD Phase** | `/ssd milestone` |
+
+**Each refactor item in the output plan MUST cite a specific finding ID from the input.** No cite →
+not in scope. This enforces the loop-closure contract: every refactor traces to a reviewed finding.
+
+**Required output frontmatter:**
+```yaml
+---
+skill: refactor
+version: 1.2.0
+produced_at: <ISO-8601>
+produced_by: <agent-name>
+project: <project-name>
+scope: <milestone>
+consumed_by: [code-reviewer, ssd]
+input_artifact: ssd/milestones/<milestone>/skeptic-before.md
+items:
+  - id: R1
+    cites: [S-F3, S-U1]        # finding IDs from input
+    pattern: extract-service
+    files: [apps/goals/services/goal_scoring.py]
+    budget_hours: 4
+    touches_failure_modes: false
+    touches_observability: false
+    touches_deploy_path: false
+---
+```
 
 ---
 
@@ -139,6 +165,40 @@ After refactoring:
 - Manual smoke test of affected features
 - Compare logs/metrics before and after (same patterns?)
 
+### Step 4.5: Budget Check (at each step boundary)
+
+At each step boundary, compare elapsed effort to the `budget_hours` declared in the plan. If elapsed
+is > 150% of planned, emit a **scope reconsider** prompt and choose one:
+
+- **Cut scope.** Ship what's done; defer the rest to a follow-up plan item.
+- **Escalate.** Something is harder than expected — tell a human before sinking more time.
+- **Defer.** Abandon this refactor item; move the citation back to the skeptic report as "deferred."
+
+Feature flags mitigate technical risk. They do not mitigate scope risk. Don't keep grinding.
+
+### Step 5: Loop Closure
+
+Before marking a refactor plan item done:
+
+1. **Re-run the originating finding's check.** If the finding came from codebase-skeptic's Evans voice
+   ("KR logic spread across 4 services"), re-run that lens on the refactored code. If it came from
+   code-reviewer's Red Flags ("lazy import inside method"), grep for the pattern.
+2. **Record closure in the refactor-prs.md artifact.** One of: ✅ closed / 🔄 partial / ❌ abandoned.
+3. **If partial or abandoned:** explicitly name the residue. "Extracted 3 of 4 services; the fourth
+   needs a model change and is deferred to plan item R7."
+
+Skipping this step turns refactors into proof-by-assertion. The milestone's `/ssd verify` phase will
+re-run skeptic on the full scope; if this item didn't close, `/ssd verify` will catch it — but finding
+out there is worse than finding out here.
+
+### Step 6: Systems-Designer Coordination
+
+If any item in the plan touches failure modes, observability, transaction boundaries, async/sync
+flipping, queue semantics, or deploy ordering, set `touches_failure_modes / touches_observability /
+touches_deploy_path: true` in the item's frontmatter and re-run `systems-designer` on the affected
+area. A refactor that silently changes production-readiness profile is the kind of drift SSD exists to
+prevent.
+
 ---
 
 ## Prioritization Framework
@@ -243,3 +303,20 @@ Before completing a refactoring:
 - [ ] Each commit is independently deployable
 - [ ] PR description explains the "why" not just the "what"
 - [ ] Rollback plan documented
+- [ ] Each item cites the originating finding ID
+- [ ] Closure recorded (✅ / 🔄 / ❌) per item in `refactor-prs.md`
+- [ ] If any item touched failure modes / observability / deploy, `systems-designer` was re-run on the
+      affected area
+
+---
+
+## Changelog
+
+- **1.2.0** (2026-04-18) — Declared output artifact path and YAML frontmatter with per-item finding
+  citations (R1); added Step 4.5 budget check with halt-and-rollback options (R2); added Step 5 Loop
+  Closure with per-item re-check and closure status (R4); added Step 6 Systems-Designer Coordination
+  trigger (R3); expanded Quality Checklist with citation + closure + systems-designer handoff items.
+  R5 (language-specific pattern files) deferred; patterns.md remains Python-centric with a language
+  note.
+- **1.1.0** — Split out `patterns.md` from `SKILL.md`.
+- **1.0.0** — Initial release.

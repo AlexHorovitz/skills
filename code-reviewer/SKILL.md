@@ -1,8 +1,8 @@
+# Code Reviewer Skill
+
 <!-- License: See /LICENSE -->
 
-**Version:** 1.1.0
-
-# Code Reviewer Skill
+**Version:** 1.2.0
 
 ## Purpose
 Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabilities, performance issues, and maintainability problems before they reach production. Be ruthless but constructive—the goal is better code, not crushed developers.
@@ -17,10 +17,33 @@ Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabili
 
 | | |
 |---|---|
-| **Input** | Code diff, PR, or specific files under review |
-| **Output** | Findings report with severity-classified findings (BLOCKER / MAJOR / MINOR / QUESTION / SUGGESTION / NIT) |
-| **Consumed by** | `ssd` (BLOCKER or MAJOR findings block merge; clean report allows proceed) |
+| **Input** | Code diff, PR, or specific files under review. For remediation branches: also read `ssd/milestones/<milestone>/skeptic-before.md` (if present) for prior-review context. |
+| **Output** | `ssd/features/<slug>/04-code-review.md` (feature) or `ssd/milestones/<milestone>/review-<pr>.md` (milestone) — findings report with YAML frontmatter and severity-classified findings (BLOCKER / MAJOR / MINOR / QUESTION / SUGGESTION / NIT) |
+| **Consumed by** | `ssd` gate (reads `gate_pass` from frontmatter; BLOCKER or MAJOR findings block merge) |
 | **SSD Phase** | `/ssd feature`, `/ssd milestone`, `/ssd gate` |
+
+**Required output frontmatter** — every primary output opens with:
+
+```yaml
+---
+skill: code-reviewer
+version: 1.2.0
+produced_at: <ISO-8601>
+produced_by: <agent-name>
+project: <project-name>
+scope: <branch|commit-range|files>
+consumed_by: [ssd]
+finding_counts:
+  blocker: 0
+  major: 0
+  minor: 0
+  question: 0
+  suggestion: 0
+  nit: 0
+gate_pass: true   # computed: blocker == 0 AND major == 0
+remediation_mode: false   # true when reviewing a fix-oriented branch
+---
+```
 
 ---
 
@@ -67,6 +90,33 @@ Before looking at the implementation:
 
 **If context is missing, request it.** Don't review code you don't understand.
 
+### Phase 1.5: Prior-Review Follow-up (for remediation branches)
+
+If the PR claims to remediate a prior review (via commit message, branch name, linked ACTION_PLAN, or
+explicit PR description), do this before any other review work. Set `remediation_mode: true` in
+frontmatter.
+
+1. **Locate the prior review.** If the PR description links to it, follow the link. Otherwise look for
+   `ssd/milestones/<milestone>/skeptic-before.md` or `ssd/features/<slug>/04-code-review.md`. If you
+   cannot find it, ask. Do not review the branch without the prior review in hand — you will miss
+   "unaddressed" findings.
+
+2. **Enumerate the prior findings.** Create a table: finding ID | claim | PR status
+   (addressed / partially addressed / deferred / silent).
+
+3. **For each finding marked "silent":** check the branch diff to confirm the code wasn't changed. If a
+   finding is silent, flag it as a MAJOR finding on the PR — either the finding was wrongly dismissed,
+   or the dismissal reasoning was not written down.
+
+4. **For each finding marked "partially addressed":** verify the deferred portion has a follow-up ticket
+   or PR. If not, flag as MINOR.
+
+5. **For findings marked "addressed":** apply the Edge Case Inventory (see `examples.md` §8) and the
+   Fix-Introduces-Edge-Cases phase (3.5) to the fix code.
+
+Never approve a remediation branch without completing this phase. "The commit message said it's fixed"
+is not the same as "I verified it's fixed."
+
 ### Phase 2: High-Level Review (Architecture & Design)
 
 Read through the changes once, asking:
@@ -90,6 +140,37 @@ For each file:
   4. Maintainability: Can others understand it?
   5. Testing: Is it adequately covered?
 ```
+
+### Phase 3.5: Fix-Introduces-Edge-Cases (for bug-fix or defensive-code PRs)
+
+When a PR adds defensive code (null guards, exception handlers, cache layers, fallback paths, retry
+loops), the new code is a new surface area. Review it as new code, not as "the fix."
+
+For each added defensive branch, enumerate the states it can enter:
+
+1. **Null return from a helper:** Does the caller handle `None`? (e.g., `.first()`, `dict.get()`,
+   `Model.objects.filter(...).first()`)
+2. **Filter mismatched with constraint:** If catching `IntegrityError`, does the post-catch fetch filter
+   match the constraint that raised the error? (A constraint on `status IN (A, B, C)` with a fetch
+   excluding `status IN (D, E)` can return None.)
+3. **Cache invalidation race:** Does the new cache have a test that exercises concurrent write+read? If
+   not, the cache is stale-by-design in some window.
+4. **Retry idempotency:** Does the new retry loop wrap a side-effecting operation? If yes, is the
+   operation idempotent, or is the loop itself wrapped in a transaction?
+5. **Exception narrowing edge:** If the catch was narrowed from `except Exception` to specific types,
+   enumerate what other exceptions the try block can raise. Do any of them deserve different handling?
+6. **Signal handler ordering:** If the fix adds a signal, document the ordering assumption (pre-save vs
+   post-save, sender filter, race with other signals).
+7. **New configuration knob:** If the fix adds a setting / env var, what's the default behavior if it's
+   missing? Does the default break existing users?
+
+Each bullet that applies gets its own finding if the code doesn't address it. A PR that "fixes a race
+condition by adding an IntegrityError handler" that silently drops records under a secondary race is not
+fixed — it is bug-shaped-differently.
+
+**Heuristic:** If the PR's test suite only exercises the *primary* race / error / edge condition (the
+one named in the commit message), it's undertested. The test must also exercise the edge cases the fix
+itself introduces. See `examples.md` §8 for the Edge Case Inventory template.
 
 ### Phase 4: Integration Review (The Bigger Picture)
 
@@ -185,6 +266,18 @@ When you see these, slow down and review extra carefully:
 | No tests for new code | Untested = broken |
 | `time.sleep()` in non-test code | Probably wrong approach |
 | Disabled linting rules | Hiding problems |
+| Lazy import inside a method (`def foo(): from x import y`) | Circular-dep symptom; the module graph wants to be different from what's declared |
+| `.first()` / `dict.get()` / `next(iter(...), None)` with no None check on the result | Silent data loss / NoneType crash deferred to a later line |
+| New cache layer without a race test | Invalidation windows uncaught; stale data serves as authoritative |
+| Test mutates a `_private` attribute of the code under test | Test couples to internal representation; refactor tax |
+| CI safety check with `continue-on-error: true` or `|| true` | Release theatre — the check reports but cannot stop |
+| `IntegrityError` caught with a post-catch fetch that filters on status | Fetch filter must match the constraint set exactly, or records silently drop |
+| User-controlled string inside an LLM prompt f-string | Prompt injection |
+| `json.loads(llm_response)` with no schema check | Crashes when the model drifts; consumes bad data when it doesn't |
+| Retry loop wrapping a non-idempotent operation | Duplicate writes on transient failure |
+| `on_delete=CASCADE` to a FK whose target can be administratively deleted | Data loss by cleanup job |
+| `conn_max_age > 0` with no connection-pool observability | Silent exhaustion under deploy + traffic |
+| `transaction.atomic()` wrapping external API calls | Transaction held open during network I/O; blocks other writers |
 
 ---
 
@@ -225,3 +318,82 @@ When you see these, slow down and review extra carefully:
 | Not running the code | Misses runtime issues | Pull branch, test locally |
 | Only reading the diff | Misses context | Look at full files |
 | Approving to be nice | Ships bugs | Be honest, be kind |
+
+---
+
+## Parallelizing the Review via Sub-Agents
+
+When a review is large enough to benefit from parallelization (multiple sub-agents reviewing different
+file sets), the parent reviewer carries three obligations:
+
+1. **Verify all BLOCKER and MAJOR claims before publishing them.** Sub-agents have partial context and
+   often flag patterns as bugs when they are deliberate design choices. A false BLOCKER is worse than no
+   BLOCKER — it erodes trust in the skill and wastes remediation cycles.
+
+2. **Downgrade severity when the agent's rationale is "could be a bug" rather than "is a bug."** "May
+   leak data in a multi-tenant context" is MAJOR in a multi-tenant product, and not a finding at all in
+   a single-tenant one. The parent must check which applies.
+
+3. **Deduplicate findings.** Two sub-agents working on overlapping file sets will report the same issue
+   with different framing. Report once, cite both.
+
+**Verification process for BLOCKER claims from sub-agents:**
+- Read the file at the line cited.
+- Trace the code path to confirm the claimed execution can happen.
+- Run the relevant test if one exists; if not, note its absence.
+- If the claim survives, publish. If it doesn't, downgrade or drop.
+
+Never republish a sub-agent's BLOCKER without this three-step verification. "Agent said so" is not
+evidence; it is hearsay.
+
+---
+
+## Severity Discipline
+
+The difference between MAJOR and QUESTION is whether the reviewer has traced the path to a real bug vs.
+noticed a pattern that could be a bug.
+
+**Downgrade a MAJOR to QUESTION when:**
+- The claim assumes a scenario ("if two threads...") without evidence the scenario can occur in this
+  system
+- The claim depends on context ("if this is multi-tenant...") that hasn't been verified
+- The claim is "pattern X is sometimes wrong" without verifying it's wrong here
+
+**Upgrade a QUESTION to MAJOR when:**
+- The author of the PR answers the question in a way that confirms the bug
+- A trace through the code confirms the claim
+
+False MAJORs are worse than missed MINORs. A MAJOR that turns out to be wrong erodes trust in the
+reviewer; a MINOR that goes uncaught gets caught on the next review.
+
+---
+
+## Self-Verification (before emitting output)
+
+Before writing the final output artifact, answer these questions. If any answer is "no" or "I'm not
+sure," pause and address it.
+
+1. Did I read the actual files I'm citing, or am I pattern-matching from memory? (If memory: go read the
+   files now.)
+2. Did I verify each BLOCKER/MAJOR claim by tracing the execution path?
+3. For each citation (file:line), does the line still exist at that number?
+4. Are there claims that depend on assumptions I haven't stated?
+5. If I parallelized via sub-agents, did I verify every sub-agent's BLOCKER/MAJOR claim before promoting
+   it?
+6. Did I downgrade any speculative claims ("could be a bug under X conditions") to QUESTION unless X is
+   proven to apply?
+7. Did I apply Phase 3.5 (Fix-Introduces-Edge-Cases) to every defensive code branch in the diff?
+8. If `remediation_mode: true`, did I complete Phase 1.5 and enumerate prior findings by status?
+
+---
+
+## Changelog
+
+- **1.2.0** (2026-04-18) — Added Phase 1.5 Prior-Review Follow-up for remediation branches (R6); added
+  Phase 3.5 Fix-Introduces-Edge-Cases (R2); expanded Red Flags table with 12 new patterns including LLM
+  prompt-injection, IntegrityError fetch mismatch, lazy imports, cache-without-race-test, and release
+  theatre (R3); added Verify-Before-Escalating rule for sub-agent parallelization (R4); added explicit
+  Severity Discipline section (O7); added Self-Verification gate (O6); declared output artifact path
+  and YAML frontmatter schema (O2/O3).
+- **1.1.0** — Split out `examples.md` from `SKILL.md` for reference material.
+- **1.0.0** — Initial release.

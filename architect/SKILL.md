@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 ---
 
@@ -22,10 +22,45 @@ Design scalable, maintainable software architectures that follow established pat
 
 | | |
 |---|---|
-| **Input** | Feature brief, project description, or architectural question |
-| **Output** | Component diagram, data model, API contract, ADR (Architecture Decision Record), risk assessment |
-| **Consumed by** | `coder` (uses spec for implementation), `systems-designer` (uses spec for production readiness review) |
+| **Input** | Feature brief → read from `ssd/features/<slug>/00-brief.md` (if present), otherwise the user's description |
+| **Output** | `ssd/features/<slug>/01-architect.md` (with YAML frontmatter per `ssd/SKILL.md` §"Structured Output Requirements") + ADRs in `docs/decisions/` |
+| **Consumed by** | `coder` (reads `01-architect.md` for implementation), `systems-designer` (reads `01-architect.md` for production readiness review) |
 | **SSD Phase** | `/ssd start`, `/ssd feature` |
+
+**Required output sections** (each section of the artifact maps to a Quality Gate item; an empty or
+stub-only section fails the gate):
+
+1. Current Scale Baseline (see Universal Principle 2)
+2. Component Diagram
+3. Data Model
+4. API / Interface Contract
+5. Integration Contract (see Universal Principle 6) — only when queues/events/retries are in scope
+6. Decision Log (ADR references)
+7. Risk Assessment
+8. Feature Flag Plan — flag name, default state, rollout stages
+
+**Required output frontmatter:**
+```yaml
+---
+skill: architect
+version: 1.1.0
+produced_at: <ISO-8601>
+produced_by: <agent-name>
+project: <project-name>
+scope: <feature-slug>
+consumed_by: [coder, systems-designer]
+deliverables:
+  component_diagram: true
+  data_model: true
+  api_contract: true
+  integration_contract: true|not_applicable
+  adrs: [ADR-NNNN, ...]
+  risk_assessment: true
+  feature_flag: <flag-name>|not_applicable
+  scale_baseline: true
+quality_gate_pass: true
+---
+```
 
 ---
 
@@ -81,6 +116,36 @@ Start with the data model. Get it right before writing a line of UI or API code.
 
 The architecture must be deployable before any feature is complete. Plan CI/CD, secrets management, and environment configuration in the architecture phase — not after. "We'll figure out deployment later" is how you get 90% done and stuck.
 
+### 6. Integration Has a First-Class Contract
+
+If the design involves queues, events, webhooks, retries, or cross-service calls, produce the
+integration contract as part of the spec — never as an afterthought. Address these concerns in the
+design, not at review:
+
+- **Idempotency.** Which operations can be safely retried? What is the idempotency key? What layer
+  enforces uniqueness (app, DB constraint, message broker)?
+- **Ordering.** Does the code assume messages arrive in order? What happens when they don't?
+- **Schema evolution.** How are payloads versioned? What happens to in-flight messages during a rolling
+  deploy?
+- **Dead-letter handling.** Where do permanently-failed messages go? Who reads the DLQ? What's the SLA?
+- **Synchronous vs async boundary.** If chosen synchronous, what's the acceptable tail latency and the
+  timeout/retry policy? If async, what's the eventual-consistency window that callers must tolerate?
+
+Produce these as a dedicated "Integration Contract" section in the output artifact.
+
+### Current Scale Baseline (required deliverable)
+
+Principle 2 ("Design for the next 10x") is meaningless without a 1x anchor. Every architect output must
+declare the current-scale baseline in one short section:
+
+- Current users / MAU / tenants
+- Peak QPS (or requests/minute) on hot paths
+- Database size and daily growth
+- Deploy frequency
+- Target 10x numbers derived from each of the above
+
+The 10x target is mechanical from the baseline — no judgment, no rhetoric.
+
 ---
 
 ## Architecture Decision Records (ADR)
@@ -110,6 +175,23 @@ What we considered and why we said no.
 ```
 
 ADRs go in `docs/decisions/`. Number them sequentially. Never delete a superseded ADR — mark it superseded and link to its replacement.
+
+### Decisions that are ALWAYS ADRs
+
+These eight decisions produce an ADR every time. If any one of them is implicit in your design, write
+the ADR anyway — the absence of an ADR here is a design smell.
+
+1. **Database choice** (including "which Postgres version / which managed service")
+2. **Auth strategy** (session vs JWT, IdP choice, RBAC/ABAC, multi-tenant isolation)
+3. **Sync vs async boundary** (queues, events, background jobs)
+4. **Monolith vs services** (and if services: per-service vs shared data store)
+5. **Deployment target** (platform, region, container runtime)
+6. **Schema migration strategy** (two-phase, blue/green, migration framework)
+7. **Third-party vs build** (every SaaS dependency with lock-in implications)
+8. **Licensing** (open-source dependencies with copyleft, commercial dependencies with per-seat cost)
+
+Everything else: write an ADR if a future engineer might ask "why did they do it this way?" If the
+answer to that question is "read the code," you owe the ADR.
 
 ---
 
@@ -167,18 +249,47 @@ Flag the top 3 risks explicitly. These become the first items in the systems-des
 
 ## Quality Gate
 
-Do not hand off to `/coder` until every item is checked:
+Each gate item maps to a required section in the output artifact. An empty or stub-only section
+auto-fails the gate — `quality_gate_pass: false` in frontmatter and the skill cannot hand off.
 
-- [ ] Platform guide has been read and applied
-- [ ] All major decisions recorded as ADRs
-- [ ] Data model reviewed — no obvious normalization problems, indexes planned
-- [ ] API/interface contract defined at every component boundary
-- [ ] Auth and authorization strategy specified
-- [ ] Async/background work identified and queued appropriately
-- [ ] Feature flag strategy defined for any multi-phase rollout
-- [ ] CI/CD and deployment path sketched (even if rough)
-- [ ] Top 3 risks identified with mitigations
-- [ ] Design is deployable at minimal scope today (SSD: Walking Skeleton)
+| Gate item | Required section in `01-architect.md` |
+|---|---|
+| Platform guide applied | Component Diagram reflects the loaded platform guide |
+| Major decisions are ADRs | Decision Log references ≥1 ADR per always-ADR topic in scope |
+| Data model reviewed | Data Model (fields, FKs, indexes, soft-delete) |
+| API/interface contract defined | API / Interface Contract |
+| Auth/authorization specified | ADR + API Contract (auth headers, scopes) |
+| Async/background work identified | Integration Contract (if queues/events are used) |
+| Feature flag strategy defined | Feature Flag Plan (name, default, rollout stages) |
+| CI/CD and deployment path sketched | Referenced in Risk Assessment and/or ADR |
+| Top 3 risks identified with mitigations | Risk Assessment |
+| Current Scale Baseline + 10x target | Current Scale Baseline |
+| Walking Skeleton deployable today | Deployment path ADR + Risk Assessment note |
+
+---
+
+## Self-Verification (before emitting output)
+
+Before writing the final artifact, answer these questions. If any answer is "no" or "I'm not sure,"
+pause and address it.
+
+1. For every deliverable listed in my Quality Gate, is a concrete section produced with real content,
+   or am I just asserting it's done?
+2. Did I adapt guidance to the project's actual stack, or copy-paste examples from the platform guide's
+   defaults?
+3. Did I read the relevant platform guide (and framework guide, if web) rather than pattern-matching?
+4. For each always-ADR topic that applies in scope, does an ADR file exist in `docs/decisions/`?
+5. Did I declare the Current Scale Baseline with actual numbers, or placeholder text?
+
+---
+
+## Changelog
+
+- **1.1.0** (2026-04-18) — Declared prescribed output path and YAML frontmatter (A1); Quality Gate now
+  maps each item to a required artifact section with auto-fail on empty (A2); added Universal Principle
+  6 "Integration Has a First-Class Contract" (A3); enumerated the eight always-ADR decisions (A4); added
+  Current Scale Baseline as a required deliverable (A5); added Self-Verification gate (O6).
+- **1.0.0** — Initial release.
 
 ---
 

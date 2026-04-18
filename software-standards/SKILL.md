@@ -1,19 +1,58 @@
+# Software Standards Skill
+
 <!-- License: See /LICENSE -->
 
-**Version:** 1.0.0
-
-## Software Standards skill
+**Version:** 1.1.0
 
 You are a software architect reviewer agent who is as pedantic about details as Steve Jobs and as technically brilliant as Steve Wozniak whose only goal is to exceed the best known practices to achieve great implementations that will easily stand the test of time. No matter what, always include the 'Hard Truth' section in your report.
+
+## When NOT to Use
+
+- **For continuous stewardship of an owned, actively-developed codebase** — use `codebase-skeptic`
+  instead. This skill is for adversarial one-off evaluations, not repeated review cadence.
+- **For PR-level review** — use `code-reviewer`.
+
+`software-standards` and `codebase-skeptic` are mutually exclusive. Do not chain both. If a user
+invokes `software-standards` on their own actively-developed codebase, surface a
+"did you mean codebase-skeptic?" prompt and require explicit confirmation before proceeding.
 
 ## Interface
 
 | | |
 |---|---|
-| **Input** | One or more codebases (or descriptions) to evaluate comparatively |
-| **Output** | Comparative scored report across 8 evaluation dimensions with a mandatory Hard Truth section |
-| **Consumed by** | `architect` (findings inform redesign priorities) |
+| **Input** | One or more codebases (or descriptions). Mode is chosen by scope: 2+ codebases → Comparative; 1 codebase → Adversarial Single. |
+| **Output** | `ssd/audits/YYYY-MM-DD-<scope>/standards-report.md` — scored report across 8 evaluation dimensions with YAML frontmatter and a mandatory Hard Truth section |
+| **Consumed by** | `architect` (findings inform redesign priorities); decision record for vendor selection / pre-acquisition evaluation |
 | **SSD Phase** | `/ssd audit` — adversarial evaluation only; not invoked in routine workflow |
+
+**Required output frontmatter:**
+```yaml
+---
+skill: software-standards
+version: 1.1.0
+produced_at: <ISO-8601>
+produced_by: <agent-name>
+project: <project-name>
+scope: <codebases-or-repo-list>
+consumed_by: [architect]
+mode: comparative|adversarial_single
+winner: "Codebase A"|n/a            # comparative only
+hard_truth: "<one-sentence summary>"
+---
+```
+
+## Modes
+
+**Comparative mode** — 2+ codebases under review. The traditional A/B/C table format applies; every
+score in every dimension must cite 2–3 pieces of evidence (file:line or commit) from the codebase.
+
+**Adversarial Single mode** — exactly 1 codebase under review. Drop the A/B/C table scaffolding; keep
+the 8 dimensions, the /10 scores, and the mandatory Hard Truth. Each /10 score still requires 2–3
+evidence citations. This mode exists to support vendor-selection processes where only one proposal
+remains, and pre-acquisition evaluations where only the target codebase is in scope.
+
+**Evidence requirement (both modes):** a /10 score without 2–3 evidence citations from the codebase
+(file:line, commit, or metric) cannot be published. No evidence → cannot score.
 
 ---
 
@@ -376,3 +415,13 @@ Document specific code locations, screenshots, and metrics that support your fin
 ---
 
 _Remember: Great software is not about perfection—it's about intentional trade-offs made with full awareness of their consequences. The worst code is code written without understanding why._
+
+---
+
+## Changelog
+
+- **1.1.0** (2026-04-18) — Declared output artifact path and YAML frontmatter (ST4); added two-mode
+  support (Comparative / Adversarial Single) to handle single-codebase audits cleanly (ST1); required
+  2–3 evidence citations per /10 score (ST2); added explicit "When NOT to Use" delineation vs.
+  `codebase-skeptic` (ST3).
+- **1.0.0** — Initial release.

@@ -1,10 +1,18 @@
 # InsanelyGreat's SSD — Claude Code Skills
 
+**Library version:** see [`VERSION`](VERSION) · changelog in [`CHANGELOG.md`](CHANGELOG.md)
+
 A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that implements **Shippable States Software Development** — a pragmatic engineering discipline for solo developers and small teams. Platform-adaptive: web, iOS, Android, macOS, and headless.
 
 **Core invariant:** If you can't ship it right now, you don't have a product — you have a construction site.
 
 Learn more: [insanelygreat.com](https://insanelygreat.com)
+
+Verify your installed version matches the guide at [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html):
+
+```bash
+cat ~/.claude/skills/VERSION
+```
 
 ---
 
@@ -23,19 +31,29 @@ Five principles:
 
 ## Where to Start
 
-**Start with `/ssd`.** It is the entry point for all SSD workflow phases. The other skills are invoked automatically by `/ssd` — you do not need to call them directly unless you are working outside the SSD workflow.
+**Step 1: `/ssd-init` once per project.** First-run housekeeping — creates the `ssd/` working
+directory (gitignored), writes `ssd/project.yml` with your stack/framework/platform, creates
+`docs/decisions/` + `docs/runbooks/` + `docs/architecture/`, and runs SSD prerequisite checks
+(CI/CD, test harness, feature-flag system, deployed hello-world). Idempotent — safe to re-run.
+`/ssd` phases refuse to proceed until init has run.
+
+**Step 2: `/ssd <phase>` for every session.** The orchestrator sequences the right sub-skills.
 
 ```
+/ssd-init       ← first time only (prerequisite to all /ssd phases)
 /ssd feature    ← standard development session
 /ssd start      ← new project or major feature
 /ssd gate       ← quick shippable state check
+/ssd milestone  ← post-sprint consolidation
+/ssd verify     ← mandatory after milestone refactors
 ```
 
 ### Skill Taxonomy
 
 | Type | Skills | When you invoke directly |
 |---|---|---|
-| Orchestrator | `ssd` | Always — start here |
+| Bootstrap | `ssd-init` | Once, at project start (or when `ssd/` has drifted) |
+| Orchestrator | `ssd` | Always — start here after init |
 | Domain | `architect`, `coder`, `systems-designer`, `refactor` | When working outside the SSD workflow |
 | Review | `code-reviewer`, `codebase-skeptic`, `software-standards` | On-demand or via SSD |
 | Reference | `methodology` | When you want to understand SSD doctrine |
@@ -44,15 +62,24 @@ Five principles:
 
 ## Skills
 
+### `/ssd-init` — Project Bootstrap
+
+Run once per project (idempotent; safe to re-run). Creates `ssd/` (gitignored working directory),
+`ssd/project.yml` (detected stack/framework/platform), `ssd/current.yml` (active workstreams),
+`docs/decisions/` / `docs/runbooks/` / `docs/architecture/` (committed decision records), and reports
+SSD prerequisite status (CI/CD, tests, flags, deploy).
+
 ### `/ssd` — The Meta-Skill
 
-The orchestrator. Sequences the right sub-skills for each development phase.
+The orchestrator. Sequences the right sub-skills for each development phase. Requires `ssd-init` to
+have run.
 
 ```
 /ssd start      — New project or major feature: Walking Skeleton setup
 /ssd feature    — Active development: design → build → review → deploy loop
 /ssd milestone  — Post-sprint consolidation: deep audit + targeted refactor
-/ssd gate       — Shippable state check only (code-reviewer)
+/ssd verify     — Remediation verification (mandatory after milestone refactors)
+/ssd gate       — Shippable state check only (code-reviewer + methodology rules)
 /ssd ship       — Deploy readiness check only (systems-designer checklist)
 /ssd audit      — Adversarial comparative review (nuclear option)
 ```
@@ -61,6 +88,7 @@ The orchestrator. Sequences the right sub-skills for each development phase.
 
 | Skill | Role |
 |---|---|
+| `/ssd-init` | First-run housekeeping: creates `ssd/` tree, writes `project.yml`, runs prerequisite checks (prerequisite to all `/ssd` phases) |
 | `/architect` | Design: models, services, API contracts. Platform-adaptive (web, iOS, Android, macOS, headless) |
 | `/systems-designer` | Production readiness: reliability, observability, deployment safety |
 | `/coder` | Implementation from spec (Python, TypeScript, Swift, Ruby, Java, C#, PHP, Go, Rust, C/C++, Obj-C) |
@@ -68,7 +96,7 @@ The orchestrator. Sequences the right sub-skills for each development phase.
 | `/codebase-skeptic` | Deep architectural critique through 10 expert lenses |
 | `/software-standards` | Adversarial comparative audit |
 | `/refactor` | Post-ship targeted improvement |
-| `/methodology` | SSD methodology reference |
+| `/methodology` | SSD methodology reference + `/methodology score` self-adherence metric |
 
 ---
 
@@ -80,12 +108,26 @@ Clone the repo into your Claude Code skills directory:
 git clone https://github.com/AlexHorovitz/skills ~/.claude/skills
 ```
 
-Then invoke any skill from Claude Code:
+Then, from your project root, run the bootstrap once:
+
+```
+/ssd-init
+```
+
+After that, invoke any SSD phase:
 
 ```
 /ssd feature
+/ssd milestone
+/ssd gate
+```
+
+Or call a sub-skill directly when working outside the SSD workflow:
+
+```
 /coder
 /code-reviewer
+/codebase-skeptic
 ```
 
 ---
@@ -149,6 +191,43 @@ architect/
 ```
 
 `SKILL.md` and `GUIDE.md` files begin with a one-line license reference: `<!-- License: See /LICENSE -->`. The full license terms live in the `LICENSE` file at the repository root.
+
+---
+
+## Skill Hygiene Contract
+
+Every skill in this directory MUST conform to these conventions. Skills that violate them are flagged
+by the skill linter (when present) and block `/ssd start` in strict mode.
+
+**File structure:**
+- `SKILL.md` begins with `# Skill Name` as the first line. The license pointer (`<!-- License: See /LICENSE -->`)
+  and `**Version:** X.Y.Z` follow the title, not precede it. License is a single-line pointer — not
+  an inlined 13-line preamble.
+- Skills whose `SKILL.md` exceeds **400 lines** MUST split into `SKILL.md` (philosophy + workflow +
+  pointers) plus one or more `references/*.md` (or topically-named sibling files) with detailed
+  patterns, checklists, and examples.
+- Every `SKILL.md` ends with a `## Changelog` section. Each version bump adds a dated entry describing
+  what changed and why.
+
+**Interface discipline:**
+- Every skill's `## Interface` table declares explicit input/output *paths* (e.g.,
+  `ssd/features/<slug>/01-architect.md`) — not just downstream skill names.
+- Every primary output artifact has YAML frontmatter conforming to the shared schema documented in
+  `ssd/SKILL.md` § "Structured Output Requirements."
+- Every skill's Purpose contains a "When NOT to use" clause disambiguating it from any overlapping
+  skill (see `ssd/SKILL.md` § "Resolving Skill Overlap").
+
+**Header / license ordering:**
+- Title-first: `# Skill Name` is line 1.
+- Metadata block follows: license pointer, version.
+- Content follows metadata.
+
+**Future work:**
+- **Contract tests** (`skills/tests/`): fixtures that assert each skill produces output conforming to
+  its declared frontmatter schema and required sections. Tests contract, not quality. Not yet
+  implemented — intended layer for preventing silent skill regressions.
+- **Cross-skill schema contracts**: shared JSON Schema files that both producer and consumer skills
+  reference. E.g., `code-reviewer.output.frontmatter ⊇ {finding_counts, gate_pass}`.
 
 ---
 
