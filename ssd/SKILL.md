@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.7.0
+**Version:** 1.8.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -47,11 +47,53 @@ creates `docs/decisions/`, `docs/runbooks/`, `docs/architecture/`, and runs SSD 
 /ssd ship       — Deploy readiness check only (systems-designer checklist)
 ```
 
-If no argument is given, ask the user which phase they are in.
+If no argument is given, the orchestrator **auto-detects state** from `.ssd/current.yml` and
+proposes the next action. See § "/ssd (no-arg) — Auto-Detect" below. The explicit phase commands
+remain as escape hatches for forcing a specific step, but the user almost never needs them.
 
 ---
 
 ## Phase Playbooks
+
+### `/ssd` (no-arg) — Auto-Detect
+
+The default invocation. The orchestrator reads `.ssd/current.yml` and `.ssd/current.notes.yml`,
+surfaces active workstreams, and proposes the next action without forcing the user to know which
+phase command to type.
+
+**Decision tree:**
+
+1. **No active workstreams** in `current.yml.active`:
+   - Empty repo or fresh start → propose `/ssd start` (Walking Skeleton).
+   - Existing repo, no active features → ask: "start a new feature, or audit (`/ssd milestone`,
+     `/ssd audit`)?"
+
+2. **One active workstream**:
+   - Surface its slug, current iteration (if any), phase, and time-since-last-touched.
+   - Read its `phase` field and the latest artifact under `.ssd/features/<slug>/` (or
+     `iterations/<iter>/`). Propose the next action:
+     - `phase: brief` → propose `/ssd design <slug>[#<iter>]`.
+     - `phase: design` → propose `/ssd code <slug>[#<iter>]`.
+     - `phase: code` → propose `/ssd review <slug>[#<iter>]` (i.e., `/ssd gate`).
+     - `phase: review` with last review's `gate_pass: false` → propose `/ssd code <slug>[#<iter>]`
+       again (return to coder, with closed-finding count).
+     - `phase: review` with `gate_pass: true` → propose `/ssd ship <slug>[#<iter>]`.
+     - `phase: gate` (post-pass) → propose deploy.
+     - `phase: done` → ask if the workstream should archive.
+   - Render `current.notes.yml.features.<slug>.handoff_notes` as starting context.
+
+3. **Multiple active workstreams**: list each with phase/last-touched/blockers, ask which to
+   resume or whether to start new. Flag any with `elapsed_hours > budget_hours` ("over budget —
+   suggest scope cut, not more work") or `last_touched > 3 days ago` ("stale — fresh audit before
+   continuing?").
+
+**Never silently advances a phase.** The orchestrator proposes; the user accepts or redirects.
+The proposal text always names the explicit command being proposed so a power user can copy it.
+
+**Falls back to "ask"** for ambiguous states. If `current.yml` exists but is malformed, surface
+the parse error and refuse to guess.
+
+---
 
 ### `/ssd start` — Walking Skeleton
 
@@ -579,6 +621,12 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.8.0** (2026-04-29) — Iteration 6 of the ssd-skill-upgrades epic (P1.3): no-arg `/ssd`
+  auto-detection. The default invocation reads `.ssd/current.yml` + `.ssd/current.notes.yml`,
+  surfaces active workstreams (with iteration, phase, last-touched, blockers), and proposes the
+  next action by inspecting the latest artifact for each active workstream. Explicit phase
+  commands remain as escape hatches. Never silently advances a phase — always proposes; user
+  accepts or redirects. New "/ssd (no-arg) — Auto-Detect" section.
 - **1.7.0** (2026-04-29) — Iteration 5 of the ssd-skill-upgrades epic (P1.4): bundled design pass.
   New `/ssd design <slug>` phase invokes `architect` and `systems-designer` back-to-back with
   shared inputs, producing both `01-architect.md` and `02-systems-designer.md` in one user-facing

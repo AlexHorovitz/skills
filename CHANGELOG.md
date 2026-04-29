@@ -6,6 +6,34 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.10.0] — 2026-04-29
+
+### Iteration 6 of the SSD skill-upgrades epic — no-arg `/ssd` auto-detect (P1.3)
+
+`/ssd` with no argument is now the **primary** entrypoint. Instead of requiring users to know
+which phase command to type, the orchestrator reads state and proposes the next action.
+
+**Behavior**: read `.ssd/current.yml` + `.ssd/current.notes.yml`. Inspect each active workstream's
+`phase` field + the latest artifact, then propose the corresponding next phase command (with
+slug + iteration suffix where applicable). Never silently advances — proposes and asks.
+
+**Decision tree**: phase=brief → propose design; design → code; code → review; review with
+gate_pass=false → return to code; review with gate_pass=true → ship; gate (post-pass) → deploy.
+Renders `handoff_notes` from the notes sidecar as starting context.
+
+**Multiple workstreams**: list with phase / last-touched / blockers; flag over-budget and stale
+(>3 days untouched) entries. Ask user which to resume.
+
+**Falls back to "ask"** for ambiguous or malformed state. Surfaces parse errors rather than
+guessing.
+
+**Touched skills:**
+- `ssd` — v1.7.0 → v1.8.0
+
+**Iteration sequence:** 6 of 9 done. Next: P2.A (rails.md).
+
+---
+
 ## [1.9.0] — 2026-04-29
 
 ### Iteration 5 of the SSD skill-upgrades epic — bundled design pass (P1.4)
