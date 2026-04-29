@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 
 ---
 
@@ -22,8 +22,8 @@ Design scalable, maintainable software architectures that follow established pat
 
 | | |
 |---|---|
-| **Input** | Feature brief → read from `ssd/features/<slug>/00-brief.md` (if present), otherwise the user's description |
-| **Output** | `ssd/features/<slug>/01-architect.md` (with YAML frontmatter per `ssd/SKILL.md` §"Structured Output Requirements") + ADRs in `docs/decisions/` |
+| **Input** | Feature brief → read from `.ssd/features/<slug>/00-brief.md` (if present), otherwise the user's description |
+| **Output** | `.ssd/features/<slug>/01-architect.md` (with YAML frontmatter per `ssd/SKILL.md` §"Structured Output Requirements") + ADRs in `docs/decisions/` |
 | **Consumed by** | `coder` (reads `01-architect.md` for implementation), `systems-designer` (reads `01-architect.md` for production readiness review) |
 | **SSD Phase** | `/ssd start`, `/ssd feature` |
 
@@ -284,6 +284,8 @@ pause and address it.
 ---
 
 ## Changelog
+
+- **1.1.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.1.0** (2026-04-18) — Declared prescribed output path and YAML frontmatter (A1); Quality Gate now
   maps each item to a required artifact section with auto-fail on empty (A2); added Universal Principle

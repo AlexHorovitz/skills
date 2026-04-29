@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 
 ## Purpose
 Continuously scan codebases for refactoring opportunities—improving code quality, reducing technical debt, and enhancing maintainability without changing external behavior. Be opportunistic but disciplined: refactor with purpose, not for sport.
@@ -18,8 +18,8 @@ Continuously scan codebases for refactoring opportunities—improving code quali
 
 | | |
 |---|---|
-| **Input** | `ssd/milestones/<milestone>/skeptic-before.md` (primary, when invoked by `/ssd milestone`) or `ssd/features/<slug>/04-code-review.md`. If neither exists, perform a codebase scan. |
-| **Output** | `ssd/milestones/<milestone>/refactor-plan.md` (with frontmatter) + refactored code submitted as separate PRs from feature work |
+| **Input** | `.ssd/milestones/<milestone>/skeptic-before.md` (primary, when invoked by `/ssd milestone`) or `.ssd/features/<slug>/04-code-review.md`. If neither exists, perform a codebase scan. |
+| **Output** | `.ssd/milestones/<milestone>/refactor-plan.md` (with frontmatter) + refactored code submitted as separate PRs from feature work |
 | **Consumed by** | `code-reviewer` (each refactoring PR goes through the same gate as feature work, with `remediation_mode: true`); `/ssd verify` (re-runs skeptic on identical scope) |
 | **SSD Phase** | `/ssd milestone` |
 
@@ -36,7 +36,7 @@ produced_by: <agent-name>
 project: <project-name>
 scope: <milestone>
 consumed_by: [code-reviewer, ssd]
-input_artifact: ssd/milestones/<milestone>/skeptic-before.md
+input_artifact: .ssd/milestones/<milestone>/skeptic-before.md
 items:
   - id: R1
     cites: [S-F3, S-U1]        # finding IDs from input
@@ -311,6 +311,8 @@ Before completing a refactoring:
 ---
 
 ## Changelog
+
+- **1.2.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.2.0** (2026-04-18) — Declared output artifact path and YAML frontmatter with per-item finding
   citations (R1); added Step 4.5 budget check with halt-and-rollback options (R2); added Step 5 Loop

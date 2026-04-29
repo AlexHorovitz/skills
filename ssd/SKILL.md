@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -13,13 +13,13 @@ Invoke this skill when starting a session and you want to follow the SSD workflo
 ## Prerequisite: `ssd-init`
 
 Before any `/ssd` phase can run, the project must be initialized. On invocation, `/ssd` checks for
-`ssd/project.yml` at the project root:
+`.ssd/project.yml` at the project root:
 
 - **Missing:** refuse to proceed and tell the user to run `/ssd-init` first. Do NOT auto-run init —
   the user decides when to commit to the SSD convention.
 - **Present:** read it for stack / framework / platform metadata and proceed with the requested phase.
 
-`ssd-init` creates the `ssd/` working directory (gitignored), populates `project.yml` + `current.yml`,
+`ssd-init` creates the `.ssd/` working directory (gitignored), populates `project.yml` + `current.yml`,
 creates `docs/decisions/`, `docs/runbooks/`, `docs/architecture/`, and runs SSD prerequisite checks
 (CI/CD, test harness, flag system, deployed hello-world). It is idempotent — safe to re-run.
 
@@ -121,17 +121,17 @@ The standard daily development cycle. Repeat per feature.
 Run every 4–8 weeks or after 10+ features land. Always runs *after* shipping, never instead of it.
 
 **Step 0: Snapshot.** Before any analysis:
-- Record git SHA → `ssd/milestones/<milestone>/sha-before`
-- Save current coverage / metrics → `ssd/milestones/<milestone>/metrics-before.yml`
+- Record git SHA → `.ssd/milestones/<milestone>/sha-before`
+- Save current coverage / metrics → `.ssd/milestones/<milestone>/metrics-before.yml`
 
 1. **Deep audit** — invoke `codebase-skeptic`
    - Full architectural critique across ten expert voices
-   - Output: `ssd/milestones/<milestone>/skeptic-before.md` (with frontmatter per O2)
+   - Output: `.ssd/milestones/<milestone>/skeptic-before.md` (with frontmatter per O2)
 
 2. **Refactor planning** — invoke `refactor`
    - Input: `skeptic-before.md`
    - Each refactor item cites a specific finding ID from skeptic-before.md. No cite → not in scope.
-   - Output: `ssd/milestones/<milestone>/refactor-plan.md`
+   - Output: `.ssd/milestones/<milestone>/refactor-plan.md`
    - Start with high complexity + high churn areas
    - Write tests first if coverage is insufficient
    - Small, independently deployable commits only
@@ -140,7 +140,7 @@ Run every 4–8 weeks or after 10+ features land. Always runs *after* shipping, 
 3. **Validate** — invoke `code-reviewer` on each refactoring PR
    - `remediation_mode: true` in frontmatter
    - Same gate as feature work: no BLOCKER/MAJOR
-   - Record PR list → `ssd/milestones/<milestone>/refactor-prs.md`
+   - Record PR list → `.ssd/milestones/<milestone>/refactor-prs.md`
 
 4. **Deploy** and confirm production health post-refactor
 
@@ -156,7 +156,7 @@ Run every 4–8 weeks or after 10+ features land. Always runs *after* shipping, 
 Mandatory after milestone refactors. Before the next feature cycle begins, run verification:
 
 1. **Re-invoke `codebase-skeptic`** with scope = same as `skeptic-before.md`. Its output goes to
-   `ssd/milestones/<milestone>/skeptic-after.md` (with frontmatter).
+   `.ssd/milestones/<milestone>/skeptic-after.md` (with frontmatter).
 
 2. **Diff the frontmatter** against `skeptic-before.md`. For each original finding, mark its status:
    - ✅ closed / 🔄 partial / ❌ unaddressed / 🆕 new-regression
@@ -170,7 +170,7 @@ Mandatory after milestone refactors. Before the next feature cycle begins, run v
    - No 🆕 new-regression is BLOCKER severity
    - Code review on the remediation diff has no BLOCKERs
 
-   Output: `ssd/milestones/<milestone>/verification.md`.
+   Output: `.ssd/milestones/<milestone>/verification.md`.
 
 If verification fails, the milestone is NOT complete. Return to refactor.
 
@@ -240,7 +240,7 @@ and a team member onboard.
 │   │   └── <feature>.md
 │   └── architecture/                    # Component diagrams, data models (committed)
 │       └── <feature>.md
-└── ssd/                                 # SSD orchestrator state — gitignored by default
+└── .ssd/                                 # SSD orchestrator state — gitignored by default
     ├── project.yml                      # Project shape: language, framework, platform
     ├── current.yml                      # Active features / milestones pointer
     ├── features/
@@ -264,11 +264,11 @@ and a team member onboard.
 ```
 
 This is the **prescribed** layout. Teams may extend it but may not rename these files — sub-skills load
-them by name. If the project already has `docs/decisions/`, `ssd/` sits alongside it.
+them by name. If the project already has `docs/decisions/`, `.ssd/` sits alongside it.
 
-The `ssd/` directory (and its `.gitignore` entry) is created by the `ssd-init` skill, which runs once
+The `.ssd/` directory (and its `.gitignore` entry) is created by the `ssd-init` skill, which runs once
 at the start of any SSD-managed project. `ssd-init` is a prerequisite for any `/ssd` phase; the
-orchestrator checks for `ssd/project.yml` on invocation and prompts the user to run `ssd-init` if
+orchestrator checks for `.ssd/project.yml` on invocation and prompts the user to run `ssd-init` if
 absent.
 
 ---
@@ -322,10 +322,10 @@ skeptic runs' frontmatter to see which findings closed.
 
 ## Session Continuity
 
-On invocation, `/ssd` reads `ssd/current.yml` to determine state:
+On invocation, `/ssd` reads `.ssd/current.yml` to determine state:
 
 ```yaml
-# ssd/current.yml
+# .ssd/current.yml
 active:
   - slug: goal-approval-flow
     phase: coder       # current sub-skill
@@ -343,7 +343,7 @@ active:
     blockers: ["code-reviewer found 2 BLOCKERs, returned to coder"]
 ```
 
-If `ssd/current.yml` has active entries, the orchestrator:
+If `.ssd/current.yml` has active entries, the orchestrator:
 
 1. Surfaces them to the user: "You have 2 active workstreams. Resume one, or start new?"
 2. Flags any entry where `elapsed_hours > budget_hours`: "billing-migration is over budget — suggest
@@ -352,7 +352,7 @@ If `ssd/current.yml` has active entries, the orchestrator:
    continuing.
 
 Closing a workstream (after successful deploy + verify) removes it from `current.yml` and archives
-artifacts under `ssd/archive/features/<slug>/`.
+artifacts under `.ssd/archive/features/<slug>/`.
 
 ---
 
@@ -380,7 +380,7 @@ exception.
 
 | Sub-Skill | Role in SSD | Phase |
 |---|---|---|
-| `ssd-init` | First-run housekeeping: `ssd/` tree, gitignore, `project.yml`, prerequisite checks | **prerequisite to all phases** |
+| `ssd-init` | First-run housekeeping: `.ssd/` tree, gitignore, `project.yml`, prerequisite checks | **prerequisite to all phases** |
 | `architect` | Design: models, services, API boundaries | start, feature |
 | `systems-designer` | Production readiness: reliability, observability, deployment safety | start, feature, ship |
 | `coder` | Implementation from spec (language-adaptive) | feature |
@@ -424,6 +424,12 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.3.0** (2026-04-28) — Working-tree convention changed from visible `ssd/` to hidden `.ssd/`.
+  All artifact-tree paths (`.ssd/project.yml`, `.ssd/current.yml`, `.ssd/features/<slug>/…`,
+  `.ssd/milestones/<topic>/…`, `.ssd/archive/…`) are updated. The `/ssd` orchestrator now checks for
+  `.ssd/project.yml` on invocation. Reason: the visible `ssd/` directory collided with the
+  orchestrator skill source directory in the SSD skills repo itself, and working artifacts are
+  better hidden by default.
 - **1.2.0** (2026-04-18) — Added SSD artifact tree (O1), structured YAML frontmatter requirement (O2),
   session continuity via `ssd/current.yml` (O8), `/ssd verify` phase with before/after snapshot
   convention (O4/O5), methodology-backed gate enforcement (O9), and skill-overlap priority table (O11).

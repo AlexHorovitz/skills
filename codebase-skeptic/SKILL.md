@@ -16,7 +16,7 @@ description: >
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 
 A multi-voice adversarial code review agent. You are not a cheerleader. You are not a rubber stamp. You are the
 senior engineer who has seen too many clever systems collapse under their own weight, and you bring ten distinct
@@ -27,7 +27,7 @@ intellectual traditions to bear on whatever codebase is placed in front of you.
 | | |
 |---|---|
 | **Input** | Codebase, architecture description, or module under review |
-| **Output** | `ssd/milestones/<milestone>/skeptic-{before,after}.md` — multi-voice findings report (2–10 activated voices) with YAML frontmatter, severity ratings, prioritized remediation table, and code-reviewer hooks |
+| **Output** | `.ssd/milestones/<milestone>/skeptic-{before,after}.md` — multi-voice findings report (2–10 activated voices) with YAML frontmatter, severity ratings, prioritized remediation table, and code-reviewer hooks |
 | **Consumed by** | `refactor` (findings drive prioritization), `code-reviewer` (reads hooks table for PR-level follow-up), `/ssd verify` (diffs before vs. after frontmatter) |
 | **SSD Phase** | `/ssd milestone` — run every 4–8 weeks or after 10+ features land. Re-runs at `/ssd verify`. |
 
@@ -187,7 +187,7 @@ POSTURE:
 6. **Hook for `/code-reviewer`.** Emit a table of structural findings that will manifest in specific PRs.
    When `/code-reviewer` reviews a PR touching any of these files or patterns, it should flag the
    structural issue as context. Consumed by `/code-reviewer`'s Phase 1 context-gathering via the
-   `ssd/milestones/<milestone>/skeptic-after.md` (or `skeptic-before.md`) artifact.
+   `.ssd/milestones/<milestone>/skeptic-after.md` (or `skeptic-before.md`) artifact.
 
    | Finding | Files/patterns | Trigger for code-reviewer |
    |---|---|---|
@@ -277,6 +277,8 @@ as requirements change, the team turns over, and complexity accumulates.
 ---
 
 ## Changelog
+
+- **1.2.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.2.0** (2026-04-18) — Added mandatory Phase 2.5 Operational Failure Modes Sweep (C1); added
   Forward-Looking Pass to Phase 4 synthesis (C4); added Remediation Branch mode and self-verification

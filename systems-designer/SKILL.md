@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 
 ## Purpose
 Ensure every feature and system change is production-ready by systematically evaluating operational concerns: reliability, observability, security, performance, deployment safety, and failure recovery.
@@ -18,8 +18,8 @@ Ensure every feature and system change is production-ready by systematically eva
 
 | | |
 |---|---|
-| **Input** | `ssd/features/<slug>/01-architect.md` (primary) or a provided spec/description. Can also run independently against a deployed system. |
-| **Output** | `ssd/features/<slug>/02-systems-designer.md` — three-tier production readiness output (machine-checkable / human-review / block-conditions) with YAML frontmatter |
+| **Input** | `.ssd/features/<slug>/01-architect.md` (primary) or a provided spec/description. Can also run independently against a deployed system. |
+| **Output** | `.ssd/features/<slug>/02-systems-designer.md` — three-tier production readiness output (machine-checkable / human-review / block-conditions) with YAML frontmatter |
 | **Consumed by** | `ssd` (`/ssd ship` reads `block_conditions_met` from frontmatter; any block condition false refuses to ship) |
 | **SSD Phase** | `/ssd start`, `/ssd feature`, `/ssd ship` |
 
@@ -53,7 +53,7 @@ block_conditions:
 ### Phase 0 — Input Validation
 
 Before performing any production-readiness analysis, verify the architect spec input is complete. If
-`ssd/features/<slug>/01-architect.md` is present, check that every Quality Gate section has real
+`.ssd/features/<slug>/01-architect.md` is present, check that every Quality Gate section has real
 content (not stub text). If any required section is missing, produce a "send back to architect" summary
 listing the gaps and return. Do NOT fill speculative content into an empty spec — that produces false
 confidence.
@@ -638,6 +638,8 @@ A Tier 3 failure sets `block_conditions_met: false` in frontmatter. `/ssd ship` 
 ---
 
 ## Changelog
+
+- **1.2.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.2.0** (2026-04-18) — Declared output artifact path and YAML frontmatter; added Phase 0 input
   validation against architect spec (S1); three-tier output with machine-check/human-review/block

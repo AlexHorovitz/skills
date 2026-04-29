@@ -31,8 +31,8 @@ Five principles:
 
 ## Where to Start
 
-**Step 1: `/ssd-init` once per project.** First-run housekeeping — creates the `ssd/` working
-directory (gitignored), writes `ssd/project.yml` with your stack/framework/platform, creates
+**Step 1: `/ssd-init` once per project.** First-run housekeeping — creates the `.ssd/` working
+directory (gitignored), writes `.ssd/project.yml` with your stack/framework/platform, creates
 `docs/decisions/` + `docs/runbooks/` + `docs/architecture/`, and runs SSD prerequisite checks
 (CI/CD, test harness, feature-flag system, deployed hello-world). Idempotent — safe to re-run.
 `/ssd` phases refuse to proceed until init has run.
@@ -52,8 +52,8 @@ directory (gitignored), writes `ssd/project.yml` with your stack/framework/platf
 
 | Type | Skills | When you invoke directly |
 |---|---|---|
-| Bootstrap | `ssd-init` | Once, at project start (or when `ssd/` has drifted) |
-| Orchestrator | `ssd` | Always — start here after init |
+| Bootstrap | `ssd-init` | Once, at project start (or when `.ssd/` has drifted) |
+| Orchestrator | `.ssd` | Always — start here after init |
 | Domain | `architect`, `coder`, `systems-designer`, `refactor` | When working outside the SSD workflow |
 | Review | `code-reviewer`, `codebase-skeptic`, `software-standards` | On-demand or via SSD |
 | Reference | `methodology` | When you want to understand SSD doctrine |
@@ -64,8 +64,8 @@ directory (gitignored), writes `ssd/project.yml` with your stack/framework/platf
 
 ### `/ssd-init` — Project Bootstrap
 
-Run once per project (idempotent; safe to re-run). Creates `ssd/` (gitignored working directory),
-`ssd/project.yml` (detected stack/framework/platform), `ssd/current.yml` (active workstreams),
+Run once per project (idempotent; safe to re-run). Creates `.ssd/` (gitignored working directory),
+`.ssd/project.yml` (detected stack/framework/platform), `.ssd/current.yml` (active workstreams),
 `docs/decisions/` / `docs/runbooks/` / `docs/architecture/` (committed decision records), and reports
 SSD prerequisite status (CI/CD, tests, flags, deploy).
 
@@ -88,7 +88,7 @@ have run.
 
 | Skill | Role |
 |---|---|
-| `/ssd-init` | First-run housekeeping: creates `ssd/` tree, writes `project.yml`, runs prerequisite checks (prerequisite to all `/ssd` phases) |
+| `/ssd-init` | First-run housekeeping: creates `.ssd/` tree, writes `project.yml`, runs prerequisite checks (prerequisite to all `/ssd` phases) |
 | `/architect` | Design: models, services, API contracts. Platform-adaptive (web, iOS, Android, macOS, headless) |
 | `/systems-designer` | Production readiness: reliability, observability, deployment safety |
 | `/coder` | Implementation from spec (Python, TypeScript, Swift, Ruby, Java, C#, PHP, Go, Rust, C/C++, Obj-C) |
@@ -211,7 +211,7 @@ by the skill linter (when present) and block `/ssd start` in strict mode.
 
 **Interface discipline:**
 - Every skill's `## Interface` table declares explicit input/output *paths* (e.g.,
-  `ssd/features/<slug>/01-architect.md`) — not just downstream skill names.
+  `.ssd/features/<slug>/01-architect.md`) — not just downstream skill names.
 - Every primary output artifact has YAML frontmatter conforming to the shared schema documented in
   `ssd/SKILL.md` § "Structured Output Requirements."
 - Every skill's Purpose contains a "When NOT to use" clause disambiguating it from any overlapping

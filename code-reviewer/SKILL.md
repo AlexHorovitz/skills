@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 
 ## Purpose
 Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabilities, performance issues, and maintainability problems before they reach production. Be ruthless but constructive—the goal is better code, not crushed developers.
@@ -17,8 +17,8 @@ Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabili
 
 | | |
 |---|---|
-| **Input** | Code diff, PR, or specific files under review. For remediation branches: also read `ssd/milestones/<milestone>/skeptic-before.md` (if present) for prior-review context. |
-| **Output** | `ssd/features/<slug>/04-code-review.md` (feature) or `ssd/milestones/<milestone>/review-<pr>.md` (milestone) — findings report with YAML frontmatter and severity-classified findings (BLOCKER / MAJOR / MINOR / QUESTION / SUGGESTION / NIT) |
+| **Input** | Code diff, PR, or specific files under review. For remediation branches: also read `.ssd/milestones/<milestone>/skeptic-before.md` (if present) for prior-review context. |
+| **Output** | `.ssd/features/<slug>/04-code-review.md` (feature) or `.ssd/milestones/<milestone>/review-<pr>.md` (milestone) — findings report with YAML frontmatter and severity-classified findings (BLOCKER / MAJOR / MINOR / QUESTION / SUGGESTION / NIT) |
 | **Consumed by** | `ssd` gate (reads `gate_pass` from frontmatter; BLOCKER or MAJOR findings block merge) |
 | **SSD Phase** | `/ssd feature`, `/ssd milestone`, `/ssd gate` |
 
@@ -97,7 +97,7 @@ explicit PR description), do this before any other review work. Set `remediation
 frontmatter.
 
 1. **Locate the prior review.** If the PR description links to it, follow the link. Otherwise look for
-   `ssd/milestones/<milestone>/skeptic-before.md` or `ssd/features/<slug>/04-code-review.md`. If you
+   `.ssd/milestones/<milestone>/skeptic-before.md` or `.ssd/features/<slug>/04-code-review.md`. If you
    cannot find it, ask. Do not review the branch without the prior review in hand — you will miss
    "unaddressed" findings.
 
@@ -388,6 +388,8 @@ sure," pause and address it.
 ---
 
 ## Changelog
+
+- **1.2.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.2.0** (2026-04-18) — Added Phase 1.5 Prior-Review Follow-up for remediation branches (R6); added
   Phase 3.5 Fix-Introduces-Edge-Cases (R2); expanded Red Flags table with 12 new patterns including LLM

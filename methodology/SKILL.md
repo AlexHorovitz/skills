@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 
 ## Purpose
 
@@ -13,7 +13,7 @@ Explain and apply the Shippable States Development doctrine. Answer questions ab
 | | |
 |---|---|
 | **Input** | User question about SSD doctrine, or the active project's repo/metrics for a `/methodology score` run |
-| **Output** | Explanation of the relevant SSD principle (reference mode) OR an SSD-adherence score report (`ssd/methodology-score-YYYY-MM-DD.md`) |
+| **Output** | Explanation of the relevant SSD principle (reference mode) OR an SSD-adherence score report (`.ssd/methodology-score-YYYY-MM-DD.md`) |
 | **Consumed by** | `ssd` (`/ssd gate` reads doctrine rules from `core.md` for mechanical enforcement) |
 | **SSD Phase** | Reference for any phase; `/methodology score` runs on-demand |
 
@@ -67,12 +67,14 @@ for methodology adherence. The skill reads the repo and computes the five SSD me
 | Mean time-to-deploy | CI run duration on main | < 15 min |
 | Shippable states per week | Count of commits on main that passed `/ssd gate` | ≥ 5 |
 
-Output: `ssd/methodology-score-YYYY-MM-DD.md` with the score table, trends vs. the prior score (if
+Output: `.ssd/methodology-score-YYYY-MM-DD.md` with the score table, trends vs. the prior score (if
 any), and the two lowest-scoring metrics flagged as remediation candidates.
 
 ---
 
 ## Changelog
+
+- **1.2.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.2.0** (2026-04-18) — Clarified that methodology now provides machine-checkable rule source for
   `/ssd gate` enforcement (M1); added `/methodology score` self-adherence metric invocation (M2);

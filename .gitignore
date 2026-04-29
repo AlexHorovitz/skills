@@ -1,1 +1,10 @@
 .DS_Store
+
+# SSD working directory (see .ssd/README.md)
+.ssd/
+
+# MacoOS
+.DS_Store
+
+# Personal notes
+real-world-artifacts/

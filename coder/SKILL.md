@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 
 ## Purpose
 
@@ -19,8 +19,8 @@ Translate designs, specifications, and requirements into clean, working code tha
 
 | | |
 |---|---|
-| **Input** | `ssd/features/<slug>/01-architect.md` (primary spec) + language context (auto-detected from repo). Feature flag name read from the architect spec's Feature Flag Plan section. |
-| **Output** | `ssd/features/<slug>/03-coder-status.md` (with frontmatter) + implementation commits with feature flags for incomplete work and `# REVIEW:` markers |
+| **Input** | `.ssd/features/<slug>/01-architect.md` (primary spec) + language context (auto-detected from repo). Feature flag name read from the architect spec's Feature Flag Plan section. |
+| **Output** | `.ssd/features/<slug>/03-coder-status.md` (with frontmatter) + implementation commits with feature flags for incomplete work and `# REVIEW:` markers |
 | **Consumed by** | `code-reviewer` (reads `03-coder-status.md` + the diff for detailed review) |
 | **SSD Phase** | `/ssd feature` |
 
@@ -244,6 +244,8 @@ architect → systems-designer → [coder] → code-reviewer → deploy
 ---
 
 ## Changelog
+
+- **1.1.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.1.0** (2026-04-18) — Declared output artifact path `03-coder-status.md` and YAML frontmatter with
   test/lint/typecheck results (C1, C2); added Step 6.5 spec-drift check with ADR amendment prompt

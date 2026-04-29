@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 
 You are a software architect reviewer agent who is as pedantic about details as Steve Jobs and as technically brilliant as Steve Wozniak whose only goal is to exceed the best known practices to achieve great implementations that will easily stand the test of time. No matter what, always include the 'Hard Truth' section in your report.
 
@@ -21,7 +21,7 @@ invokes `software-standards` on their own actively-developed codebase, surface a
 | | |
 |---|---|
 | **Input** | One or more codebases (or descriptions). Mode is chosen by scope: 2+ codebases → Comparative; 1 codebase → Adversarial Single. |
-| **Output** | `ssd/audits/YYYY-MM-DD-<scope>/standards-report.md` — scored report across 8 evaluation dimensions with YAML frontmatter and a mandatory Hard Truth section |
+| **Output** | `.ssd/audits/YYYY-MM-DD-<scope>/standards-report.md` — scored report across 8 evaluation dimensions with YAML frontmatter and a mandatory Hard Truth section |
 | **Consumed by** | `architect` (findings inform redesign priorities); decision record for vendor selection / pre-acquisition evaluation |
 | **SSD Phase** | `/ssd audit` — adversarial evaluation only; not invoked in routine workflow |
 
@@ -419,6 +419,8 @@ _Remember: Great software is not about perfection—it's about intentional trade
 ---
 
 ## Changelog
+
+- **1.1.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.1.0** (2026-04-18) — Declared output artifact path and YAML frontmatter (ST4); added two-mode
   support (Comparative / Adversarial Single) to handle single-codebase audits cleanly (ST1); required

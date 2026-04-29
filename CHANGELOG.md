@@ -6,6 +6,39 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.4.0] — 2026-04-28
+
+### Working-tree convention: `ssd/` → `.ssd/`
+
+The SSD working directory at the project root is renamed from visible `ssd/` to hidden `.ssd/`. All
+path references in skill specs, gitignore guidance, and orchestrator logic are updated in lockstep.
+
+**Why.** Two reasons: (1) in the SSD skills repo itself, a visible `ssd/` directory at the project
+root collides with the orchestrator skill source directory, making `/ssd-init` impossible to run
+cleanly inside this repo; (2) the working tree is transient state — review reports, design specs,
+session-continuity pointers — not source code humans need to browse alongside the rest of the repo.
+Hiding it keeps file-tree noise down while remaining fully accessible via `cd .ssd/`, IDE go-to-file,
+and `ls -a`.
+
+**Touched skills (path references updated; behavior unchanged):**
+- `ssd` (orchestrator) → v1.3.0
+- `ssd-init` → v1.2.0
+- `architect`, `code-reviewer`, `codebase-skeptic`, `coder`, `methodology`, `refactor`,
+  `software-standards`, `systems-designer` — Interface tables and inline path references updated;
+  per-skill changelog entries added.
+
+**Touched docs:**
+- `README.md` — `Where to Start` and skill table use `.ssd/`.
+- `CHANGELOG.md` — this entry; historical entries restored to their original `ssd/` wording (the
+  convention they actually shipped under).
+- `real-world-artifacts/ssd-upgrades-plan.md` — working-tree references updated; references to the
+  orchestrator skill source (`~/.claude/skills/ssd/SKILL.md`) preserved.
+
+`/ssd-init` invocations on existing projects with an `ssd/` working tree should: (a) stop, (b) `mv
+ssd .ssd`, (c) re-run `/ssd-init` (idempotent — will detect existing state).
+
+---
+
 ## [1.3.0] — 2026-04-18
 
 ### Post-v1.2-remediation skill improvements
@@ -19,7 +52,7 @@ skills. This release addresses those gaps.
 - First-run housekeeping for SSD projects. Creates `ssd/` (gitignored), `ssd/project.yml`,
   `ssd/current.yml`, `docs/decisions/`, `docs/runbooks/`, `docs/architecture/`, and runs SSD
   prerequisite checks (CI/CD, tests, flags, deployed hello-world). Idempotent — safe to re-run.
-  Prerequisite to all `/ssd` phases.
+  Prerequisite to all `/ssd` phases. (Working tree later renamed to `.ssd/` in v1.4.0.)
 - v1.1.0 aligns its artifact tree with the feature-centric / milestone-centric layout that every
   other sub-skill now declares: `ssd/features/<slug>/01-architect.md … 05-deploy.md` for features,
   `ssd/milestones/<YYYY-MM-DD-topic>/skeptic-before.md … verification.md` for milestones,
