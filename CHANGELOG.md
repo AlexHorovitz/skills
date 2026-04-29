@@ -6,6 +6,42 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.6.0] — 2026-04-29
+
+### Iteration 2 of the SSD skill-upgrades epic — first-class iterations (P1.1, ADR-0001)
+
+A "feature" in SSD is no longer assumed to be a single design → build → review → deploy cycle.
+Multi-iteration features (e.g., athena's `talentos-reimagined-phase3-ui` shipping as 3a / 3b / 3c)
+now have a first-class home rather than the filename hack (`-3b`, `-round-2`) that observed usage
+had been driving toward.
+
+**Schema additions** (additive; back-compat with single-cycle features is total):
+- `<slug>#<iter-id>` syntax accepted on every `/ssd` phase command.
+- Opt-in `.ssd/features/<slug>/iterations/<iter-id>/` subtree per feature; epic-level docs
+  (`00-brief.md`, `01-architect.md`, `02-systems-designer.md`) stay at the feature root and are
+  shared across iterations.
+- Per-iteration files: `brief.md`, `coder-status.md`, `code-review/round-N.md` (P1.2 in iter 3),
+  `deferred.yml` (P1.5 in iter 4), `deploy.md`.
+- `iteration` field in `current.yml` v2 (added in iter 1) is now actively populated.
+
+**Resolution rules** documented in `ssd/SKILL.md` § "Iterations Inside a Feature":
+1. Slug with `#`: operate on the iteration subtree; first reference promotes a flat-layout feature
+   non-destructively (epic artifacts stay at the root).
+2. Slug without `#` on a multi-iteration feature: orchestrator surfaces active iterations and asks.
+3. Slug without `#` on a flat-layout feature: single-cycle path, unchanged.
+
+**Touched skills:**
+- `ssd` — v1.4.0 → v1.5.0
+- `ssd-init` — v1.3.0 → v1.4.0 (documents that `iterations/` subdirs are created by the
+  orchestrator on demand, not by init)
+
+**New artifact:** `docs/decisions/ADR-0001-iterations-as-schema-substrate.md`.
+
+**Iteration sequence:** 2 of 9 done. Next: P1.2 (multi-round gates), which builds on this
+substrate.
+
+---
+
 ## [1.5.0] — 2026-04-28
 
 ### Iteration 1 of the SSD skill-upgrades epic
