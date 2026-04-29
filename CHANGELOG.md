@@ -6,6 +6,42 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.7.0] — 2026-04-29
+
+### Iteration 3 of the SSD skill-upgrades epic — multi-round gates (P1.2)
+
+A `code-review` round that emits BLOCKER/MAJOR sends the workstream back to coder. The follow-up
+review used to be tracked via filename suffixes (`04-code-review-round-2.md` was a manual
+convention). It is now a structured concept the orchestrator auto-manages.
+
+**Frontmatter additions to `code-reviewer` output:**
+- `round: <int>` — 1 for first review, N for re-reviews. Auto-numbered by inspecting existing
+  `code-review*` artifacts in the directory.
+- `closed_from_previous_round: [<finding-id>, ...]` — list of finding IDs the reviewer verified
+  closed since round N-1. Round 1 reviews use `[]`. Verification is per-claim against the code,
+  not a copy from coder-status.
+
+**Output paths by round + context:**
+- Single-cycle feature, round 1: `.ssd/features/<slug>/04-code-review.md` (existing convention,
+  unchanged).
+- Single-cycle feature, round 2+: `.ssd/features/<slug>/04-code-review-round-N.md`.
+- Multi-iteration feature: `.ssd/features/<slug>/iterations/<iter>/code-review/round-N.md`.
+- Inline round-2 in the existing `04-code-review.md` remains valid for small remediations
+  (1–3 closures) — pattern used by iteration 1 of this epic.
+
+**`current.yml.active[].gate_rounds`** (field added in iter 1, populated from this iter): the
+orchestrator increments it when a new round is written. Useful budget signal — `gate_rounds: 3`
+suggests a contested design, scope cut, or rework.
+
+**Touched skills:**
+- `code-reviewer` — v1.2.1 → v1.3.0
+- `ssd` — v1.5.0 → v1.6.0
+
+**Iteration sequence:** 3 of 9 done. Next: P1.5 (deferred ledger), parallel-safe with this iter on
+the iter-2 substrate.
+
+---
+
 ## [1.6.0] — 2026-04-29
 
 ### Iteration 2 of the SSD skill-upgrades epic — first-class iterations (P1.1, ADR-0001)

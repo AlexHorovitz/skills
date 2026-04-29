@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.1
+**Version:** 1.3.0
 
 ## Purpose
 Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabilities, performance issues, and maintainability problems before they reach production. Be ruthless but constructive—the goal is better code, not crushed developers.
@@ -18,7 +18,7 @@ Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabili
 | | |
 |---|---|
 | **Input** | Code diff, PR, or specific files under review. For remediation branches: also read `.ssd/milestones/<milestone>/skeptic-before.md` (if present) for prior-review context. |
-| **Output** | `.ssd/features/<slug>/04-code-review.md` (feature) or `.ssd/milestones/<milestone>/review-<pr>.md` (milestone) — findings report with YAML frontmatter and severity-classified findings (BLOCKER / MAJOR / MINOR / QUESTION / SUGGESTION / NIT) |
+| **Output** | Findings report with YAML frontmatter and severity-classified findings (BLOCKER / MAJOR / MINOR / QUESTION / SUGGESTION / NIT). Path varies by context: `.ssd/features/<slug>/04-code-review.md` (single-cycle feature, round 1) → `04-code-review-round-N.md` (round 2+); `.ssd/features/<slug>/iterations/<iter>/code-review/round-N.md` (multi-iteration feature, see ssd/SKILL.md § "Iterations Inside a Feature"); `.ssd/milestones/<milestone>/review-<pr>.md` (milestone). |
 | **Consumed by** | `ssd` gate (reads `gate_pass` from frontmatter; BLOCKER or MAJOR findings block merge) |
 | **SSD Phase** | `/ssd feature`, `/ssd milestone`, `/ssd gate` |
 
@@ -27,7 +27,7 @@ Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabili
 ```yaml
 ---
 skill: code-reviewer
-version: 1.2.0
+version: 1.3.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -40,10 +40,16 @@ finding_counts:
   question: 0
   suggestion: 0
   nit: 0
-gate_pass: true   # computed: blocker == 0 AND major == 0
-remediation_mode: false   # true when reviewing a fix-oriented branch
+gate_pass: true            # computed: blocker == 0 AND major == 0
+remediation_mode: false    # true when reviewing a fix-oriented branch
+round: 1                   # round number; 1 for first review, N for re-reviews
+closed_from_previous_round: []   # finding IDs closed since round N-1
 ---
 ```
+
+The `round` and `closed_from_previous_round` fields are written by every review; round 1 reviews
+set `round: 1` and `closed_from_previous_round: []`. Round 2+ reviews fill `closed_from_previous_round`
+with the IDs of findings claimed closed since the prior round.
 
 ---
 
@@ -387,8 +393,47 @@ sure," pause and address it.
 
 ---
 
+## Multi-Round Gates
+
+A code-review pass that emits BLOCKER or MAJOR findings does not close — `code-reviewer` is
+re-invoked on the diff that closes those findings, producing a round-2 review. This used to be
+encoded as filename suffixes (`04-code-review-round-2.md` was a manual convention). As of v1.3.0
+it is a structured concept the orchestrator manages.
+
+**Round numbering:**
+- The first review on a feature or iteration is `round: 1` (frontmatter), output path
+  `04-code-review.md` (single-cycle) or `iterations/<iter>/code-review/round-1.md` (multi-iter).
+- A re-review after fixes is `round: 2` (then 3, 4, …). Output path `04-code-review-round-2.md`
+  (single-cycle) or `iterations/<iter>/code-review/round-2.md` (multi-iter).
+- The orchestrator auto-numbers: it inspects existing `code-review*` artifacts in the relevant
+  directory and writes the next available round.
+
+**`closed_from_previous_round` discipline:** every round-2+ review's frontmatter must list the
+finding IDs (`MAJOR-1`, `MINOR-3`, etc.) the reviewer believes were closed since the prior round.
+The reviewer verifies each claim by reading the cited code path; never copy the list from the
+coder-status without independent verification.
+
+**`gate_rounds` in `current.yml`:** the orchestrator increments `current.yml.active[].gate_rounds`
+when a new round is written. A workstream with `gate_rounds: 3` has been through three reviews;
+useful for budget tracking ("this iteration has consumed three review rounds — is the design
+contested?").
+
+**Inline round-2 in single-cycle reviews**: small remediations (1–3 finding closures) may inline
+the round-2 update at the bottom of the existing `04-code-review.md` rather than producing a
+separate file, with `round: 2` and `closed_from_previous_round: [...]` updated in frontmatter.
+This is the pattern iteration 1 of the ssd-skill-upgrades epic used; it remains a valid option for
+small fix-ups where producing a second file is overkill.
+
+---
+
 ## Changelog
 
+- **1.3.0** (2026-04-29) — Iteration 3 of the ssd-skill-upgrades epic (P1.2): multi-round gates as
+  a built-in concept. New frontmatter fields `round` (number) and `closed_from_previous_round`
+  (list of finding IDs) on every review. Output path varies by round and context (single-cycle
+  vs. multi-iteration feature). New "Multi-Round Gates" section documents auto-numbering, the
+  `closed_from_previous_round` discipline, and the inline-round-2 option for small remediations.
+  No behavior change for round-1 reviews (default values).
 - **1.2.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.2.0** (2026-04-18) — Added Phase 1.5 Prior-Review Follow-up for remediation branches (R6); added

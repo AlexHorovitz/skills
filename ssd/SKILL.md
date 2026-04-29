@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -198,6 +198,22 @@ Invoke `code-reviewer` on the current code or PR.
 
 Pass criteria: no BLOCKER or MAJOR findings.
 Fail: return to coder before proceeding.
+
+**Multi-round behavior** (since v1.6.0): if `code-reviewer` emits BLOCKER or MAJOR, the gate fails
+and the workstream returns to coder. After fixes, re-running `/ssd gate` produces a round-2
+review:
+- The orchestrator auto-numbers the round by inspecting existing `code-review*` artifacts in the
+  relevant directory.
+- Output path: `04-code-review-round-2.md` (single-cycle features) or
+  `iterations/<iter>/code-review/round-2.md` (multi-iteration features).
+- Frontmatter `round: 2` and `closed_from_previous_round: [BLOCKER-1, MAJOR-2, …]` (every closure
+  verified against the code, not copied from coder-status).
+- `current.yml.active[].gate_rounds` increments. A workstream with `gate_rounds: 3` has been
+  through three reviews — useful budget signal.
+
+For small remediations (1–3 finding closures), an inline round-2 update at the bottom of the
+existing `04-code-review.md` is permitted in lieu of a separate file. See `code-reviewer/SKILL.md`
+§ "Multi-Round Gates."
 
 ---
 
@@ -533,6 +549,11 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.6.0** (2026-04-29) — Iteration 3 of the ssd-skill-upgrades epic (P1.2): multi-round gates as
+  a built-in concept. `/ssd gate` (and the `/ssd feature` review step) auto-number rounds, write to
+  round-N output paths (single-cycle vs multi-iteration), increment `current.yml.gate_rounds`, and
+  require `closed_from_previous_round` discipline on round 2+ reviews. Inline round-2 updates
+  remain an option for small remediations. See `code-reviewer/SKILL.md` § "Multi-Round Gates."
 - **1.5.0** (2026-04-29) — Iteration 2 of the ssd-skill-upgrades epic (P1.1, ADR-0001):
   first-class iterations inside a feature. `<slug>#<iter-id>` syntax accepted on every phase
   command; opt-in `iterations/<iter-id>/` subdirectory under the feature root; flat single-cycle
