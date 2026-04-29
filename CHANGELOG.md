@@ -6,6 +6,52 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.12.0] — 2026-04-29
+
+### Iteration 8 of the SSD skill-upgrades epic — developer profile + teaching mode (P2.B, ADR-0004)
+
+Two audiences use SSD: newcomers who want the system to decide for them, and experienced
+engineers who want every step explicit. v1.12.0 lets one product serve both without forking.
+
+**New `project.yml` fields:**
+```yaml
+developer_profile: novice | standard | expert    # default: standard
+teaching_mode:
+  enabled: true|false                            # auto-true for first 5 invocations
+  invocations_remaining: <int>                   # decay counter; default 5
+rails: rails.md                                  # default; forkable per ADR-0003
+```
+
+**Profile-aware defaults** (hints, not gates — a novice can always invoke any command an expert
+can):
+
+| Profile | Default surface | Phase cmds | Confirmations | Narration | YAML editing |
+|---|---|---|---|---|---|
+| novice   | conversational | rejected with hint | irreversible only | full | discouraged |
+| standard | conversational | accepted           | destructive only  | concise | allowed |
+| expert   | command (or convo, user choice) | accepted | none | minimal | expected |
+
+**Teaching mode**: decaying narration on conversational turns ("under the hood: I called
+architect because phase=design"). Decrements per turn; auto-disables at 0.
+
+**Auto-promotion**: novice→standard on first successful command-surface call;
+standard→expert on >2 manual `current.yml` edits. Each prompt asks at most once per project.
+
+**Bridge flags** (every surface reveals the other): `--explain` (conversational dry-run shows
+command), `--narrate` (command emits conversational summary), `--raw` (conversational dumps raw
+yaml), `--teach` (re-enable teaching).
+
+**Touched skills:**
+- `ssd` — v1.9.0 → v1.10.0 (new "Developer Profile + Teaching Mode" section)
+- `ssd-init` — v1.4.0 → v1.5.0 (project.yml template updated; existing files fall back to
+  defaults)
+
+**New artifact:** `docs/decisions/ADR-0004-developer-profile-and-teaching-mode.md`.
+
+**Iteration sequence:** 8 of 9 done. Next: P2.parity (test harness — final iteration).
+
+---
+
 ## [1.11.0] — 2026-04-29
 
 ### Iteration 7 of the SSD skill-upgrades epic — `rails.md` as first-class artifact (P2.A, ADR-0003)

@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.9.0
+**Version:** 1.10.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -294,6 +294,64 @@ existing `04-code-review.md` is permitted in lieu of a separate file. See `code-
 Invoke `systems-designer` deploy checklist for the feature about to ship.
 
 Invoke `systems-designer` to produce the platform-appropriate deploy checklist. The checklist is defined and maintained by that skill — do not duplicate it here. The systems-designer skill covers web, mobile (iOS/Android), and macOS desktop deployment readiness.
+
+---
+
+## Developer Profile + Teaching Mode
+
+Two audiences use SSD: newcomers who want the system to decide for them, and experienced
+engineers who want every step explicit. The `developer_profile` field in `.ssd/project.yml`
+adjusts defaults without forking the product. See
+[ADR-0004](../docs/decisions/ADR-0004-developer-profile-and-teaching-mode.md) for the rationale.
+
+### Profile values
+
+```yaml
+# .ssd/project.yml
+developer_profile: novice | standard | expert    # default: standard
+teaching_mode:
+  enabled: true|false                            # auto-true for first 5 invocations
+  invocations_remaining: <int>                   # decay counter; default 5
+```
+
+**Profile is a hint, not a gate.** A novice can always invoke any command an expert can; the
+orchestrator only adjusts defaults (confirmations, narration verbosity, prompt-for-or-skip).
+Discoverability via `/ssd --explain "<intent>"`, never gatekeeping.
+
+### Profile-aware defaults
+
+| Profile | Default surface | Phase commands | Confirmations | Narration | YAML editing |
+|---|---|---|---|---|---|
+| novice   | conversational | rejected with hint | yes, on irreversible steps | full | discouraged (`current.notes.yml` only) |
+| standard | conversational | accepted           | only on destructive ops      | concise | allowed |
+| expert   | command (or conversational, user choice) | accepted | none | minimal | expected |
+
+### Teaching mode
+
+When enabled, the orchestrator appends a one-line *"under the hood: I called `architect` because
+we're at phase=design"* to every conversational turn. `teaching_mode.invocations_remaining`
+decrements per turn; at 0, teaching mode disables itself.
+
+- `/ssd --teach` re-enables (resets counter to 5).
+- `/ssd --no-teach` disables permanently for this project.
+- Auto-promotion: a successful command-surface invocation while on `novice` triggers a one-time
+  prompt to switch to `standard`; >2 manual edits to `current.yml` while on `standard` triggers a
+  one-time prompt to switch to `expert`. Each prompt asks at most once per project; decay is
+  permanent.
+
+### Bridge flags
+
+Either surface can reveal the other:
+
+| Flag | Surface | Effect |
+|---|---|---|
+| `--explain` | conversational | Dry-run; emit the exact command sequence the orchestrator would invoke. |
+| `--narrate` | command | Emit the conversational summary alongside structured output (good for CI logs). |
+| `--raw` | conversational | Dump raw `current.yml` instead of the 3-sentence summary. |
+| `--teach` | both | Re-enable teaching mode (resets counter). |
+
+No surface hides anything from the other. No commands exist only in one surface. No state lives
+only in one surface.
 
 ---
 
@@ -640,6 +698,13 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.10.0** (2026-04-29) — Iteration 8 of the ssd-skill-upgrades epic (P2.B, ADR-0004):
+  developer profile + teaching mode. New `developer_profile` field on `.ssd/project.yml`
+  (`novice|standard|expert`); profile-aware defaults table; decaying teaching mode (default 5
+  invocations); auto-promotion prompts (novice→standard on first command-surface call;
+  standard→expert on 3+ manual `current.yml` edits); bridge flags (`--explain`, `--narrate`,
+  `--raw`, `--teach`) so each surface can reveal the other. New "Developer Profile + Teaching
+  Mode" section.
 - **1.9.0** (2026-04-29) — Iteration 7 of the ssd-skill-upgrades epic (P2.A, ADR-0003): rails as
   a first-class artifact. New file `ssd/rails.md` (v1.0.0) documents the eight-step canonical
   sequence, the eight critic-grade invariants, the `rail_deviations` logging contract, and the

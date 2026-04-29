@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 
 ## Purpose
 
@@ -262,7 +262,18 @@ integrations:                    # optional; filled in as features are added
     enabled: false
   - type: github
     enabled: true                # inferred from .git remote
+
+developer_profile: standard      # novice | standard | expert; default: standard
+teaching_mode:                   # see ssd/SKILL.md § "Developer Profile + Teaching Mode"
+  enabled: true                  # auto-true for first 5 invocations
+  invocations_remaining: 5       # decay counter
+
+rails: rails.md                  # default; teams may fork rails.md and point here
 ```
+
+`ssd-init` writes `developer_profile: standard` and `teaching_mode.enabled: true` by default. A
+user who knows they want a different profile sets it explicitly during init or edits `project.yml`
+afterward.
 
 ### Step 7 — Initialize `.ssd/current.yml` (v2) + `.ssd/current.notes.yml`
 
@@ -546,6 +557,11 @@ Running `ls .ssd/features/<slug>/` reveals the full phase chain for a feature in
 
 ## Changelog
 
+- **1.5.0** (2026-04-29) — Iteration 8 of the ssd-skill-upgrades epic (P2.B, ADR-0004):
+  `project.yml` template now includes `developer_profile`, `teaching_mode`, and `rails:` fields.
+  Defaults: `standard` profile, teaching mode enabled with 5-invocation decay, default rails
+  file. Existing projects without these fields continue to work — the orchestrator falls back to
+  the same defaults.
 - **1.4.0** (2026-04-29) — Iteration 2 of the ssd-skill-upgrades epic (P1.1, ADR-0001): documented
   that per-feature `iterations/<iter-id>/` subdirectories are created on demand by the orchestrator,
   not by `ssd-init`. Single-cycle features keep the flat layout; multi-iteration features promote
