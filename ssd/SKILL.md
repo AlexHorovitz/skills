@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -245,12 +245,19 @@ and a team member onboard.
     ├── current.yml                      # Active features / milestones pointer
     ├── features/
     │   └── <feature-slug>/
-    │       ├── 00-brief.md              # User's original brief
-    │       ├── 01-architect.md          # architect spec (5 standard deliverables)
-    │       ├── 02-systems-designer.md   # production readiness checklist
-    │       ├── 03-coder-status.md       # files touched, tests added, REVIEW markers, test output
-    │       ├── 04-code-review.md        # code-reviewer output with frontmatter
-    │       └── 05-deploy.md             # deployment log: when, flags, verification
+    │       ├── 00-brief.md              # User's original brief (epic-level for multi-iter)
+    │       ├── 01-architect.md          # architect spec (epic-level for multi-iter)
+    │       ├── 02-systems-designer.md   # production readiness (epic-level for multi-iter)
+    │       ├── 03-coder-status.md       # — single-cycle features only
+    │       ├── 04-code-review.md        # — single-cycle features only
+    │       ├── 05-deploy.md             # — single-cycle features only
+    │       └── iterations/              # — multi-iteration features only (opt-in, see ADR-0001)
+    │           └── <iter-id>/           # e.g., 3a, 3b, auth-flow
+    │               ├── brief.md
+    │               ├── coder-status.md
+    │               ├── code-review/     # multi-round gates (round-N.md from iter 3 / P1.2)
+    │               ├── deferred.yml     # carry-over ledger (iter 4 / P1.5)
+    │               └── deploy.md
     ├── milestones/
     │   └── YYYY-MM-DD-<topic>/
     │       ├── sha-before               # git SHA at milestone start
@@ -320,6 +327,56 @@ skeptic runs' frontmatter to see which findings closed.
 
 ---
 
+## Iterations Inside a Feature
+
+A "feature" defaults to a one-cycle workstream (one design → one build → one review → one deploy).
+Real features sometimes ship as multiple iterations — `phase3-ui#3a`, `#3b`, `#3c` — each with its
+own brief, code, review, and deploy. As of v1.5.0, this is a first-class concept rather than a
+filename convention. See [ADR-0001](../docs/decisions/ADR-0001-iterations-as-schema-substrate.md).
+
+### Iteration syntax
+
+The orchestrator accepts a `<slug>#<iter-id>` suffix on any phase command:
+
+```
+/ssd code talentos-reimagined-phase3-ui#3b
+/ssd review talentos-reimagined-phase3-ui#3b
+/ssd ship talentos-reimagined-phase3-ui#3b
+```
+
+Iter-id matches `[A-Za-z0-9_-]+`. Common conventions: short numeric (`3a`, `3b`), descriptive
+(`auth-flow`), sequential (`1`, `2`). The orchestrator does not enforce a format. Quote the slug in
+shells that interpret `#` (e.g., `/ssd code 'foo#3b'` in zsh with `extended_glob`).
+
+### Resolution
+
+When the orchestrator receives a slug:
+
+1. **Slug contains `#`**: split into `<feature-slug>` + `<iter-id>`. Operate on
+   `.ssd/features/<feature-slug>/iterations/<iter-id>/`. If that subdirectory doesn't exist and the
+   user is in a phase that creates artifacts (coder, design), prompt: *"feature is flat-layout —
+   create new iteration `<iter-id>`?"* The first `#iter` reference promotes the feature to
+   multi-iteration; subsequent ones skip the prompt.
+2. **Slug has no `#` and feature has an `iterations/` subdir**: orchestrator surfaces active
+   iterations from `.ssd/current.yml` and asks which to operate on (or to create a new one).
+3. **Slug has no `#` and feature is flat-layout**: single-cycle path. Read/write the flat
+   layout under `.ssd/features/<feature-slug>/`.
+
+### Layout (recap)
+
+- **Flat (single-cycle, default)**: `.ssd/features/<slug>/{00-brief, 01-architect, …, 05-deploy}.md`.
+- **Nested (multi-iteration)**: epic-level docs at the feature root; per-iteration docs under
+  `iterations/<iter-id>/`. Promotion is non-destructive — the orchestrator does not move existing
+  flat artifacts into the first iteration.
+
+### Iteration-id collisions
+
+The iter-id namespace is scoped to the feature path
+(`features/<slug>/iterations/<id>/`). Two different features can both have `#3a` without
+conflict. Within a feature, the orchestrator refuses to create a duplicate iter-id.
+
+---
+
 ## Session Continuity
 
 On invocation, `/ssd` reads two files:
@@ -336,7 +393,7 @@ schema_version: 2
 active:
   - slug: goal-approval-flow         # feature slug; matches .ssd/features/<slug>/
     phase: brief|design|code|review|gate|deploy|done
-    iteration: null                  # iteration id (e.g., "3a") or null for single-cycle
+    iteration: null                  # iter-id (e.g., "3a") or null for single-cycle; see ADR-0001
     started: 2026-04-18T10:00:00Z
     last_touched: 2026-04-18T14:30:00Z
     budget_hours: 8
@@ -476,6 +533,12 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.5.0** (2026-04-29) — Iteration 2 of the ssd-skill-upgrades epic (P1.1, ADR-0001):
+  first-class iterations inside a feature. `<slug>#<iter-id>` syntax accepted on every phase
+  command; opt-in `iterations/<iter-id>/` subdirectory under the feature root; flat single-cycle
+  layout remains the default and continues to work unchanged. Resolution rules and promotion
+  ergonomics documented in new "Iterations Inside a Feature" section. The `iteration` field added
+  to `current.yml` v2 in iter 1 is now actively populated.
 - **1.4.0** (2026-04-28) — Iteration 1 of the ssd-skill-upgrades epic landed:
   (a) `current.yml` v2 with schema validation + sidecar `current.notes.yml` for free-form context;
   legacy v1 read-path retained, opt-in prompted migration with `.bak` (P1.7, ADR-0002).

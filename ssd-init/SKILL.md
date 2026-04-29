@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 
 ## Purpose
 
@@ -135,6 +135,11 @@ If `.ssd/` already exists:
 - Do NOT delete or move existing contents.
 - Note in the init log which subdirs already existed.
 - Existing feature / milestone folders are left untouched.
+
+**Per-feature `iterations/` subdirectories are NOT created here.** Multi-iteration features (see
+[ADR-0001](../docs/decisions/ADR-0001-iterations-as-schema-substrate.md)) get their `iterations/`
+subtree on demand by the orchestrator the first time a `<slug>#<iter-id>` reference is made. Single-cycle
+features keep the flat layout. `ssd-init` only creates the top-level bundle directories above.
 
 ### Step 4 — Write `.ssd/README.md`
 
@@ -541,6 +546,10 @@ Running `ls .ssd/features/<slug>/` reveals the full phase chain for a feature in
 
 ## Changelog
 
+- **1.4.0** (2026-04-29) — Iteration 2 of the ssd-skill-upgrades epic (P1.1, ADR-0001): documented
+  that per-feature `iterations/<iter-id>/` subdirectories are created on demand by the orchestrator,
+  not by `ssd-init`. Single-cycle features keep the flat layout; multi-iteration features promote
+  non-destructively via the `<slug>#<iter-id>` resolution rules in `ssd/SKILL.md`.
 - **1.3.0** (2026-04-28) — `current.yml` is now v2 with schema validation and a sidecar
   `current.notes.yml` for free-form human notes. Step 7 split into "create both files fresh" and
   "v1 detected → prompted migration with `.bak`" paths. Init log and Quality Checklist updated to
