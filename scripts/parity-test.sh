@@ -28,6 +28,8 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GATE_SCRIPT="$REPO_ROOT/methodology/gate-rules.sh"
+VALIDATOR="$REPO_ROOT/methodology/frontmatter-validate.py"
+SCHEMAS_DIR="$REPO_ROOT/methodology/schemas"
 VERBOSE=0
 
 while [[ $# -gt 0 ]]; do
@@ -63,6 +65,12 @@ fixture_setup() {
     git init -q -b main
     git config user.email "parity@test.local"
     git config user.name "parity-test"
+    # Disable GPG signing for fixture commits — test artifacts in /tmp don't
+    # need (and can't always do) signing; the user's global config may set
+    # commit.gpgsign=true. Local-only override; doesn't affect anything outside
+    # this tmp dir.
+    git config commit.gpgsign false
+    git config tag.gpgsign false
   )
   echo "$tdir"
 }
@@ -258,7 +266,92 @@ EOF
   fixture_teardown "$tdir"
 }
 
-# Fixture 8: --base arg validation (regression for MINOR-2).
+# Fixture 8: valid frontmatter on an architect artifact — frontmatter-valid PASSes.
+# Skips if PyYAML isn't installed (matches the gate rule's own SKIP condition).
+test_fixture_frontmatter_valid() {
+  echo "fixture: frontmatter-valid"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    echo "  ⊘ skipped: PyYAML not installed"
+    return
+  fi
+  local tdir
+  tdir=$(fixture_setup "frontmatter-valid")
+  cd "$tdir" || exit 2
+  # Symlink the validator + schemas into the fixture so the gate rule can find them.
+  mkdir -p methodology
+  ln -s "$VALIDATOR" methodology/frontmatter-validate.py
+  ln -s "$SCHEMAS_DIR" methodology/schemas
+  mkdir -p .ssd/features/test-feature
+  cat > .ssd/features/test-feature/01-architect.md <<'EOF'
+---
+skill: architect
+version: 1.2.0
+produced_at: 2026-04-29T12:00:00Z
+produced_by: claude-test
+project: test-project
+scope: test-feature
+consumed_by: [coder, systems-designer]
+deliverables:
+  component_diagram: true
+  data_model: true
+  api_contract: true
+  integration_contract: not_applicable
+  adrs: [ADR-0001]
+  risk_assessment: true
+  feature_flag: not_applicable
+  scale_baseline: true
+quality_gate_pass: true
+---
+# Test architect output
+EOF
+  echo "x" > a.txt
+  git add -A && git commit -qm "initial with valid architect"
+  git checkout -qb feat
+  echo "y" > a.txt
+  git add -A && git commit -qm "trigger a diff"
+
+  assert_rule "frontmatter-valid" "frontmatter-valid" "PASS"
+
+  fixture_teardown "$tdir"
+}
+
+# Fixture 9: invalid frontmatter (missing required field) — frontmatter-valid FAILs.
+test_fixture_frontmatter_invalid() {
+  echo "fixture: frontmatter-invalid"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    echo "  ⊘ skipped: PyYAML not installed"
+    return
+  fi
+  local tdir
+  tdir=$(fixture_setup "frontmatter-invalid")
+  cd "$tdir" || exit 2
+  mkdir -p methodology
+  ln -s "$VALIDATOR" methodology/frontmatter-validate.py
+  ln -s "$SCHEMAS_DIR" methodology/schemas
+  mkdir -p .ssd/features/test-feature
+  # Missing `produced_at`, `consumed_by`, `deliverables`, `quality_gate_pass`.
+  cat > .ssd/features/test-feature/01-architect.md <<'EOF'
+---
+skill: architect
+version: 1.2.0
+produced_by: claude-test
+project: test-project
+scope: test-feature
+---
+# Test architect output (intentionally missing fields)
+EOF
+  echo "x" > a.txt
+  git add -A && git commit -qm "initial with invalid architect"
+  git checkout -qb feat
+  echo "y" > a.txt
+  git add -A && git commit -qm "trigger a diff"
+
+  assert_rule "frontmatter-invalid" "frontmatter-valid" "FAIL"
+
+  fixture_teardown "$tdir"
+}
+
+# Fixture 10: --base arg validation (regression for MINOR-2).
 test_fixture_base_arg_validation() {
   echo "fixture: base-arg-validation"
   local out exit_code
@@ -293,6 +386,8 @@ test_fixture_docs_only_skips_flag
 test_fixture_missing_adr
 test_fixture_yaml_comment_skip
 test_fixture_spaced_path
+test_fixture_frontmatter_valid
+test_fixture_frontmatter_invalid
 test_fixture_base_arg_validation
 echo "================================================================"
 

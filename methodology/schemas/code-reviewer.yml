@@ -1,0 +1,22 @@
+# Frontmatter schema — code-reviewer output.
+# v1: structural validation only.
+
+skill: code-reviewer
+applies_to:
+  - 04-code-review.md                # single-cycle, round 1
+  - 04-code-review-round-*.md        # single-cycle, round 2+ (glob match)
+  - code-review/round-*.md           # multi-iteration: iterations/<iter>/code-review/round-N.md
+
+required:
+  skill: string
+  version: string
+  produced_at: timestamp
+  produced_by: string
+  project: string
+  scope: string
+  consumed_by: list
+  finding_counts: dict
+  gate_pass: bool
+  remediation_mode: bool
+  round: int
+  closed_from_previous_round: list
