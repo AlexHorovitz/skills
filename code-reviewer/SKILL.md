@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 
 ## Purpose
 Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabilities, performance issues, and maintainability problems before they reach production. Be ruthless but constructive—the goal is better code, not crushed developers.
@@ -393,6 +393,44 @@ sure," pause and address it.
 
 ---
 
+## Deferred-Findings Verification
+
+For multi-iteration features, every code review reads
+`.ssd/features/<slug>/iterations/<iter>/deferred.yml` (if present) and verifies the status of each
+entry in the diff under review.
+
+For each entry with `target_iteration: <this-iter>` and `status: open`:
+
+1. **Coder claims `closed`**: verify the fix in the diff. If verified, leave the entry as
+   `status: closed, closed_in: <this-review-path>`. If unverified, raise a MAJOR finding (the fix
+   is missing or incomplete).
+2. **Coder claims `rolled-forward`**: confirm the coder-status body explains why and that
+   `target_iteration` was bumped to a sensible future iter. If silent, raise a MINOR — rolling
+   forward without rationale is the same kind of leak ADR-0002 closed for `current.yml`.
+3. **Coder is silent on the entry**: raise a MAJOR — a deferred item that's neither closed nor
+   rolled forward in its target iteration is the lost-finding failure mode.
+
+For each entry with `target_iteration` not equal to `<this-iter>`: not in scope for this review.
+Note in the review body that they exist (one line) so the reader knows they're tracked but
+deferred.
+
+**Frontmatter additions on review output:**
+
+```yaml
+deferred_handled:
+  closed: [MINOR-N1]                # IDs closed in this round (verified against the diff)
+  rolled_forward: [NIT-2]           # IDs the coder rolled forward (with reviewer assent)
+  silent_findings: []               # IDs the coder neither closed nor rolled — should be empty
+```
+
+A non-empty `silent_findings` list is itself a MAJOR finding pattern.
+
+**Single-cycle features** (no `iterations/` subdir, no `deferred.yml`) skip this entire phase. The
+field stays absent from the frontmatter rather than appearing as `[]` everywhere — keep the
+schema lean for the common case.
+
+---
+
 ## Multi-Round Gates
 
 A code-review pass that emits BLOCKER or MAJOR findings does not close — `code-reviewer` is
@@ -428,6 +466,12 @@ small fix-ups where producing a second file is overkill.
 
 ## Changelog
 
+- **1.4.0** (2026-04-29) — Iteration 4 of the ssd-skill-upgrades epic (P1.5): deferred-findings
+  verification. New "Deferred-Findings Verification" section: every multi-iteration review reads
+  `iterations/<iter>/deferred.yml` and verifies each entry's status against the diff. New
+  `deferred_handled` frontmatter block (`closed`, `rolled_forward`, `silent_findings`). Silent
+  findings (deferred but neither closed nor rolled forward in target iteration) are themselves a
+  MAJOR. Single-cycle features skip this section entirely.
 - **1.3.0** (2026-04-29) — Iteration 3 of the ssd-skill-upgrades epic (P1.2): multi-round gates as
   a built-in concept. New frontmatter fields `round` (number) and `closed_from_previous_round`
   (list of finding IDs) on every review. Output path varies by round and context (single-cycle

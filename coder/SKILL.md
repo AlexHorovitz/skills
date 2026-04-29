@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.1.1
+**Version:** 1.2.0
 
 ## Purpose
 
@@ -19,7 +19,7 @@ Translate designs, specifications, and requirements into clean, working code tha
 
 | | |
 |---|---|
-| **Input** | `.ssd/features/<slug>/01-architect.md` (primary spec) + language context (auto-detected from repo). Feature flag name read from the architect spec's Feature Flag Plan section. |
+| **Input** | `.ssd/features/<slug>/01-architect.md` (primary spec) + language context (auto-detected from repo). Feature flag name read from the architect spec's Feature Flag Plan section. For multi-iteration features, additionally read `.ssd/features/<slug>/iterations/<iter>/deferred.yml` and load entries with `target_iteration: <this-iter>` and `status: open` as starting context. |
 | **Output** | `.ssd/features/<slug>/03-coder-status.md` (with frontmatter) + implementation commits with feature flags for incomplete work and `# REVIEW:` markers |
 | **Consumed by** | `code-reviewer` (reads `03-coder-status.md` + the diff for detailed review) |
 | **SSD Phase** | `/ssd feature` |
@@ -231,6 +231,45 @@ architect → systems-designer → [coder] → code-reviewer → deploy
 
 **Review gate**: Output from this skill goes to `code-reviewer`. BLOCKER or MAJOR findings return here before merge.
 
+### Deferred-Findings Auto-Load (multi-iteration features)
+
+When entering coder phase for iteration `<iter>` of a multi-iteration feature, the orchestrator
+reads `.ssd/features/<slug>/iterations/<iter>/deferred.yml` and prepends entries matching
+`target_iteration: <iter>` and `status: open` to the coder's input context as a "Deferred from
+prior iterations" block.
+
+`deferred.yml` schema (v1):
+
+```yaml
+schema_version: 1
+findings:
+  - id: <severity>-<n>             # e.g., MINOR-N1, derived from origin review
+    summary: <one-line>             # human-readable; what to fix
+    source: <relative-path>         # e.g., iterations/3a/code-review/round-1.md
+    raised_in_iteration: <iter-id>  # where the finding was raised
+    target_iteration: <iter-id>     # which iteration is expected to close it; null = unscheduled
+    status: open                    # open | closed | rolled-forward
+    closed_in: null                 # set to a code-review path when status=closed
+```
+
+The coder treats deferred items as additional inputs alongside the architect spec — they are work
+the prior iteration's reviewer agreed could ship to the next iteration rather than block this one.
+The coder is responsible for either (a) closing them in this iteration's diff, or (b) marking them
+`status: rolled-forward` and updating `target_iteration` to a future iter (with rationale in the
+`03-coder-status.md` body).
+
+**Coder-status frontmatter additions for multi-iteration features:**
+
+```yaml
+deferred:
+  loaded: 2                        # entries pulled in as input context
+  closed: [MINOR-N1]               # finding IDs this iteration closed
+  rolled_forward: [NIT-2]          # finding IDs pushed to a later iteration
+```
+
+If `deferred.loaded > 0` and the diff doesn't address them, the reviewer in the same iteration
+will flag this — see `code-reviewer/SKILL.md` § "Deferred-Findings Verification."
+
 ---
 
 ## Self-Verification (before emitting `03-coder-status.md`)
@@ -245,6 +284,11 @@ architect → systems-designer → [coder] → code-reviewer → deploy
 
 ## Changelog
 
+- **1.2.0** (2026-04-29) — Iteration 4 of the ssd-skill-upgrades epic (P1.5): deferred-findings
+  auto-load. New `deferred.yml` schema (v1) per multi-iteration iteration. When entering coder phase
+  for `<iter>`, the orchestrator prepends entries with `target_iteration: <iter>` and `status: open`
+  to the coder's input context. New `deferred.loaded`/`closed`/`rolled_forward` frontmatter fields
+  on `coder-status.md` document what was processed.
 - **1.1.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.1.0** (2026-04-18) — Declared output artifact path `03-coder-status.md` and YAML frontmatter with

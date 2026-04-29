@@ -6,6 +6,52 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.8.0] — 2026-04-29
+
+### Iteration 4 of the SSD skill-upgrades epic — deferred-findings ledger (P1.5)
+
+Carry-over of non-blocking findings between iterations of a multi-iteration feature was previously
+encoded as prose bullets in `current.yml` (`carried_to_pr_3c: [...]`). Iteration 4 makes it a
+structured ledger with auto-load and auto-verify behavior.
+
+**New artifact:** `.ssd/features/<slug>/iterations/<iter>/deferred.yml` (v1 schema):
+
+```yaml
+schema_version: 1
+findings:
+  - id: <severity>-<n>
+    summary: <one-line>
+    source: <relative-path-to-source-review>
+    raised_in_iteration: <iter-id>
+    target_iteration: <iter-id>|null
+    status: open|closed|rolled-forward
+    closed_in: <code-review-path>|null
+```
+
+**Auto-load on coder entry**: when entering coder phase for `<iter>`, the orchestrator pulls
+entries with `target_iteration: <iter>` and `status: open` into the coder's input context as a
+"Deferred from prior iterations" block. Coder either closes them in the diff or rolls them forward
+with rationale.
+
+**Auto-verify on review**: every multi-iteration review reads `deferred.yml` and checks each
+entry's status against the diff. New frontmatter block `deferred_handled` with `closed`,
+`rolled_forward`, and `silent_findings` (the last MUST be empty — silent findings are themselves a
+MAJOR).
+
+**Coder-status frontmatter additions**: `deferred.loaded` (count), `deferred.closed` (IDs),
+`deferred.rolled_forward` (IDs).
+
+**Single-cycle features** (no `iterations/` subdirectory) skip the ledger entirely — the schema
+stays lean for the common case.
+
+**Touched skills:**
+- `coder` — v1.1.1 → v1.2.0
+- `code-reviewer` — v1.3.0 → v1.4.0
+
+**Iteration sequence:** 4 of 9 done. Next: P1.4 (bundled design pass).
+
+---
+
 ## [1.7.0] — 2026-04-29
 
 ### Iteration 3 of the SSD skill-upgrades epic — multi-round gates (P1.2)
