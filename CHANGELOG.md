@@ -6,6 +6,46 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.13.0] — 2026-04-29
+
+### Iteration 9 of the SSD skill-upgrades epic — parity-test harness (final)
+
+The architect doc envisioned a "two-surface parity test" comparing artifact trees produced via
+the conversational vs command surface. That test isn't directly buildable from bash because the
+surfaces are LLM-driven behaviors, not invokable processes. Iteration 9 ships the achievable
+substitute: **structural conformance** for `methodology/gate-rules.sh`, the one piece of the
+chain that IS bash and can be regression-tested.
+
+**New file**: `scripts/parity-test.sh` — fast (<5s) test harness that runs `gate-rules.sh`
+against 7 synthetic git fixtures and asserts the expected `PASS`/`FAIL`/`SKIP` for each rule:
+
+- `clean-flagged-with-adr` — all rules satisfied (PASS / PASS / PASS / SKIP).
+- `wip-commit-fails` — `wip-commits` FAILs on `WIP:` commit.
+- `missing-flag-fails` — `feature-flag-present` FAILs on unflagged code addition.
+- `docs-only-skips-flag` — `feature-flag-present` SKIPs on doc-only diffs.
+- `missing-adr-fails` — `adr-delta` FAILs on 300-line architectural change without ADR.
+- `yaml-comment-skip` — regression for round-2 MINOR-1 (commented YAML key not read as value).
+- `spaced-path` — regression for round-2 MAJOR-2 (filenames with spaces handled correctly).
+
+Plus 2 assertions on `--base` argument validation (regression for round-2 MINOR-2). Total: **12
+assertions**; harness exits 0 on full pass.
+
+**Out of scope (deferred until SSD has executable surface drivers):**
+- True two-surface parity test (conversational vs command produce identical artifact trees).
+- Frontmatter schema validator for `.ssd/features/<slug>/*.md` artifacts. Useful but separate
+  iteration.
+
+**Touched skills:** None — this is a CI-utility script, not a skill update.
+
+**New artifact:** `scripts/parity-test.sh`.
+
+**Iteration sequence:** 9 of 9 done — **the ssd-skill-upgrades epic is complete.** All seven
+Part I upgrades plus rails.md (P2.A) and developer profile + teaching mode (P2.B) have shipped.
+Part II's "two-surface parity test" remains an open ambition for when SSD gains executable
+surface drivers (not in current scope).
+
+---
+
 ## [1.12.0] — 2026-04-29
 
 ### Iteration 8 of the SSD skill-upgrades epic — developer profile + teaching mode (P2.B, ADR-0004)
