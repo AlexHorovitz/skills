@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.8.0
+**Version:** 1.9.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -294,6 +294,25 @@ existing `04-code-review.md` is permitted in lieu of a separate file. See `code-
 Invoke `systems-designer` deploy checklist for the feature about to ship.
 
 Invoke `systems-designer` to produce the platform-appropriate deploy checklist. The checklist is defined and maintained by that skill — do not duplicate it here. The systems-designer skill covers web, mobile (iOS/Android), and macOS desktop deployment readiness.
+
+---
+
+## The Rails — Canonical Opinionated Path
+
+The eight-step canonical sequence (brief → design → code → review → gate → deploy →
+rollout-advance → flag-removal) lives in `ssd/rails.md`. That file is the single source of truth
+for what the orchestrator's no-arg auto-detect proposes, what `code-reviewer` and
+`codebase-skeptic` audit against, and what the eight critic-grade invariants are.
+
+A workstream that skips a step (or runs them out of order) records the deviation in
+`current.yml.active[].rail_deviations`. Deviations are not failures — they are engineering
+judgment captured for the record. The orchestrator does not block based on deviation count.
+
+A team with genuinely different needs forks `rails.md` (e.g., `rails-mobile.md`) and points
+`project.yml.rails:` at the fork. The default is `rails.md` if no override.
+
+See [ADR-0003](../docs/decisions/ADR-0003-rails-as-canonical-path.md) for the rationale on why
+the rails are a first-class artifact rather than folklore scattered across files.
 
 ---
 
@@ -621,6 +640,11 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.9.0** (2026-04-29) — Iteration 7 of the ssd-skill-upgrades epic (P2.A, ADR-0003): rails as
+  a first-class artifact. New file `ssd/rails.md` (v1.0.0) documents the eight-step canonical
+  sequence, the eight critic-grade invariants, the `rail_deviations` logging contract, and the
+  surface-agnostic guarantee. New "The Rails" section in this SKILL.md cross-references it. The
+  rails are forkable per-project via `project.yml.rails:`.
 - **1.8.0** (2026-04-29) — Iteration 6 of the ssd-skill-upgrades epic (P1.3): no-arg `/ssd`
   auto-detection. The default invocation reads `.ssd/current.yml` + `.ssd/current.notes.yml`,
   surfaces active workstreams (with iteration, phase, last-touched, blockers), and proposes the

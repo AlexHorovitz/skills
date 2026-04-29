@@ -6,6 +6,34 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.11.0] — 2026-04-29
+
+### Iteration 7 of the SSD skill-upgrades epic — `rails.md` as first-class artifact (P2.A, ADR-0003)
+
+The eight-step canonical SSD sequence (brief → design → code → review → gate → deploy →
+rollout-advance → flag-removal) was previously folklore scattered across `ssd/SKILL.md`,
+per-skill files, and `methodology/core.md`. Iteration 7 names it.
+
+**New file**: `ssd/rails.md` (v1.0.0). The single source of truth for:
+- The eight-step canonical sequence.
+- The eight critic-grade invariants every shipped feature satisfies.
+- The `rail_deviations` logging contract (`current.yml.active[].rail_deviations`).
+- The surface-agnostic guarantee: conversational and command surfaces walk the same rails.
+
+**New behavior**: forks. A team with genuinely different needs forks `rails.md`, names the variant,
+and points `project.yml.rails:` at it. The default is `rails.md`.
+
+**Touched skills:**
+- `ssd` — v1.8.0 → v1.9.0 (new "The Rails" section cross-references rails.md)
+
+**New artifacts:**
+- `ssd/rails.md`
+- `docs/decisions/ADR-0003-rails-as-canonical-path.md`
+
+**Iteration sequence:** 7 of 9 done. Next: P2.B (profile + teaching mode).
+
+---
+
 ## [1.10.0] — 2026-04-29
 
 ### Iteration 6 of the SSD skill-upgrades epic — no-arg `/ssd` auto-detect (P1.3)
