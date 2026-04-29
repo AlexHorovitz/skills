@@ -6,6 +6,35 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.9.0] — 2026-04-29
+
+### Iteration 5 of the SSD skill-upgrades epic — bundled design pass (P1.4)
+
+`architect` and `systems-designer` always run sequentially with the same inputs in the standard
+`/ssd feature` flow. v1.9.0 lets them run as one logical step.
+
+**New phase**: `/ssd design <slug>` (or `/ssd design <slug>#<iter>` for multi-iteration features):
+1. Invokes `architect`; produces `01-architect.md`.
+2. Reads the architect output, invokes `systems-designer`; produces `02-systems-designer.md`.
+3. Surfaces gaps systems-designer rejected back to the user as one actionable block.
+
+**Individual invocations remain valid.** `architect` and `systems-designer` are independently
+invocable for ad-hoc design work, milestone redesigns, and external consumers (`codebase-skeptic`
+reading just the architect spec). `/ssd design` is a convenience — it does not gate or change either
+skill's contract.
+
+**Skip `/ssd design` when systems-designer is N/A** (markdown-only repos, ADR-only PRs, skills
+libraries). Invoke `architect` directly.
+
+**Touched skills:**
+- `ssd` — v1.6.0 → v1.7.0
+- `architect` — v1.1.1 → v1.2.0 (changelog note only)
+- `systems-designer` — v1.2.1 → v1.3.0 (changelog note only)
+
+**Iteration sequence:** 5 of 9 done. Next: P1.3 (no-arg `/ssd` auto-detect).
+
+---
+
 ## [1.8.0] — 2026-04-29
 
 ### Iteration 4 of the SSD skill-upgrades epic — deferred-findings ledger (P1.5)

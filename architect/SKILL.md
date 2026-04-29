@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.1.1
+**Version:** 1.2.0
 
 ---
 
@@ -285,6 +285,10 @@ pause and address it.
 
 ## Changelog
 
+- **1.2.0** (2026-04-29) — Iteration 5 of the ssd-skill-upgrades epic (P1.4): documented that this
+  skill can be invoked as part of `/ssd design <slug>` (a bundled architect → systems-designer pass)
+  in addition to standalone use. No behavior change; the bundle is an orchestrator-level
+  convenience. See `ssd/SKILL.md` § "/ssd design — Bundled Design Pass".
 - **1.1.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.1.0** (2026-04-18) — Declared prescribed output path and YAML frontmatter (A1); Quality Gate now

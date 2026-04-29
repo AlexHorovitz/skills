@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -39,6 +39,7 @@ creates `docs/decisions/`, `docs/runbooks/`, `docs/architecture/`, and runs SSD 
 ```
 /ssd start      — New project or major feature: Walking Skeleton setup
 /ssd feature    — Active development: design → build → review → deploy loop
+/ssd design     — Bundled architect + systems-designer pass (single invocation)
 /ssd milestone  — Post-sprint consolidation: deep audit + targeted refactor
 /ssd verify     — Remediation verification after a milestone refactor (mandatory)
 /ssd audit      — Adversarial comparative review (nuclear option)
@@ -113,6 +114,35 @@ The standard daily development cycle. Repeat per feature.
    - Remove flag and dead code once 100% stable
 
 **Shippable state invariant**: At the end of each work session, verify the invariant defined in `methodology/core.md` § "The Shippable State Invariant." The canonical checklist lives there — do not maintain a separate copy here.
+
+---
+
+### `/ssd design` — Bundled Design Pass
+
+`architect` and `systems-designer` always run in sequence with the same inputs in the standard
+`/ssd feature` flow. v1.7.0 lets them run as one logical step.
+
+```
+/ssd design <slug>
+/ssd design <slug>#<iter>
+```
+
+The orchestrator:
+
+1. Invokes `architect` first; produces `.ssd/features/<slug>/01-architect.md` (or
+   `iterations/<iter>/01-architect.md` for multi-iteration features).
+2. Reads the architect output and invokes `systems-designer` with it as input; produces
+   `02-systems-designer.md` alongside.
+3. Surfaces any architect-spec gaps that systems-designer rejected back to the user as a single
+   actionable block (rather than two separate handoffs).
+
+**This does not replace** the individual invocations. `architect` and `systems-designer` remain
+independently invocable for ad-hoc design work, milestone redesigns, and external consumers
+(e.g., `codebase-skeptic` reading just the architect spec). `/ssd design` is a convenience —
+it does not gate or change either skill's contract.
+
+**Skip `/ssd design` when systems-designer is N/A** (e.g., a markdown-only documentation project,
+a skills library, an ADR-only PR). The user can invoke `architect` directly.
 
 ---
 
@@ -549,6 +579,11 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.7.0** (2026-04-29) — Iteration 5 of the ssd-skill-upgrades epic (P1.4): bundled design pass.
+  New `/ssd design <slug>` phase invokes `architect` and `systems-designer` back-to-back with
+  shared inputs, producing both `01-architect.md` and `02-systems-designer.md` in one user-facing
+  step. Individual invocations of either skill remain valid; `/ssd design` is a convenience and
+  does not gate or change either skill's contract.
 - **1.6.0** (2026-04-29) — Iteration 3 of the ssd-skill-upgrades epic (P1.2): multi-round gates as
   a built-in concept. `/ssd gate` (and the `/ssd feature` review step) auto-number rounds, write to
   round-N output paths (single-cycle vs multi-iteration), increment `current.yml.gate_rounds`, and

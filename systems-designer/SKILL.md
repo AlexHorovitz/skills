@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.1
+**Version:** 1.3.0
 
 ## Purpose
 Ensure every feature and system change is production-ready by systematically evaluating operational concerns: reliability, observability, security, performance, deployment safety, and failure recovery.
@@ -639,6 +639,11 @@ A Tier 3 failure sets `block_conditions_met: false` in frontmatter. `/ssd ship` 
 
 ## Changelog
 
+- **1.3.0** (2026-04-29) — Iteration 5 of the ssd-skill-upgrades epic (P1.4): documented that this
+  skill can be invoked as part of `/ssd design <slug>` (a bundled architect → systems-designer pass)
+  in addition to standalone use. The bundle reads the architect output as input and surfaces
+  rejection conditions back to the orchestrator as one actionable block. No behavior change to
+  the standalone invocation. See `ssd/SKILL.md` § "/ssd design — Bundled Design Pass".
 - **1.2.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.2.0** (2026-04-18) — Declared output artifact path and YAML frontmatter; added Phase 0 input
