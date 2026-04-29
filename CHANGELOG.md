@@ -6,6 +6,61 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.5.0] — 2026-04-28
+
+### Iteration 1 of the SSD skill-upgrades epic
+
+First substantive iteration of the multi-iteration plan documented at
+[.ssd/features/ssd-skill-upgrades/01-architect.md](.ssd/features/ssd-skill-upgrades/01-architect.md). Bundled
+two engine-level upgrades that have no inter-dependency (P1.6 + P1.7).
+
+**Executable gate rules (P1.6, ADR-0005):**
+- New file `methodology/gate-rules.sh` — bash routine implementing four mechanical checks
+  (`wip-commits`, `tests-pass`, `feature-flag-present`, `adr-delta`) with `PASS|FAIL|SKIP`
+  structured stdout and `--json` mode for CI consumption.
+- `ssd/SKILL.md` § "Methodology Enforcement" now invokes the script synchronously and refuses to
+  pass the gate on any FAIL with the doctrine cite named.
+- `methodology/SKILL.md` (v1.3.0) gains a "Gate Rules — Executable" section describing the script,
+  the rule table, and direct-invocation usage for CI.
+- Rationale: gate rules that aren't executable are decoration. ADR-0005 documents why bash is the
+  right tool versus orchestrator-internal LLM checks (composability, reproducibility, testability,
+  speed, fail-loud).
+
+**`current.yml` v2 split + notes sidecar (P1.7, ADR-0002):**
+- `.ssd/current.yml` is now schema-validated machine state; carries `schema_version: 2`.
+- `.ssd/current.notes.yml` is the new free-form sidecar for handoff notes, scope changes, and
+  questions for the next session.
+- `ssd-init/SKILL.md` (v1.3.0) Step 7 split into "create both files fresh" and "v1 detected →
+  prompted migration with `.bak`" paths. Migration is opt-in. Legacy v1 files continue to parse.
+- v2 schema includes nullable `iteration`, `gate_rounds`, `rail_deviations` fields. Populated by
+  later iterations (P1.1, P1.2, P2.A); present from v1.5.0 so the schema ships forward-compatible.
+
+**Touched skills:**
+- `ssd` — v1.3.0 → v1.4.0
+- `methodology` — v1.2.1 → v1.3.0 → **v1.3.1** (round-2 fixes from iteration-1 code review)
+- `ssd-init` — v1.2.0 → v1.3.0
+
+**Round-2 fixes** (closed during iteration 1's code-review gate, before merge):
+- MAJOR-1: `feature-flag-present` greps the added diff lines (`^+[^+]`) instead of file contents.
+  A pre-existing flag marker elsewhere in a file no longer gives unflagged additions a free pass.
+- MAJOR-2: both `feature-flag-present` and `adr-delta` build a quoted bash array of changed files
+  instead of unquoted command substitution, closing a silent-SKIP on filenames with spaces or
+  shell metacharacters.
+- MINOR-1: `yaml_get` skips comment lines so `# test_command: pytest` is documentation, not a value.
+- MINOR-2: `--base` argument parser rejects missing values and adjacent flags.
+- Both MAJORs verified with synthetic git fixtures: file with pre-existing flag + unflagged
+  addition → correct FAIL; spaced directory + ADR-less architectural change → correct FAIL.
+
+**New artifacts:**
+- `methodology/gate-rules.sh`
+- `docs/decisions/ADR-0002-current-yml-split.md`
+- `docs/decisions/ADR-0005-gate-execution-model.md`
+
+**Iteration sequence:** This is iteration 1 of 9. Next: P1.1 (first-class iterations substrate). The
+remaining iterations will land independently per the epic plan.
+
+---
+
 ## [1.4.0] — 2026-04-28
 
 ### Working-tree convention: `ssd/` → `.ssd/`

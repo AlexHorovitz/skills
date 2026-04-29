@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 
 ## Purpose
 
@@ -259,20 +259,69 @@ integrations:                    # optional; filled in as features are added
     enabled: true                # inferred from .git remote
 ```
 
-### Step 7 — Initialize `.ssd/current.yml`
+### Step 7 — Initialize `.ssd/current.yml` (v2) + `.ssd/current.notes.yml`
 
-Create the workstream pointer file if missing:
+As of v1.3.0, the workstream pointer is split into two files:
+
+- `.ssd/current.yml` — schema-validated, machine-managed by the orchestrator. v2 carries
+  `schema_version: 2`.
+- `.ssd/current.notes.yml` — free-form, human-editable. Loaded as context but never validated.
+
+See [ADR-0002](../docs/decisions/ADR-0002-current-yml-split.md) for the rationale.
+
+**If neither file exists:** create both as fresh templates.
 
 ```yaml
-# .ssd/current.yml — active SSD workstreams
-# Managed by the /ssd orchestrator. Do not edit manually unless you know
-# what you're doing.
-
+# .ssd/current.yml — machine-managed SSD workstreams.
+# Schema-validated; do not edit manually unless you know what you're doing.
+# Free-form notes go in .ssd/current.notes.yml instead.
+schema_version: 2
 active: []
 archived: []
 ```
 
-If it exists, leave it. Existing entries are the orchestrator's business, not init's.
+```yaml
+# .ssd/current.notes.yml — free-form session context for the next agent or human.
+# Anything in here is information for the next session, not state for the orchestrator.
+# Loaded as context; never schema-validated.
+features: {}
+```
+
+**If `current.yml` exists with `schema_version: 2`:** leave both files untouched. Existing entries
+are the orchestrator's business, not init's.
+
+**If `current.yml` exists without `schema_version` (v1 detected):** do **not** silently rewrite. The
+file may contain user-authored keys outside the documented schema (`pr_3a_ship`,
+`carried_to_pr_3c`, etc.). Surface a migration prompt to the user:
+
+```
+Detected legacy current.yml (v1) at .ssd/current.yml. v2 separates machine state from human notes.
+Migrate now? [yes/skip-this-session/show-diff]
+```
+
+On `yes`:
+1. Refuse if `.ssd/current.yml.bak` already exists — ask the user to resolve manually.
+2. Copy current contents to `.ssd/current.yml.bak`.
+3. Build proposed v2 `current.yml` containing only documented machine fields (`schema_version`,
+   `active[].slug`, `phase`, `started`, `last_touched`, `budget_hours`, `elapsed_hours`,
+   `gate_rounds`, `iteration`, `rail_deviations`, `blockers`, plus `archived`). Set
+   `schema_version: 2`. Default missing fields per the v2 schema (e.g., `gate_rounds: 0`,
+   `iteration: null`, `rail_deviations: []`).
+4. Build proposed `current.notes.yml` containing every key found in v1 that was NOT in the
+   documented schema, grouped by feature slug under `features.<slug>.handoff_notes` (or under a
+   top-level `unscoped:` block if the key wasn't tied to a feature).
+5. Show the user both proposed files and ask for explicit confirmation before writing.
+6. On confirm, write the new files. The `.bak` is left in place — the user removes it when
+   satisfied.
+
+On `skip-this-session`: continue reading legacy v1. The orchestrator's v1 fallback path remains
+indefinitely; migration is opt-in. Re-prompt on next invocation.
+
+On `show-diff`: render the proposed v2 + notes files inline so the user can review without
+committing, then re-ask the migration question.
+
+If the project is not a git repo or the user declines all options, leave the file alone and note in
+the init log that v1 was detected and migration was deferred.
 
 ### Step 8 — Check for `CLAUDE.md`
 
@@ -361,7 +410,8 @@ project: <name>
 - `docs/architecture/` — <created|already-existed>
 - `.ssd/README.md` — <created|already-existed>
 - `.ssd/project.yml` — <created|already-existed>
-- `.ssd/current.yml` — <created|already-existed>
+- `.ssd/current.yml` — <created-v2|already-existed-v2|migrated-from-v1|legacy-v1-deferred>
+- `.ssd/current.notes.yml` — <created|already-existed|skipped-legacy-v1>
 
 ## Gitignore
 - `.gitignore` — <created|already-existed|not-applicable-no-git>
@@ -446,7 +496,8 @@ Before declaring `ssd-init` complete:
 - [ ] `.ssd/` directory exists with all required subdirectories
 - [ ] `.ssd/README.md` present
 - [ ] `.ssd/project.yml` present and accurately reflects detected shape
-- [ ] `.ssd/current.yml` present (may be empty)
+- [ ] `.ssd/current.yml` present (v2 schema, or v1 with deferred migration)
+- [ ] `.ssd/current.notes.yml` present (or absent only if v1 migration was deferred)
 - [ ] `.gitignore` contains `.ssd/` (if git repo)
 - [ ] `.ssd/init-log.md` written with complete status
 - [ ] Prerequisite checks run and recorded
@@ -490,6 +541,10 @@ Running `ls .ssd/features/<slug>/` reveals the full phase chain for a feature in
 
 ## Changelog
 
+- **1.3.0** (2026-04-28) — `current.yml` is now v2 with schema validation and a sidecar
+  `current.notes.yml` for free-form human notes. Step 7 split into "create both files fresh" and
+  "v1 detected → prompted migration with `.bak`" paths. Init log and Quality Checklist updated to
+  reference both files. Reference: ADR-0002. Iteration 1 of the ssd-skill-upgrades epic.
 - **1.2.0** (2026-04-28) — Switched the SSD working tree from visible `ssd/` to hidden `.ssd/`.
   Reasons: (1) `ssd/` collides with the orchestrator skill source directory at the project root in
   the SSD skills repo itself, and (2) the working tree is transient state, not something humans need

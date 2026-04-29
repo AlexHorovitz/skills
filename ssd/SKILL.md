@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -322,26 +322,56 @@ skeptic runs' frontmatter to see which findings closed.
 
 ## Session Continuity
 
-On invocation, `/ssd` reads `.ssd/current.yml` to determine state:
+On invocation, `/ssd` reads two files:
+
+- `.ssd/current.yml` — schema-validated machine state (v2). The orchestrator owns it.
+- `.ssd/current.notes.yml` — free-form human/agent context. Loaded but not validated.
+
+See [ADR-0002](../docs/decisions/ADR-0002-current-yml-split.md) for the rationale on splitting these.
+
+### `current.yml` v2 schema
 
 ```yaml
-# .ssd/current.yml
+schema_version: 2
 active:
-  - slug: goal-approval-flow
-    phase: coder       # current sub-skill
+  - slug: goal-approval-flow         # feature slug; matches .ssd/features/<slug>/
+    phase: brief|design|code|review|gate|deploy|done
+    iteration: null                  # iteration id (e.g., "3a") or null for single-cycle
     started: 2026-04-18T10:00:00Z
     last_touched: 2026-04-18T14:30:00Z
     budget_hours: 8
     elapsed_hours: 4.5
+    gate_rounds: 0                   # incremented per code-review round; populated by future iter
+    rail_deviations: []              # list of {step, reason, ts}; populated by future iter
     blockers: []
-  - slug: billing-migration
-    phase: code-reviewer
-    started: 2026-04-17T09:00:00Z
-    last_touched: 2026-04-17T17:00:00Z
-    budget_hours: 16
-    elapsed_hours: 14
-    blockers: ["code-reviewer found 2 BLOCKERs, returned to coder"]
+archived: []
 ```
+
+The `iteration`, `gate_rounds`, and `rail_deviations` fields are nullable / default-empty placeholders
+populated by later iterations of the SSD-upgrades epic (P1.1, P1.2, P2.A). They are present in v2 from
+the start so v2 ships forward-compatible — no second schema bump when those iterations land.
+
+### `current.notes.yml` (free-form)
+
+```yaml
+features:
+  goal-approval-flow:
+    handoff_notes: |
+      Refactored the approval state machine into a reducer; the next session
+      should re-verify the edge case where a goal is archived mid-approval.
+    scope_changes: []
+    questions_for_next_session: []
+```
+
+Anything that doesn't fit the v2 schema goes here. Not validated; never blocks.
+
+### v1 detection
+
+A `current.yml` lacking `schema_version` is treated as v1 (legacy). The orchestrator continues to
+read it in legacy mode and prompts the user (once per session) to migrate via `ssd-init`. Migration
+is opt-in, prompted, and writes `current.yml.bak` before splitting. No silent rewrites.
+
+### Orchestrator behavior on active entries
 
 If `.ssd/current.yml` has active entries, the orchestrator:
 
@@ -350,29 +380,51 @@ If `.ssd/current.yml` has active entries, the orchestrator:
    scope reduction, not more work."
 3. Flags any entry with `last_touched > 3 days ago`: stale work that may need a fresh audit before
    continuing.
+4. Renders any `handoff_notes` from `current.notes.yml` for the chosen workstream as starting context.
 
 Closing a workstream (after successful deploy + verify) removes it from `current.yml` and archives
-artifacts under `.ssd/archive/features/<slug>/`.
+artifacts under `.ssd/archive/features/<slug>/`. Corresponding entries in `current.notes.yml` are
+moved to `.ssd/archive/features/<slug>/notes.yml` so the historical context stays with the work.
 
 ---
 
 ## Methodology Enforcement (runs on /ssd gate)
 
-Before `/ssd gate` passes, verify these doctrine rules mechanically. Each maps to a principle in
-`methodology/core.md`.
+Before `/ssd gate` passes, the orchestrator invokes the executable gate-rules script and refuses to
+pass on any FAIL:
 
-| Rule | Check | Source |
+```bash
+bash methodology/gate-rules.sh --base <base-branch> --json
+```
+
+The script (defined in `methodology/SKILL.md` § "Gate Rules — Executable") emits structured results
+per rule. Each rule maps to a principle in `methodology/core.md`.
+
+| Rule (script) | Doctrine cite | What it checks |
 |---|---|---|
-| Tests pass | `<test-command>` exits 0 | core.md §1 |
-| No broken features | Covered by tests | core.md §2 |
-| Documentation matches implementation | ADRs updated if architecture changed | core.md §2 |
-| No WIP commits on main | `git log main --grep="WIP\|checkpoint\|TODO.*tomorrow" -i` is empty | core.md §4 |
-| Feature behind flag | If not infra: check `feature_flags` config delta or code-reviewer output | core.md §3 |
-| Deployable | CI passes; migration is reversible (from systems-designer check) | core.md §2 |
+| `wip-commits` | core.md §4 | `git log <base>..HEAD --grep='WIP\|checkpoint\|TODO.*tomorrow\|FIXME.*later' -i` is empty |
+| `tests-pass` | core.md §1 | Project's `test_command` (from `.ssd/project.yml`) exits 0 |
+| `feature-flag-present` | core.md §3 | Project's `feature_flag_marker` appears in non-doc changed files (skipped for documentation/config-only diffs) |
+| `adr-delta` | core.md §2 | If architectural diff > 200 lines outside test/doc/migration scope, `docs/decisions/` has a new or modified ADR |
 
-If any rule fails, `/ssd gate` emits the failure with the doctrine cite and refuses to pass.
+Rule outputs:
+- `PASS` — rule applied and verified.
+- `SKIP` — rule didn't apply (no test command in `project.yml`, no diff vs base, doc-only change, etc.).
+- `FAIL` — rule applied and was violated.
+
+The script exits non-zero on any FAIL. The orchestrator parses the structured output, names the
+failing rule with its doctrine cite, and refuses to pass the gate.
+
 "I know better" is not an override — use `/ssd ship --force` (logged) if the team has a deliberate
-exception.
+exception. Direct invocation of the script is supported for CI:
+
+```bash
+bash methodology/gate-rules.sh --base main           # text mode
+bash methodology/gate-rules.sh --base main --json    # JSON for jq / CI parsing
+```
+
+See [ADR-0005](../docs/decisions/ADR-0005-gate-execution-model.md) for why this is a bash script
+rather than orchestrator-internal LLM checks.
 
 ---
 
@@ -424,6 +476,14 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.4.0** (2026-04-28) — Iteration 1 of the ssd-skill-upgrades epic landed:
+  (a) `current.yml` v2 with schema validation + sidecar `current.notes.yml` for free-form context;
+  legacy v1 read-path retained, opt-in prompted migration with `.bak` (P1.7, ADR-0002).
+  (b) Methodology Enforcement table now points at the executable
+  `methodology/gate-rules.sh` invoked synchronously on `/ssd gate`; rules emit
+  `PASS|FAIL|SKIP` with a doctrine cite (P1.6, ADR-0005).
+  Forward-compatible v2 schema includes nullable `iteration`, `gate_rounds`, `rail_deviations`
+  fields populated by later iterations of the epic.
 - **1.3.0** (2026-04-28) — Working-tree convention changed from visible `ssd/` to hidden `.ssd/`.
   All artifact-tree paths (`.ssd/project.yml`, `.ssd/current.yml`, `.ssd/features/<slug>/…`,
   `.ssd/milestones/<topic>/…`, `.ssd/archive/…`) are updated. The `/ssd` orchestrator now checks for

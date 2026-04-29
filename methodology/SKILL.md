@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.1
+**Version:** 1.3.1
 
 ## Purpose
 
@@ -38,6 +38,7 @@ This skill is organized into three focused files. Load the relevant file based o
 | `core.md` | Iron Law, Five Principles, Decision Framework, Metrics, Mindset | User asks about SSD principles or doctrine |
 | `patterns.md` | Five implementation patterns, Advanced topics (dependencies, DB migrations, emergencies) | User asks "how do I implement X with SSD?" |
 | `adoption.md` | Getting started checklist, Common objections, Org adoption, Comparisons to Agile/CD/TBD, Resources | User is onboarding a team, handling pushback, or comparing SSD to other methods |
+| `gate-rules.sh` | Executable bash routine implementing the methodology gate rules; invoked by `/ssd gate` | Automated — not loaded in conversation. See [ADR-0005](../docs/decisions/ADR-0005-gate-execution-model.md). |
 
 **Default**: Load `core.md`. It covers the stable doctrine that answers most questions.
 
@@ -72,8 +73,65 @@ any), and the two lowest-scoring metrics flagged as remediation candidates.
 
 ---
 
+## Gate Rules — Executable
+
+The `Methodology Enforcement` table in `ssd/SKILL.md` documents the rules `/ssd gate` enforces. As of
+v1.3.0 those rules are **executable**: implemented as a bash routine at `methodology/gate-rules.sh`
+that the orchestrator invokes synchronously on `/ssd gate` (and at the gate boundary inside
+`/ssd ship`).
+
+The script:
+- Reads project metadata from `.ssd/project.yml` (test command, feature-flag marker).
+- Emits one structured line per rule (`PASS|FAIL|SKIP <rule-name> :: <detail>`).
+- Exits 0 if every applicable rule is PASS or SKIP; non-zero on any FAIL.
+- Skips rules whose preconditions don't apply (e.g., no `test_command` in `project.yml` → SKIP, not
+  FAIL).
+
+Rules implemented in v1.3.0:
+
+| Rule | Doctrine cite | What it checks |
+|---|---|---|
+| `wip-commits` | core.md §4 (No WIP on main) | `git log <base>..HEAD --grep='WIP\|checkpoint\|TODO.*tomorrow\|FIXME.*later' -i` is empty |
+| `tests-pass` | core.md §1 (Constant Production Parity) | Project's `test_command` (from `project.yml`) exits 0 |
+| `feature-flag-present` | core.md §3 (Feature flags for new code) | Project's `feature_flag_marker` (from `project.yml`) appears in non-doc changed files |
+| `adr-delta` | core.md §2 (Documentation matches implementation) | If architectural diff exceeds threshold (200 lines outside test/doc/migration scope), `docs/decisions/` has a new or modified ADR |
+
+The script is the source of truth — `cat methodology/gate-rules.sh` answers "what does the gate
+actually check?" Direct invocation is supported for CI integration:
+
+```bash
+bash methodology/gate-rules.sh --base main          # text mode
+bash methodology/gate-rules.sh --base main --json   # structured output for jq
+```
+
+See [ADR-0005](../docs/decisions/ADR-0005-gate-execution-model.md) for the rationale on bash vs.
+LLM-internal vs. compiled-binary execution.
+
+Future rules (deferred to later iterations of the SSD-upgrades epic): deployable check (CI status
+integration), more sophisticated flag detection, lint/typecheck rules.
+
+---
+
 ## Changelog
 
+- **1.3.1** (2026-04-28) — `gate-rules.sh` round-2 fixes from iteration-1 code review:
+  (a) `feature-flag-present` now greps the diff's added lines (`^+[^+]`) instead of file contents,
+  closing a silent-false-PASS when unflagged code is added to a file that already contained a flag
+  marker elsewhere (MAJOR-1).
+  (b) Both `feature-flag-present` and `adr-delta` build a properly-quoted bash array of changed
+  files instead of unquoted `$(echo ... | tr)` substitution, closing a silent-SKIP on filenames
+  with spaces or shell metacharacters (MAJOR-2).
+  (c) `--base` argument validation rejects missing values and adjacent flags
+  (`--base --json` → exit 2, MINOR-2).
+  (d) `yaml_get` now skips comment lines so `# test_command: pytest` documentation is no longer
+  read as a value (MINOR-1).
+  Synthetic tests for both MAJORs confirmed: file with pre-existing flag + unflagged addition →
+  correct FAIL; spaced directory + ADR-less architectural change → correct FAIL.
+- **1.3.0** (2026-04-28) — Gate rules became executable: new file `methodology/gate-rules.sh`
+  implements four mechanical checks (`wip-commits`, `tests-pass`, `feature-flag-present`,
+  `adr-delta`) with structured stdout (`STATUS RULE :: DETAIL`) and `--json` mode for CI
+  consumption. Added `Gate Rules — Executable` section to this SKILL.md. Reference: ADR-0005.
+  Iteration 1 of the ssd-skill-upgrades epic.
 - **1.2.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.2.0** (2026-04-18) — Clarified that methodology now provides machine-checkable rule source for
