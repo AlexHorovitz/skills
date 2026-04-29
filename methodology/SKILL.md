@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.3.1
+**Version:** 1.4.0
 
 ## Purpose
 
@@ -39,6 +39,8 @@ This skill is organized into three focused files. Load the relevant file based o
 | `patterns.md` | Five implementation patterns, Advanced topics (dependencies, DB migrations, emergencies) | User asks "how do I implement X with SSD?" |
 | `adoption.md` | Getting started checklist, Common objections, Org adoption, Comparisons to Agile/CD/TBD, Resources | User is onboarding a team, handling pushback, or comparing SSD to other methods |
 | `gate-rules.sh` | Executable bash routine implementing the methodology gate rules; invoked by `/ssd gate` | Automated — not loaded in conversation. See [ADR-0005](../docs/decisions/ADR-0005-gate-execution-model.md). |
+| `frontmatter-validate.py` | Python validator for SSD artifact YAML frontmatter; invoked by the `frontmatter-valid` gate rule | Automated — runs against `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md`. |
+| `schemas/<skill>.yml` | Per-skill schema describing required frontmatter fields and types | Read by `frontmatter-validate.py`. One file per consuming skill. |
 
 **Default**: Load `core.md`. It covers the stable doctrine that answers most questions.
 
@@ -87,7 +89,7 @@ The script:
 - Skips rules whose preconditions don't apply (e.g., no `test_command` in `project.yml` → SKIP, not
   FAIL).
 
-Rules implemented in v1.3.0:
+Rules implemented in v1.4.0:
 
 | Rule | Doctrine cite | What it checks |
 |---|---|---|
@@ -95,6 +97,7 @@ Rules implemented in v1.3.0:
 | `tests-pass` | core.md §1 (Constant Production Parity) | Project's `test_command` (from `project.yml`) exits 0 |
 | `feature-flag-present` | core.md §3 (Feature flags for new code) | Project's `feature_flag_marker` (from `project.yml`) appears in non-doc changed files |
 | `adr-delta` | core.md §2 (Documentation matches implementation) | If architectural diff exceeds threshold (200 lines outside test/doc/migration scope), `docs/decisions/` has a new or modified ADR |
+| `frontmatter-valid` | structured output requirement (SSD/SKILL.md § "Structured Output Requirements") | Every changed `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md` artifact has YAML frontmatter that validates against its skill's schema in `methodology/schemas/<skill>.yml`. SKIPs if Python 3 or PyYAML are missing (graceful degradation). |
 
 The script is the source of truth — `cat methodology/gate-rules.sh` answers "what does the gate
 actually check?" Direct invocation is supported for CI integration:
@@ -107,13 +110,50 @@ bash methodology/gate-rules.sh --base main --json   # structured output for jq
 See [ADR-0005](../docs/decisions/ADR-0005-gate-execution-model.md) for the rationale on bash vs.
 LLM-internal vs. compiled-binary execution.
 
-Future rules (deferred to later iterations of the SSD-upgrades epic): deployable check (CI status
-integration), more sophisticated flag detection, lint/typecheck rules.
+Future rules: deployable check (CI status integration), more sophisticated flag detection,
+lint/typecheck rules. Schema-level enhancements: per-field enum/regex validation, sub-dict shape
+validation (currently `frontmatter-valid` checks only top-level field types).
+
+### Frontmatter validator
+
+The `frontmatter-valid` rule shells out to `methodology/frontmatter-validate.py`. The validator:
+
+- Walks `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md` (or specific paths
+  passed as arguments).
+- Parses the YAML frontmatter at the top of each file.
+- Matches the file to a schema in `methodology/schemas/<skill>.yml` based on filename suffix
+  (e.g., `01-architect.md` → `architect.yml`).
+- Validates field presence and top-level type. Schemas are deliberately scoped to structural
+  validation in v1; sub-field shape and enum/regex constraints are documented in each
+  SKILL.md's "Required output frontmatter" block but not yet enforced here.
+
+Direct invocation:
+
+```bash
+python3 methodology/frontmatter-validate.py                  # walks .ssd/ from cwd
+python3 methodology/frontmatter-validate.py path1.md path2.md  # specific files
+python3 methodology/frontmatter-validate.py --json           # structured output
+```
+
+Requires Python 3.8+ and PyYAML. Both gate-rules.sh and the validator emit clear messages and
+SKIP rather than FAIL when either is missing.
+
+Schemas live in `methodology/schemas/`. Adding a new skill's schema is a 5-line YAML file —
+see existing schemas for format. Adding a new validator type (beyond `string`/`int`/`bool`/`list`/`dict`/`timestamp`) is a one-line addition to `TYPE_MAP` in the validator.
 
 ---
 
 ## Changelog
 
+- **1.4.0** (2026-04-29) — Frontmatter schema validator. New file
+  `methodology/frontmatter-validate.py` (Python 3 + PyYAML) and schema directory
+  `methodology/schemas/` with per-skill schemas (architect, coder, code-reviewer,
+  systems-designer). New `frontmatter-valid` gate rule (5th rule in `gate-rules.sh`) validates
+  every `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md` artifact's frontmatter
+  against its skill schema. SKIPs if Python 3 or PyYAML are unavailable. Two new fixtures in
+  `scripts/parity-test.sh` (valid + invalid frontmatter); harness now runs 14 assertions, all
+  passing. Iter A of the open-deferred-items work that closes the epic's "frontmatter validator"
+  ambition.
 - **1.3.1** (2026-04-28) — `gate-rules.sh` round-2 fixes from iteration-1 code review:
   (a) `feature-flag-present` now greps the diff's added lines (`^+[^+]`) instead of file contents,
   closing a silent-false-PASS when unflagged code is added to a file that already contained a flag

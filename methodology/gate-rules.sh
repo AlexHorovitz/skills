@@ -211,11 +211,60 @@ rule_adr_delta() {
   fi
 }
 
+# ----- rule: frontmatter-valid -----------------------------------------------
+rule_frontmatter_valid() {
+  local validator="$PROJECT_ROOT/methodology/frontmatter-validate.py"
+  if [[ ! -f "$validator" ]]; then
+    emit "SKIP" "frontmatter-valid" "validator not found at methodology/frontmatter-validate.py"
+    return
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    emit "SKIP" "frontmatter-valid" "python3 not on PATH"
+    return
+  fi
+  # Verify PyYAML is importable. The validator itself prints a FAIL line and
+  # exit 2 if PyYAML is missing; we pre-check so the rule SKIPs cleanly
+  # rather than appearing to FAIL on a missing dependency.
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    emit "SKIP" "frontmatter-valid" "PyYAML not installed (pip3 install pyyaml)"
+    return
+  fi
+  # Determine which artifact files to validate. If we have a diff vs BASE,
+  # restrict to changed .ssd/features/*.md and .ssd/milestones/*.md files.
+  # Otherwise (no diff) the validator walks .ssd/features/ and .ssd/milestones/
+  # by default.
+  local files out exit_code
+  files=$(diff_files | grep -E '^\.ssd/(features|milestones)/.*\.md$' || true)
+  if [[ -n "$files" ]]; then
+    local files_array
+    read_lines_into_array files_array <<< "$files"
+    out=$(python3 "$validator" "${files_array[@]}" 2>&1)
+    exit_code=$?
+  else
+    out=$(python3 "$validator" 2>&1)
+    exit_code=$?
+  fi
+  if [[ $exit_code -eq 0 ]]; then
+    local count
+    count=$(echo "$out" | grep -c '^PASS ' || true)
+    if [[ "$count" -gt 0 ]]; then
+      emit "PASS" "frontmatter-valid" "$count artifact(s) validated against schemas"
+    else
+      emit "SKIP" "frontmatter-valid" "no SSD artifacts in scope"
+    fi
+  else
+    local fail_lines
+    fail_lines=$(echo "$out" | grep '^FAIL ' | head -3 | tr '\n' '|')
+    emit "FAIL" "frontmatter-valid" "validator exit $exit_code :: $fail_lines"
+  fi
+}
+
 # ----- run all rules ---------------------------------------------------------
 rule_wip_commits
 rule_tests_pass
 rule_feature_flag_present
 rule_adr_delta
+rule_frontmatter_valid
 
 # ----- emit results ----------------------------------------------------------
 if [[ $JSON -eq 1 ]]; then

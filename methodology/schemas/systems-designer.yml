@@ -1,0 +1,19 @@
+# Frontmatter schema — systems-designer output (02-systems-designer.md).
+# v1: structural validation only.
+
+skill: systems-designer
+applies_to:
+  - 02-systems-designer.md
+
+required:
+  skill: string
+  version: string
+  produced_at: timestamp
+  produced_by: string
+  project: string
+  scope: string
+  consumed_by: list
+  machine_checked: dict
+  human_review: dict
+  block_conditions_met: bool
+  block_conditions: dict

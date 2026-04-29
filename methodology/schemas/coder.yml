@@ -1,0 +1,24 @@
+# Frontmatter schema — coder output (03-coder-status.md).
+# v1: structural validation only.
+
+skill: coder
+applies_to:
+  - 03-coder-status.md
+  - coder-status.md          # multi-iteration features use this name in iterations/<iter>/
+
+required:
+  skill: string
+  version: string
+  produced_at: timestamp
+  produced_by: string
+  project: string
+  scope: string
+  consumed_by: list
+  files_touched: list
+  tests_added: list
+  review_markers: int
+  test_results: dict
+  lint_results: dict
+  type_check_results: dict
+  feature_flag: dict
+  spec_drift: bool

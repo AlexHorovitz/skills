@@ -1,0 +1,20 @@
+# Frontmatter schema — architect output.
+# Validated by methodology/frontmatter-validate.py.
+# v1: structural validation only (field presence + top-level type).
+# Sub-field shape (deliverables.component_diagram, etc.) is documented in
+# architect/SKILL.md but not enforced here. v2 may tighten.
+
+skill: architect
+applies_to:
+  - 01-architect.md          # matched as path-tail (suffix)
+
+required:
+  skill: string
+  version: string
+  produced_at: timestamp
+  produced_by: string
+  project: string
+  scope: string
+  consumed_by: list
+  deliverables: dict
+  quality_gate_pass: bool

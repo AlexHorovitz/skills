@@ -6,6 +6,58 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.14.0] — 2026-04-29
+
+### Iter A — frontmatter schema validator
+
+Closes one of the two deferred-but-tractable items from the v1.13.0 ssd-skill-upgrades epic close:
+**frontmatter schema validator for `.ssd/features/<slug>/*.md` artifacts.** The other deferred
+item (true two-surface parity test) remains open — it requires Agent SDK harness work, not in
+scope here.
+
+**New artifacts:**
+- `methodology/frontmatter-validate.py` — Python 3 + PyYAML validator. Walks
+  `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md`, parses the YAML frontmatter,
+  matches each file to its skill schema, validates field presence and top-level type. Supports
+  `--json` for structured output. Exits 0 on full pass, 1 on any FAIL.
+- `methodology/schemas/architect.yml`, `coder.yml`, `code-reviewer.yml`, `systems-designer.yml`
+  — per-skill schemas (deliberately minimal in v1: required fields + top-level types only).
+  Sub-field shape and enum/regex constraints documented in each SKILL.md but not yet enforced;
+  v2 may tighten.
+
+**New gate rule (5th in `methodology/gate-rules.sh`):**
+- `frontmatter-valid` — runs the validator on changed `.ssd/` artifacts (or walks the whole tree
+  if no diff). PASSes when every artifact validates against its schema; FAILs on missing required
+  fields or wrong types. SKIPs gracefully if Python 3 or PyYAML aren't on the host (matches
+  existing precedent for `tests-pass` SKIP-when-precondition-missing).
+
+**Type system** (validator): `string`, `int`, `bool`, `list`, `dict`, `timestamp`. The
+`timestamp` type accepts datetime, date, or string — PyYAML auto-parses ISO-8601 strings to
+datetime, so the schemas accept either representation.
+
+**Parity-test harness updates** (`scripts/parity-test.sh`):
+- 2 new fixtures: `frontmatter-valid` (passes), `frontmatter-invalid` (fails on missing fields).
+- Both fixtures symlink the validator + schemas into the fixture's `methodology/` to avoid
+  validator-finds-the-real-repo issues (root cause: `Path.cwd()` is now the project root for
+  artifact discovery, but `__file__.resolve()` is still used for schema location, so symlinks
+  resolve correctly for schemas while artifact discovery stays scoped to the fixture).
+- Fixture setup now disables `commit.gpgsign` locally — fixtures in `/tmp` shouldn't and
+  generally can't be GPG-signed; the global gitconfig was breaking them in environments where
+  signing is on by default.
+- Total assertions: 12 → 14, all passing.
+
+**Touched skills:**
+- `methodology` — v1.3.1 → v1.4.0 (Reference Files table now lists the validator + schemas;
+  Gate Rules table adds `frontmatter-valid`; new "Frontmatter validator" sub-section).
+
+**Deferred (still open):**
+- True two-surface parity test (conversational vs command surface produce identical artifact
+  trees). Requires Agent SDK harness; deferred until SSD has executable surface drivers.
+- v2 schema tightening: per-field enum/regex/format validation, sub-dict shape (e.g.,
+  `deliverables.component_diagram` boolean enforcement). Useful but separable iteration.
+
+---
+
 ## [1.13.0] — 2026-04-29
 
 ### Iteration 9 of the SSD skill-upgrades epic — parity-test harness (final)
