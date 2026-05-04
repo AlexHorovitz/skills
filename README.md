@@ -1,12 +1,26 @@
 # InsanelyGreat's SSD — Claude Code Skills
 
+[![Methodology: InsanelyGreat SSD](https://img.shields.io/badge/Methodology-InsanelyGreat%20SSD-0a84ff?style=flat-square)](https://insanelygreat.com/ssd.html)
+[![Manifesto: Agile²](https://img.shields.io/badge/Manifesto-Agile%C2%B2-1d1d1f?style=flat-square)](https://insanelygreat.com/agile2.html)
+[![Free for personal use](https://img.shields.io/badge/License-Free%20for%20personal%20use-30d158?style=flat-square)](LICENSE)
+
 **Library version:** see [`VERSION`](VERSION) · changelog in [`CHANGELOG.md`](CHANGELOG.md)
 
-A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that implements **Shippable States Software Development** — a pragmatic engineering discipline for solo developers and small teams. Platform-adaptive: web, iOS, Android, macOS, and headless.
+A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that implements **Shippable States Development (SSD)** — a pragmatic engineering discipline for solo developers and small teams, originated by [Alex Horovitz](https://insanelygreat.com/about.html) and published at [insanelygreat.com](https://insanelygreat.com). Platform-adaptive: web, iOS, Android, macOS, and headless.
 
 **Core invariant:** If you can't ship it right now, you don't have a product — you have a construction site.
 
-Learn more: [insanelygreat.com](https://insanelygreat.com)
+## Methodology
+
+This repository is the official Claude Code skill implementation of **Shippable States Development**. The canonical methodology pages are:
+
+- 📘 [Shippable States Development (SSD)](https://insanelygreat.com/ssd.html) — the methodology in full
+- 📗 [The InsanelyGreat Guide](https://insanelygreat.com/guide.html) — practical implementation
+- 📙 [Agile²](https://insanelygreat.com/agile2.html) — companion manifesto on process-as-tool
+- 📕 [Solo Developer's Engineering Manifesto](https://insanelygreat.com/solo-developer-manifesto.html)
+- 📒 [The Ratchet Principle: Code Quality Without a QA Team](https://insanelygreat.com/ratchet-principle.html)
+
+If this skill set has helped you ship better software, a star on this repo and a link back to [insanelygreat.com](https://insanelygreat.com) keeps the methodology discoverable.
 
 Verify your installed version matches the guide at [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html):
 
