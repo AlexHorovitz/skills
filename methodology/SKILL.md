@@ -2,7 +2,9 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.4.0
+**Version:** 1.5.0
+
+**Canonical methodology pages**: [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html) (full doctrine), [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html) (practical implementation), [insanelygreat.com/agile2.html](https://insanelygreat.com/agile2.html) (companion manifesto). The website is the user-facing reference; this skill set is the in-repo doctrine the orchestrator enforces.
 
 ## Purpose
 
@@ -145,6 +147,16 @@ see existing schemas for format. Adding a new validator type (beyond `string`/`i
 
 ## Changelog
 
+- **1.5.0** (2026-05-24) — Methodology docs cross-linked to canonical website at insanelygreat.com.
+  `core.md` adds a canonical-reference banner pointing to ssd.html, makes the Continuous-Delivery vs.
+  SSD distinction explicit (CD says "can ship"; SSD requires "is shipped"), and links the Ratchet
+  Principle's CI implementation to the public article with a working `quality.yml`. `adoption.md`
+  refreshes the methodology-comparison block (date-stamped 2026-05-24), adds Shape Up and Kanban
+  comparisons, adds a team-size × work-shape decision table, and links the six new long-form
+  articles from the InsanelyGreat site. `patterns.md` cross-links Dark Launching to the
+  release-management article. This SKILL.md now states the website is the user-facing reference
+  and this skill set is the in-repo doctrine the orchestrator enforces. No behavior change in
+  `gate-rules.sh` or `frontmatter-validate.py`.
 - **1.4.0** (2026-04-29) — Frontmatter schema validator. New file
   `methodology/frontmatter-validate.py` (Python 3 + PyYAML) and schema directory
   `methodology/schemas/` with per-skill schemas (architect, coder, code-reviewer,

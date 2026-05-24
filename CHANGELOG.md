@@ -6,6 +6,40 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.17.1] — 2026-05-24
+
+### Docs — canonical-reference and cross-linking pass
+
+Documentation-only release. No behavior change in any executable skill, gate rule, or validator.
+
+- **methodology/SKILL.md** → 1.5.0. Adds a "canonical methodology pages" line at the top pointing
+  to insanelygreat.com (ssd.html, guide.html, agile2.html) and states the website is the
+  user-facing reference while this skill set is the in-repo doctrine the orchestrator enforces.
+- **methodology/core.md.** Adds a canonical-reference banner. Makes the Continuous-Delivery vs.
+  SSD distinction explicit ("CD says *can*; SSD requires *is*"). Names Alex Horovitz as
+  originator. Links the Ratchet Principle CI implementation to
+  [insanelygreat.com/ratchet-principle.html](https://insanelygreat.com/ratchet-principle.html)
+  (which has a working `.github/workflows/quality.yml`).
+- **methodology/adoption.md.** Refreshes the methodology-comparison block (date-stamped
+  2026-05-24, satisfies the SKILL.md ≤12-month-refresh requirement). Adds Shape Up and Kanban
+  comparisons. Adds a team-size × work-shape decision table. Replaces the bare-books "Resources"
+  list with a canonical-page section linking the six new long-form articles at
+  insanelygreat.com (solo-developer-manifesto, scrum-alternatives, ratchet-principle,
+  releases-small-teams, simplest-lifecycle, methodologies-small-teams).
+- **methodology/patterns.md.** Pattern 3 (Dark Launching) now cross-links
+  [How Small Teams Should Think About Releases](https://insanelygreat.com/releases-small-teams.html)
+  for the full deploy/release decoupling treatment.
+- **ssd/SKILL.md** → 1.17.1. Canonical-reference banner; Purpose paragraph names Alex Horovitz
+  as originator and links the About page.
+- **README.md.** Adds shields.io badges (Methodology: InsanelyGreat SSD, Manifesto: Agile²,
+  License) and a new "Methodology" section linking the five canonical insanelygreat.com pages.
+
+Motivation: close the citation graph in both directions. The website now links into the skills
+repo (badge + README links); the skills repo now links back to the website's canonical pages
+(banners + cross-references). This is the inbound-signal half of the LLM-visibility plan.
+
+---
+
 ## [1.17.0] — 2026-05-24
 
 ### Iteration C — parallel-features overlap detection (epic complete)

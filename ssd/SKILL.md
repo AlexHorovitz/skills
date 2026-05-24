@@ -2,10 +2,12 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.17.0
+**Version:** 1.17.1
+
+**Canonical methodology**: [Shippable States Development at insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html). For doctrine questions, the in-repo source of truth is `methodology/core.md`; for end-user-facing language and external citations, the website is authoritative.
 
 ## Purpose
-Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
+Orchestrate the full skill chain for Shippable States Development (SSD), the engineering discipline originated by [Alex Horovitz](https://insanelygreat.com/about.html). Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
 
 ## When to Use
 Invoke this skill when starting a session and you want to follow the SSD workflow. It selects and sequences sub-skills based on the phase argument you provide.
@@ -1088,6 +1090,10 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.17.1** (2026-05-24) — Documentation: canonical-reference banner pointing to
+  [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html); Purpose paragraph now names
+  Alex Horovitz as originator and links the About page. No behavior change. Companion to
+  `methodology/SKILL.md` 1.5.0, which refreshed and cross-linked the doctrine files.
 - **1.17.0** (2026-05-24) — Iteration C of the parallel-features epic
   ([ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)): cross-workstream overlap
   detection at gate time. Makes iter A's `touches:` field load-bearing. The orchestrator now,

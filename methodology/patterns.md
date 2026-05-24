@@ -99,6 +99,8 @@ if (featureFlags.isEnabled("newDashboard", user)) {
 
 **Critical rule**: Feature is not "done" until the flag is removed. Flag code is technical debt—pay it off quickly.
 
+**Further reading**: [How Small Teams Should Think About Releases](https://insanelygreat.com/releases-small-teams.html) walks through the deploy/release decoupling end-to-end (dark launch → internal flip → gradual rollout → flag retirement).
+
 ---
 
 ## Pattern 4: Timebox with Eject

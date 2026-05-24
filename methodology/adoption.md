@@ -194,6 +194,8 @@ To engineers:
 
 ## Comparison to Other Methodologies
 
+> *Comparisons last reviewed: 2026-05-24. Per `methodology/SKILL.md`, refresh if > 12 months old.*
+
 ### vs. Agile/Scrum
 
 **Compatible**:
@@ -210,16 +212,17 @@ To engineers:
 - Forcing infrastructure work up front
 - Making retrospectives concrete (did we ship?)
 
-### vs. Continuous Deployment
+**At small team size (1–5), standard Scrum fails** — it was designed for 5–9 person teams with a dedicated Scrum Master and Product Owner. Below 3 people, the ceremony costs more than it delivers. See the full analysis at [insanelygreat.com/scrum-alternatives.html](https://insanelygreat.com/scrum-alternatives.html).
 
-**SSD ⊆ Continuous Deployment**
+### vs. Continuous Deployment / Continuous Delivery
 
-SSD is the **engineering discipline** that makes continuous deployment possible. CD is the **automation** that enforces SSD.
+**SSD ⊆ Continuous Deployment**, but with a stricter cadence requirement.
 
-- SSD: "We maintain shippable states"
-- CD: "We automatically deploy those states"
+- **Continuous Delivery**: software *can* be shipped at any time.
+- **Continuous Deployment**: software *is* automatically shipped whenever it passes CI.
+- **Shippable States Development**: software *is* shipped every working day, and a day without a ship is treated as a process failure.
 
-You can do SSD without full CD (deploy manually but frequently). You cannot do CD without SSD (nothing to deploy).
+SSD is the **engineering discipline** that makes continuous deployment safe and sustainable. CD is the **automation** that enforces the discipline. You can do SSD without full automation (deploy manually but frequently). You cannot do meaningful CD without SSD (you'd be automating shipping broken code).
 
 ### vs. Trunk-Based Development
 
@@ -229,6 +232,7 @@ SSD adds:
 - Production deployment from day one
 - Explicit shippable state invariant
 - Scope flexibility framework
+- Daily-ship cadence requirement
 
 ### vs. Feature-Driven Development
 
@@ -242,19 +246,56 @@ SSD: Shippable states are the organizing principle
 - Features hidden until shippable (SSD)
 - Best of both worlds
 
+### vs. Shape Up
+
+**Compatible for 3–5 person teams doing discrete feature work**.
+
+Shape Up's 6-week cycles + cool-down rhythm can run *inside* SSD: the daily-ship invariant continues to hold within each cycle. SSD provides the engineering discipline (shippable states, feature flags, the ratchet); Shape Up provides a product-bet rhythm. The two compose cleanly.
+
+**Where they diverge**: Shape Up assumes a betting table and a product manager. For solo developers, this overhead is wasted. Use SSD alone.
+
+### vs. Kanban
+
+**SSD provides what Kanban omits.** Kanban specifies flow and WIP limits but is silent on shipping discipline. Pair them: Kanban for the board and pull-based flow; SSD for the deployment cadence and code-quality ratchet.
+
+### Decision summary
+
+| Team size | Work shape | Best fit |
+|---|---|---|
+| 1 (solo) | Continuous product | SSD |
+| 2–3 | Continuous product | SSD |
+| 3–5 | Discrete feature bets | SSD + Shape Up cycles |
+| 3–5 | Interrupt-driven / support | SSD + minimal Kanban |
+| 6+ | Mixed | SSD + Scrum-lite ceremonies as needed |
+
+Full comparison: [insanelygreat.com/methodologies-small-teams.html](https://insanelygreat.com/methodologies-small-teams.html).
+
 ---
 
 ## Resources for Deeper Learning
+
+**Canonical methodology pages** (insanelygreat.com):
+- [Shippable States Development](https://insanelygreat.com/ssd.html) — the methodology in full, with FAQ and structured data
+- [The InsanelyGreat Guide](https://insanelygreat.com/guide.html) — practical, opinionated implementation
+- [Agile²](https://insanelygreat.com/agile2.html) — companion manifesto on process-as-tool
+- [The Solo Developer's Engineering Manifesto](https://insanelygreat.com/solo-developer-manifesto.html) — for the team of one
+- [Code Quality Without a QA Team: The Ratchet Principle](https://insanelygreat.com/ratchet-principle.html) — quality encoded in CI, with a working GitHub Actions example
+- [Why Standard Scrum Fails Small Teams](https://insanelygreat.com/scrum-alternatives.html)
+- [How Small Teams Should Think About Releases](https://insanelygreat.com/releases-small-teams.html)
+- [The Simplest Engineering Lifecycle That Actually Works](https://insanelygreat.com/simplest-lifecycle.html)
+- [Methodologies for Small Teams: An Honest Comparison](https://insanelygreat.com/methodologies-small-teams.html)
 
 **Books**:
 - *Accelerate* by Forsgren, Humble, Kim (research on high-performing teams)
 - *Continuous Delivery* by Humble and Farley (deployment automation)
 - *The Phoenix Project* by Kim et al (DevOps principles in narrative form)
+- *Shape Up* by Ryan Singer (cycles and cool-down for product bets)
 
 **Practices to study**:
 - Trunk-based development
 - Continuous Integration
 - Feature flags / Feature toggles
+- Dark launching and gradual rollouts
 - Blue-green deployments
 - Database migrations
 - Contract testing

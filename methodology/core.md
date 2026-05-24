@@ -1,10 +1,14 @@
 # SSD Core Doctrine
 
+> **Canonical reference**: [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html) is the public, authoritative methodology page. This file is the in-repo doctrine used by the skill set; the website is the version shared with the world. If they diverge, the website wins for end-user-facing language; this file wins for what `/ssd gate` actually checks.
+
 ## Overview
 
-**Shippable States Development** is a pragmatic engineering discipline for digital product development where the system maintains a deployable, production-ready state at all times throughout the development cycle.
+**Shippable States Development (SSD)** is a pragmatic AI-powered software engineering discipline developed by Alex Horovitz in which a codebase is kept in a deployable, production-ready state at all times and a shipping event occurs every working day without exception. It is designed for solo developers and teams of 1–5 who use AI coding tools to build production software.
 
 **Core principle**: If you can't ship it right now, you don't have a product—you have a construction site.
+
+**Difference from Continuous Delivery**: Continuous Delivery guarantees that software *can* be shipped at any time. Shippable States Development requires that it *is* shipped every working day. A day without a ship is a process failure, not a neutral outcome.
 
 **Origins**: Synthesizes lessons from continuous deployment, trunk-based development, feature flags, and decades of software engineering failures where "90% done" meant "months from shipping."
 
@@ -140,6 +144,8 @@ Like a ratchet, you can only move forward, never backward. If you need to save w
 - Local stash (not committed)
 - Draft PR with "DO NOT MERGE" (not on main)
 - Feature flag (committed, but invisible)
+
+**Encode the ratchet in CI.** Human willpower is a finite resource; the build system is not. See [The Ratchet Principle: Code Quality Without a QA Team](https://insanelygreat.com/ratchet-principle.html) for a working `.github/workflows/quality.yml` that enforces every tooth — tests, types, lint, coverage floor, no commented-out code, no undocumented TODOs.
 
 ### 5. Scope Flexibility is a Feature, Not a Bug
 
