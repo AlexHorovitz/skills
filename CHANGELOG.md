@@ -6,6 +6,92 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.16.0] — 2026-05-24
+
+### Iteration B — parallel-features orchestrator commands
+
+Second of three iterations of the parallel-features epic. Ships the three new orchestrator
+commands designed in iteration A's architect spec. No new schema fields (iter A shipped those);
+this iteration is pure documentation that makes the LLM-driven orchestrator able to *execute*
+parallel-workstream lifecycle. See [ADR-0007](docs/decisions/ADR-0007-parallel-features.md).
+
+**New orchestrator commands** (documented in `ssd/SKILL.md` § "Workstream Lifecycle Commands"):
+
+- **`/ssd feature new <slug>[#<iter>] [--branch <name>] [--worktree] [--from <ref>] [--allow-dirty]`**
+  — start a new workstream end-to-end. Creates the git branch, optional worktree (sibling-of-repo
+  by default), brief stub, `current.yml.active[]` entry, and `current.notes.yml` section in one
+  step. Twelve numbered failure modes covering dirty trees, branch collisions, slug/iteration
+  collisions, worktree path collisions, brief-file collisions. Handles `<slug>#<iter>` syntax
+  per § "Iterations Inside a Feature" — creates iterations on existing features (prompting to
+  promote flat-layout features) or new features with their first iteration.
+
+- **`/ssd switch <slug>[#<iter>] [--no-note | --auto-note | --allow-dirty]`** — validates-all-first
+  switch. Step 3 verifies target exists, target branch is resolvable, working tree is clean (or
+  `--allow-dirty`), worktree path exists if applicable. Only after every validation passes does
+  step 4 write the handoff note (per `switch_note_default` / profile — prompt/auto/skip) and
+  step 5 run `git checkout` (or surface a literal `cd <path>` line for worktrees). Step-3
+  validation guarantees no state mutation on failure — solves the "handoff written then checkout
+  fails" race.
+
+- **`/ssd worktree <slug>[#<iter>] add|remove [--path <path>]`** — explicit worktree lifecycle,
+  decoupled from `feature new`. `add` resolves the worktree path via the configurable
+  `worktree_root` + `worktree_name_pattern` (defaults `../` + `{repo}-{slug}`). `remove` refuses
+  on dirty worktrees (FM-9), `git worktree prune`s when the path is missing on disk (recovery
+  for manual `rm`), preserves the underlying branch.
+
+**Self-verification block at end of § "Workstream Lifecycle Commands"** — instructs the
+LLM-executing orchestrator to verify all failure-mode checks ran, all git invocations matched
+the documented commands verbatim, and `current.yml` / `current.notes.yml` writes are atomic
+(temp-file-rename or in-memory-prepare-then-write).
+
+**Touched skills:**
+
+- `ssd` — v1.15.0 → v1.16.0. New ~250-line "Workstream Lifecycle Commands" section. Updated
+  Invocation table with three new command rows. Step 0 of `/ssd` (no-arg) Auto-Detect now
+  cross-references the new commands.
+- `ssd-init` — v1.5.0 → v1.6.0. Step 6 (project.yml write) now writes the four
+  `project.yml.ssd.*` parallel-features keys with their defaults (`branch_pattern: "add-{slug}"`,
+  `worktree_root: "../"`, `worktree_name_pattern: "{repo}-{slug}"`, `switch_note_default: prompt`).
+  New paragraph after Step 6 explains the parallel-features defaults and links to ADR-0007.
+- `ssd/rails.md` — v1.0.0 → v1.1.0. New "What This Is NOT" bullet clarifying that the
+  v1.16.0 workstream lifecycle commands are intentionally non-rail (workflow ergonomics on the
+  workstream container, not methodology on the workstream's eight rail steps).
+
+**Edge cases resolved (iter B architect spec EC-1 through EC-5):**
+
+- EC-1: Branch naming for iterations is `add-<slug>-<iter>` (advisory, configurable). The
+  orchestrator records the full string in the workstream entry's `branch:` field; auto-detect
+  Step 0's exact-match path handles it.
+- EC-2: `/ssd feature new <slug>#<iter>` is valid and creates an iteration on an existing or
+  new feature; promotion from flat-layout is non-destructive per ADR-0001.
+- EC-3: Dirty-tree check runs BEFORE any state mutation (formalized in the validate-all-first
+  step 3 of `/ssd switch`).
+- EC-4: Detached HEAD on `/ssd switch` means `source` is `null` — handoff capture is skipped,
+  warning logged, switch proceeds.
+- EC-5: `/ssd worktree remove` on a missing worktree dir runs `git worktree prune` and clears
+  state with a warning, rather than failing.
+
+**Schema:** no changes. Iter A's optional `branch` / `worktree` / `touches` fields on
+`current.yml.active[]` cover everything iter B needs. The new commands write those fields
+directly.
+
+**Deferred to iteration C (v1.17.0):**
+
+- Coder-pass `touches:` backfill on gate runs (`git diff --name-only <base>...HEAD` union into
+  the recorded `touches:` list).
+- Cross-workstream overlap check at `/ssd gate` time, surfacing as `OVERLAP-N` SUGGESTION-tier
+  findings in `code-reviewer/SKILL.md`.
+- `methodology/gate-rules.sh` workstream-aware base-branch detection.
+
+**Deferred (iteration D, only if real friction emerges):**
+
+- `/ssd workstream adopt <slug> <branch>` (claim an existing branch as a workstream).
+- `/ssd workstream set-branch <slug> <branch>` (rename / repair).
+- `/ssd workstream handoff <slug>` (write a handoff note for a workstream not currently
+  resolved as the source — useful when detached HEAD blocked auto-capture).
+
+---
+
 ## [1.15.0] — 2026-05-21
 
 ### Iteration A — parallel-features schema + auto-detect (read-only)
