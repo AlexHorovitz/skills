@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 
 ## Purpose
 Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabilities, performance issues, and maintainability problems before they reach production. Be ruthless but constructive—the goal is better code, not crushed developers.
@@ -213,6 +213,100 @@ Use consistent prefixes:
 | `💭 QUESTION:` | Seeking clarification | Depends |
 | `💡 SUGGESTION:` | Optional improvement idea | No |
 | `📝 NIT:` | Style/formatting, truly optional | No |
+| `🔗 OVERLAP:` | (v1.5.0+) Files touched by another active workstream | No |
+
+---
+
+## Cross-Workstream Overlap Check (added v1.5.0)
+
+See `ssd/SKILL.md` § "Workstream Lifecycle Commands" and
+[ADR-0007](../docs/decisions/ADR-0007-parallel-features.md) for the parallel-features context.
+
+When invoked via `/ssd gate <slug>`, code-reviewer additionally consults
+`.ssd/current.yml.active[]` to detect file-touch overlap between the gated workstream and
+other active workstreams. The output is an **informational warning** at SUGGESTION tier
+(`🔗 OVERLAP-N`), never BLOCKER, never MAJOR, never even MINOR. The gate is not blocked by
+overlap.
+
+**Trigger conditions.** The check runs ONLY when all of:
+
+- The reviewer is given a workstream slug (typically because invoked via `/ssd gate <slug>`)
+  AND `.ssd/current.yml.active[]` is readable at the project root.
+- `current.yml.active[]` has more than one entry.
+- The gated workstream's `touches:` is non-empty.
+- At least one other active workstream has non-empty `touches:`.
+
+If any condition is false, skip — no overlap findings emitted. Ad-hoc PR reviews that don't
+go through `/ssd gate` skip this check entirely.
+
+**Algorithm.**
+
+1. Let `gated` = the workstream under review (matched via the orchestrator's branch → slug
+   resolution per `ssd/SKILL.md` § "/ssd (no-arg) — Auto-Detect" Step 0).
+2. For each `O` in `current.yml.active` where `O.slug != gated.slug` (self-exclusion is
+   mandatory; never intersect a workstream against itself):
+   1. Resolve `gated.touches` against the working tree:
+      `git ls-files <each glob>` to produce `gated_files` (set of paths).
+   2. Resolve `O.touches` similarly to produce `O_files`.
+   3. Compute `overlap = gated_files ∩ O_files`.
+   4. If `overlap` is non-empty, emit one `OVERLAP-N` finding (format below).
+
+`N` is sequential per review (`OVERLAP-1`, `OVERLAP-2`, …).
+
+**OVERLAP-N finding output structure:**
+
+```yaml
+findings:
+  - id: OVERLAP-1
+    severity: suggestion                    # NOT blocker/major/minor — overlap is informational
+    category: cross-workstream-overlap
+    title: "Touches files modified by parallel workstream `<other-slug>`"
+    files:
+      - path: <overlapping-path>
+        also_modified_by: [<other-slug>]
+    suggestion: |
+      Workstream `<other-slug>` (currently in phase `<phase>`, branch `<branch>`) declares
+      overlapping touches on the listed file(s). Consider serializing with the other
+      workstream (rebase onto its merge before this gate) OR confirm the overlap is
+      intentional (e.g., layered changes). This is not a blocker; the gate still passes if
+      `blocker == 0 AND major == 0`.
+```
+
+**Multiple overlaps with the same partner workstream:** one OVERLAP-N finding, with all
+overlapping paths listed under `files`.
+
+**Multiple overlaps across multiple partners:** one OVERLAP-N finding per partner workstream
+(not per file). Each finding's `also_modified_by` lists just that one partner.
+
+**Three-or-more workstreams overlap on the same file:** one OVERLAP-N per pair as above; the
+single overlapping file appears in multiple findings (one per partner). This is intentional —
+the user wants to see *who* shares each file.
+
+**Edge cases:**
+
+- **Empty `touches:` on either side.** No intersection possible → skip the pair.
+- **Glob matches no files yet** (architect declared a path that doesn't exist).
+  `git ls-files <glob>` returns empty → no overlap. Correct — future files don't trigger
+  spurious warnings, and the next gate (after the file is created) catches the overlap.
+- **`**` globs and case sensitivity.** Standard `git ls-files` semantics; POSIX
+  case-sensitive matching. Document.
+- **Untracked files.** `git ls-files` returns tracked files by default (no `--others`).
+  A workstream declaring touches on a brand-new untracked file won't match until the file
+  is tracked. We deliberately exclude `--others` because it would also include editor swap
+  files, build artifacts, and other untracked-but-respected files, producing spurious overlap
+  warnings on every gate.
+
+**Why SUGGESTION, not MAJOR.** Per
+[ADR-0007 § "Alternatives Rejected"](../docs/decisions/ADR-0007-parallel-features.md): overlap
+can be intentional (one feature extends a file the other added). The orchestrator has no way
+to distinguish intentional from accidental overlap; the user always does. A future reviewer
+should NOT upgrade `OVERLAP-N` to MAJOR on speculation — that would block merges in exactly
+the cases where overlap is the *intent*.
+
+**`current.yml.active[].touches` provenance:** the field is populated in two passes per
+ADR-0007 — architect declares intent at design time, coder unions actual diff paths at each
+`/ssd gate` invocation (`git diff --name-only <base>...HEAD` unioned into the recorded list).
+The overlap check reads whichever is current.
 
 ---
 
@@ -466,6 +560,16 @@ small fix-ups where producing a second file is overkill.
 
 ## Changelog
 
+- **1.5.0** (2026-05-24) — Iteration C of the parallel-features epic
+  ([ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)): cross-workstream overlap
+  detection at gate time. New § "Cross-Workstream Overlap Check" added immediately after
+  § "Severity Levels." New `🔗 OVERLAP:` severity prefix (SUGGESTION-tier, never blocks).
+  When invoked via `/ssd gate <slug>` with multiple active workstreams declaring non-empty
+  `touches:` lists, the reviewer intersects file sets via `git ls-files <glob>` and emits one
+  OVERLAP-N finding per overlapping partner workstream. Self-exclusion mandatory (never
+  intersect a workstream against itself); ad-hoc reviews outside `/ssd gate` skip the check
+  entirely. ADR-0007 § "Alternatives Rejected" explicitly forbids upgrading OVERLAP-N to MAJOR
+  on speculation.
 - **1.4.0** (2026-04-29) — Iteration 4 of the ssd-skill-upgrades epic (P1.5): deferred-findings
   verification. New "Deferred-Findings Verification" section: every multi-iteration review reads
   `iterations/<iter>/deferred.yml` and verifies each entry's status against the diff. New
