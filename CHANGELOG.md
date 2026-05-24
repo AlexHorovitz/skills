@@ -6,6 +6,83 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.15.0] — 2026-05-21
+
+### Iteration A — parallel-features schema + auto-detect (read-only)
+
+First of three iterations of the parallel-features epic. Promotes branch/worktree/touched-files
+to first-class workstream artifacts, enabling concurrent feature workstreams without per-switch
+git ceremony. See [ADR-0007](docs/decisions/ADR-0007-parallel-features.md) for the rationale,
+the alternatives rejected, and the three-iteration slicing.
+
+**Also bundled in this release:** [ADR-0006](docs/decisions/ADR-0006-frontmatter-validator.md) —
+retroactive documentation of the v1.14.0 frontmatter validator. The v1.14.0 release shipped the
+validator + 5th gate rule without an ADR; ADR-0006 closes that doctrine debt. Cherry-picked
+into this PR rather than shipped on its own branch to avoid an ADR-numbering gap on `main`
+(round-1 code-review MAJOR-1 from this iteration).
+
+**This iteration is intentionally read-only at the orchestrator surface** — no new commands
+ship, no existing commands change behavior beyond auto-detect. New commands and overlap
+detection ship in iterations B (v1.16.0) and C (v1.17.0) respectively.
+
+**Schema additions (`.ssd/current.yml.active[]`, all optional, backward-compatible):**
+- `branch: <string>` — git branch for this workstream. Defaults from
+  `project.yml.ssd.branch_pattern`.
+- `worktree: <absolute-path-or-null>` — opt-in worktree path; `null` = main checkout.
+- `touches: [<glob>, ...]` — file globs the workstream is known to modify. Populated by
+  architect (intent at design) and unioned by coder (actual diff each gate). Used for
+  cross-workstream overlap detection in iteration C — not yet active.
+
+Existing v2 `current.yml` files without these keys parse and behave identically. The
+`schema_version: 2` field is unchanged — additions are strictly additive per ADR-0007's
+"reject `schema_version: 3` bump" decision.
+
+**Configuration additions (`.ssd/project.yml.ssd`, all optional, defaulted):**
+- `branch_pattern: "add-{slug}"` — default for `/ssd feature new` (iteration B).
+- `worktree_root: "../"` — default parent directory for new worktrees.
+- `worktree_name_pattern: "{repo}-{slug}"` — default worktree directory name.
+- `switch_note_default: prompt|auto|skip` — handoff-note capture behavior on
+  `/ssd switch` (iteration B). Novice profile defaults to `prompt`; expert to `auto`.
+
+**Orchestrator behavior (`ssd/SKILL.md` v1.15.0):**
+- `/ssd` (no-arg) gains **Step 0**: branch → workstream auto-resolution. (1) Exact match
+  against any `active[].branch`, (2) pattern match via `branch_pattern` prefix strip,
+  (3) fall through to the existing decision tree on no-match. Read-only; the resolution
+  changes which workstream the decision tree operates on, but the proposal itself still
+  has to be accepted.
+- Lazy backfill: on the next state write, an active entry with `branch: <absent>` gets
+  the current checkout's branch — but only when exactly one active workstream is
+  ambiguous (no guess on multi-ambiguity).
+
+**Touched skills:**
+- `ssd` — v1.10.0 → v1.15.0 (re-aligns SKILL.md version with library version). New
+  Step 0 in `/ssd` (no-arg). New schema fields documented in Session Continuity.
+  New worktree footnote in Artifact Tree.
+
+**Spec drift (recorded for the code-reviewer):**
+- The architect spec called for extending `methodology/schema-validator.sh` with optional-field
+  checks. No such file exists — the actual validator (`methodology/frontmatter-validate.py`,
+  introduced in v1.14.0) validates *artifact frontmatter*, not `current.yml`. The new fields
+  live on `current.yml.active[]`, which has no separate schema-validating script. Coder
+  dropped the validator change from iteration A. See [.ssd/features/parallel-features/03-coder-status.md](.ssd/features/parallel-features/03-coder-status.md)
+  for details. If `current.yml` schema validation becomes load-bearing for the parallel-features
+  flow (it currently is not — fields are optional and the orchestrator reads them tolerantly),
+  iteration B or C will add a dedicated `current.yml` validator.
+
+**Deferred to iteration B (v1.16.0):**
+- New commands: `/ssd feature new`, `/ssd switch`, `/ssd worktree`.
+- `ssd-init/SKILL.md` mention of concurrent workstream support + writing the four new
+  `project.yml.ssd.*` defaults at init time.
+- `ssd/rails.md` brief annotation that `switch`/`pause` are intentionally non-rail.
+
+**Deferred to iteration C (v1.17.0):**
+- Coder-pass `touches:` backfill on gate runs.
+- Cross-workstream overlap check (`OVERLAP-N` SUGGESTION-tier finding in
+  `code-reviewer/SKILL.md`).
+- `methodology/gate-rules.sh` workstream-aware base-branch detection.
+
+---
+
 ## [1.14.0] — 2026-04-29
 
 ### Iter A — frontmatter schema validator

@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.10.0
+**Version:** 1.15.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -60,6 +60,29 @@ remain as escape hatches for forcing a specific step, but the user almost never 
 The default invocation. The orchestrator reads `.ssd/current.yml` and `.ssd/current.notes.yml`,
 surfaces active workstreams, and proposes the next action without forcing the user to know which
 phase command to type.
+
+**Step 0: Branch → workstream resolution (added v1.15.0, see [ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)).**
+Before walking the decision tree below, the orchestrator attempts to resolve the current git
+branch to a specific active workstream:
+
+1. Read the current branch via `git symbolic-ref --short HEAD`. If detached or git is unavailable,
+   skip Step 0 and fall through to the decision tree.
+2. **Exact match.** If any `current.yml.active[].branch` equals the current branch, that workstream
+   is the resolved target. Treat the session as "one active workstream" for the rest of the no-arg
+   flow regardless of how many other workstreams are also active. By construction, no two `active[]`
+   entries should share a `branch:` value — iteration B's `/ssd feature new` enforces this on
+   creation. If the orchestrator encounters duplicate branches (a state corruption from manual
+   YAML editing), it emits an error and refuses to guess rather than picking a first match.
+3. **Pattern match.** Otherwise, strip the `branch_pattern` prefix (from
+   `.ssd/project.yml.ssd.branch_pattern`, default `add-{slug}`) and look up the remainder against
+   `active[].slug`. If found, resolve to that workstream and lazily backfill its `branch:` field
+   on the next state write.
+4. **No match.** Fall through to the decision tree below — auto-detect cannot determine which
+   workstream is in scope from the branch alone, so the user gets the standard multi-workstream
+   prompt (case 3 below).
+
+Step 0 is **read-only and never silently advances a phase**. It only changes which workstream the
+existing decision tree operates on; the proposal itself still has to be accepted.
 
 **Decision tree:**
 
@@ -320,11 +343,15 @@ Discoverability via `/ssd --explain "<intent>"`, never gatekeeping.
 
 ### Profile-aware defaults
 
-| Profile | Default surface | Phase commands | Confirmations | Narration | YAML editing |
-|---|---|---|---|---|---|
-| novice   | conversational | rejected with hint | yes, on irreversible steps | full | discouraged (`current.notes.yml` only) |
-| standard | conversational | accepted           | only on destructive ops      | concise | allowed |
-| expert   | command (or conversational, user choice) | accepted | none | minimal | expected |
+| Profile | Default surface | Phase commands | Confirmations | Narration | YAML editing | `switch_note_default` |
+|---|---|---|---|---|---|---|
+| novice   | conversational | rejected with hint | yes, on irreversible steps | full | discouraged (`current.notes.yml` only) | `prompt` |
+| standard | conversational | accepted           | only on destructive ops      | concise | allowed | `prompt` |
+| expert   | command (or conversational, user choice) | accepted | none | minimal | expected | `auto` |
+
+The `switch_note_default` column (added v1.15.0, [ADR-0007](../docs/decisions/ADR-0007-parallel-features.md))
+controls the handoff-note capture behavior of `/ssd switch <slug>` (iteration B). The per-profile
+default can be overridden in `.ssd/project.yml.ssd.switch_note_default` (values: `prompt | auto | skip`).
 
 ### Teaching mode
 
@@ -442,6 +469,18 @@ The `.ssd/` directory (and its `.gitignore` entry) is created by the `ssd-init` 
 at the start of any SSD-managed project. `ssd-init` is a prerequisite for any `/ssd` phase; the
 orchestrator checks for `.ssd/project.yml` on invocation and prompts the user to run `ssd-init` if
 absent.
+
+**Worktree note (v1.15.0, [ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)):** a workstream
+with a non-null `worktree:` field has its *working tree* (source files, in-progress edits) at the
+recorded sibling path — but the authoritative `.ssd/` directory remains at the main repo checkout.
+`current.yml`, `current.notes.yml`, and the `features/<slug>/` artifact tree are read and written
+only in the main checkout; linked worktrees share the git index but not the `.ssd/` working files
+(`.ssd/` is gitignored). Sub-skills invoked from a linked worktree resolve the main checkout's
+path via `git rev-parse --path-format=absolute --git-common-dir` (then take the parent directory)
+before touching `.ssd/`. **Requires git 2.31+** (the `--path-format` flag was added in March
+2021); on older git, fall back to `realpath "$(git rev-parse --git-common-dir)"` which works
+back to git 2.5+ but requires a `realpath` binary (GNU coreutils or BSD/macOS native). The
+iteration-B `worktree` and `switch` commands carry this fallback in their git-shell-out helper.
 
 ---
 
@@ -566,12 +605,30 @@ active:
     gate_rounds: 0                   # incremented per code-review round; populated by future iter
     rail_deviations: []              # list of {step, reason, ts}; populated by future iter
     blockers: []
+
+    # Parallel-features fields (v1.15.0, see ADR-0007). All optional; absence is valid.
+    branch: add-goal-approval-flow   # git branch for this workstream; defaults from project.yml.ssd.branch_pattern
+    worktree: null                   # null = main checkout; string = absolute path to git worktree
+    touches: []                      # list of file globs the workstream is known to modify; populated
+                                     #   by architect (intent) and unioned by coder (actual diff)
 archived: []
 ```
 
 The `iteration`, `gate_rounds`, and `rail_deviations` fields are nullable / default-empty placeholders
 populated by later iterations of the SSD-upgrades epic (P1.1, P1.2, P2.A). They are present in v2 from
 the start so v2 ships forward-compatible — no second schema bump when those iterations land.
+
+The `branch`, `worktree`, and `touches` fields (v1.15.0) are optional additive extensions per
+[ADR-0007](../docs/decisions/ADR-0007-parallel-features.md). Existing v2 `current.yml` files
+without these fields continue to parse and behave identically. When the orchestrator next touches
+an active entry whose `branch:` is absent, it lazily backfills `branch:` with the current
+checkout's branch — but only when **both** guards hold: (a) exactly one active workstream has
+no recorded `branch:` (no guess on multi-ambiguity), and (b) the current branch plausibly
+corresponds to that workstream, i.e., the branch is the result of `branch_pattern` substituted
+with the workstream's slug (default: `add-<slug>`). The second guard prevents incorrect backfill
+when the user is checked out on an unrelated branch (a debug/experiment/hotfix branch). If
+either guard fails, the orchestrator leaves `branch:` absent and prompts the user the next time
+disambiguation matters.
 
 ### `current.notes.yml` (free-form)
 
@@ -698,6 +755,20 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.15.0** (2026-05-21) — Iteration A of the parallel-features epic
+  ([ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)): schema substrate +
+  read-only branch→workstream auto-detection. Three new optional fields on
+  `current.yml.active[]` — `branch:`, `worktree:`, `touches:` — fully backward-compatible
+  with existing v2 files. Four new optional keys on `.ssd/project.yml.ssd` —
+  `branch_pattern` (default `add-{slug}`), `worktree_root` (default `../`),
+  `worktree_name_pattern` (default `{repo}-{slug}`), `switch_note_default`
+  (`prompt|auto|skip`). `/ssd` (no-arg) gains a Step 0 that resolves the current branch
+  to a specific active workstream via exact match against `branch:` or pattern match
+  against `branch_pattern`, falling through to the existing decision tree on no-match.
+  New artifact-tree footnote covers the worktree case (working tree at sibling path,
+  authoritative `.ssd/` in main checkout). New orchestrator commands (`/ssd feature new`,
+  `/ssd switch`, `/ssd worktree`) and cross-workstream overlap detection ship in
+  iterations B (v1.16.0) and C (v1.17.0) respectively.
 - **1.10.0** (2026-04-29) — Iteration 8 of the ssd-skill-upgrades epic (P2.B, ADR-0004):
   developer profile + teaching mode. New `developer_profile` field on `.ssd/project.yml`
   (`novice|standard|expert`); profile-aware defaults table; decaying teaching mode (default 5
