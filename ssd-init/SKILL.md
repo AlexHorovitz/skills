@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 
 ## Purpose
 
@@ -257,6 +257,12 @@ ssd:
   initialized_at: <ISO-8601>
   artifact_root: .ssd/            # relative to project root
 
+  # Parallel-features defaults (v1.16.0, ADR-0007). Override per-project as needed.
+  branch_pattern: "add-{slug}"
+  worktree_root: "../"
+  worktree_name_pattern: "{repo}-{slug}"
+  switch_note_default: prompt    # novice/standard default; profile-aware fallback to `auto` for expert
+
 integrations:                    # optional; filled in as features are added
   - type: jira
     enabled: false
@@ -274,6 +280,15 @@ rails: rails.md                  # default; teams may fork rails.md and point he
 `ssd-init` writes `developer_profile: standard` and `teaching_mode.enabled: true` by default. A
 user who knows they want a different profile sets it explicitly during init or edits `project.yml`
 afterward.
+
+**Parallel-features defaults (v1.6.0):** `ssd-init` writes the four optional `ssd.*` keys
+(`branch_pattern`, `worktree_root`, `worktree_name_pattern`, `switch_note_default`) with their
+documented defaults so the v1.16.0+ workstream lifecycle commands (`/ssd feature new`,
+`/ssd switch`, `/ssd worktree`) can resolve without prompting per-invocation. The values are
+hints, not enforcement — a team that uses `feature/{slug}` branches sets `branch_pattern`
+accordingly. See [ADR-0007](../docs/decisions/ADR-0007-parallel-features.md) and `ssd/SKILL.md`
+§ "Workstream Lifecycle Commands." Concurrent workstreams are supported out of the box;
+single-feature flow remains the default and requires no awareness of these keys.
 
 ### Step 7 — Initialize `.ssd/current.yml` (v2) + `.ssd/current.notes.yml`
 

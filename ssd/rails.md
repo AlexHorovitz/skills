@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 ## Purpose
 
@@ -121,9 +121,20 @@ this file, name the variant, and reference the variant in their `project.yml`.
 - **Not a replacement for `methodology/core.md`.** Doctrine ("why these eight steps") is in core.
   Mechanics ("how each step works") is in the per-skill SKILL.md files. This document is the
   middle layer: the named sequence.
+- **Not a list of every orchestrator command.** The rails are per-workstream methodology steps.
+  Commands that operate on the workstream *container* — `/ssd feature new`, `/ssd switch`,
+  `/ssd worktree` (added v1.16.0, see [ADR-0007](../docs/decisions/ADR-0007-parallel-features.md))
+  — are **intentionally non-rail**. They manage workflow ergonomics (parallel workstreams,
+  pause/resume, worktree lifecycle), not methodology. Using `/ssd switch` mid-iteration does
+  NOT record a `rail_deviation` because pausing isn't a step at all. The eight-step rail
+  sequence applies per workstream; the lifecycle commands apply across workstreams.
 
 ## Changelog
 
+- **1.1.0** (2026-05-24) — Iteration B of the parallel-features epic. New "What This Is NOT"
+  bullet clarifying that v1.16.0's workstream lifecycle commands (`/ssd feature new`,
+  `/ssd switch`, `/ssd worktree`) are intentionally non-rail. They manage workflow ergonomics
+  on the workstream container, not methodology on the workstream's eight rail steps.
 - **1.0.0** (2026-04-29) — Initial release. Iteration 7 of the ssd-skill-upgrades epic (P2.A,
   ADR-0003). Documents the eight-step opinionated path, rail-deviation logging, and the
   surface-agnostic guarantee.
