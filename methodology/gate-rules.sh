@@ -22,6 +22,14 @@
 
 set -uo pipefail   # NOTE: not -e — we want to run all rules even if one fails.
 
+# BASE defaults to "main" by design — see docs/decisions/ADR-0007-parallel-features.md § "Q1".
+# When called from the /ssd orchestrator on behalf of a parallel-features workstream, the
+# orchestrator passes `--base <ref>` explicitly (typically origin/main or the workstream's
+# recorded base). The script itself remains standalone and CI-friendly; it intentionally does
+# NOT auto-derive the base from .ssd/current.yml so it can be invoked as a plain bash script
+# without orchestrator context. Future iter-D `/ssd workstream` commands may introduce a
+# `base:` field on the workstream entry; this script would still need an explicit `--base`
+# from the caller. Keep the standalone contract.
 BASE="main"
 JSON=0
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"

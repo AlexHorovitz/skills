@@ -6,6 +6,84 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.17.0] — 2026-05-24
+
+### Iteration C — parallel-features overlap detection (epic complete)
+
+Third and final iteration of the parallel-features epic. Iter A (v1.15.0) shipped the schema
+substrate (`branch`, `worktree`, `touches`). Iter B (v1.16.0) shipped the orchestrator commands
+(`/ssd feature new`, `/ssd switch`, `/ssd worktree`). **Iter C makes iter A's `touches:` field
+load-bearing** — the architect-pass intent and coder-pass diff backfill that have been recorded
+since v1.15.0 are now actually consumed at gate time.
+
+See [ADR-0007](docs/decisions/ADR-0007-parallel-features.md) — same ADR covers all three
+iterations.
+
+**The behavior change.** When `/ssd gate <slug>` runs and `current.yml.active[]` has more than
+one workstream, two new things happen:
+
+1. **Touches backfill.** The orchestrator computes `git diff --name-only <base>...HEAD` for
+   the gated workstream and unions the result into `current.yml.active[<slug>].touches`. This
+   runs BEFORE code-reviewer, so the reviewer sees an up-to-date touch list. Architect-intent
+   paths that haven't been touched yet are preserved (union, not replacement).
+
+2. **Cross-workstream overlap check.** `code-reviewer` consults the peer workstreams'
+   `touches:` fields, intersects via `git ls-files <glob>`, and emits `OVERLAP-N` findings for
+   any non-empty intersections — at **SUGGESTION tier**, never BLOCKER or MAJOR. The gate is
+   not blocked by overlap. Per ADR-0007, this is by design: overlap can be intentional, and
+   the user has context the orchestrator doesn't.
+
+The new `🔗 OVERLAP:` severity prefix is added to the canonical severity table in
+`code-reviewer/SKILL.md`. ADR-0007 § "Alternatives Rejected" explicitly forbids upgrading
+OVERLAP-N to MAJOR on speculation.
+
+**Touched skills:**
+
+- `code-reviewer` — v1.4.0 → v1.5.0. New § "Cross-Workstream Overlap Check" (~80 lines) with
+  algorithm, finding format, edge cases (`**` globs, untracked files, empty `touches:`,
+  self-exclusion guarantee), and explicit no-upgrade rule. New `🔗 OVERLAP:` severity prefix
+  row in the severity table.
+- `ssd` — v1.16.0 → v1.17.0. § "Methodology Enforcement" gains two paragraphs: one naming the
+  cross-workstream overlap check as part of `/ssd gate`, one documenting the workstream-aware
+  base detection pattern (orchestrator passes `--base` explicitly; gate-rules.sh remains
+  standalone). § "Session Continuity" `touches:` schema comment now documents the gate-time
+  union and the OVERLAP-N consumer.
+
+**Tooling:**
+
+- `methodology/gate-rules.sh` — added comment block near `BASE="main"` declaration explaining
+  the standalone-vs-orchestrator contract. No behavior change to the script.
+
+**Schema:** unchanged. Iter A's `touches:` field is now actually consumed; no new fields.
+
+**Trigger conditions for the overlap check** (all must hold; if any false, the check skips and
+no OVERLAP findings are emitted):
+
+- Review is invoked via `/ssd gate` (not an ad-hoc code-reviewer invocation).
+- `current.yml.active[]` has more than one entry.
+- The gated workstream's `touches:` is non-empty.
+- At least one other active workstream has non-empty `touches:`.
+
+**Out-of-scope for iter C, deferred to iter D (only if real friction emerges):**
+
+- `/ssd workstream adopt <slug> <branch>` — claim an existing branch as a workstream.
+- `/ssd workstream set-branch <slug> <branch>` — rename / repair (called out in iter B's
+  FM-14 as the eventual remedy for worktree-branch drift).
+- `/ssd workstream handoff <slug>` — write a handoff note for a workstream not currently
+  resolved as `source` (useful when detached HEAD blocked auto-capture during `/ssd switch`).
+- Workstream-base auto-derivation in `gate-rules.sh` — explicit `--base` from the orchestrator
+  is the current contract.
+
+**Parallel-features epic status: COMPLETE.**
+
+Three iterations, three ADR-0007-conformant releases, no schema-version bumps. The original
+ask ("I would like to be allowed to work on multiple features at once") is now fully
+delivered: schema substrate (iter A), ergonomic commands (iter B), cross-workstream
+awareness (iter C). The epic-level workstream `parallel-features` archives to
+`.ssd/archive/features/parallel-features/` after this release.
+
+---
+
 ## [1.16.0] — 2026-05-24
 
 ### Iteration B — parallel-features orchestrator commands

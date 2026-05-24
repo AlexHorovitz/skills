@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.16.0
+**Version:** 1.17.0
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development. Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -923,7 +923,11 @@ active:
     branch: add-goal-approval-flow   # git branch for this workstream; defaults from project.yml.ssd.branch_pattern
     worktree: null                   # null = main checkout; string = absolute path to git worktree
     touches: []                      # list of file globs the workstream is known to modify; populated
-                                     #   by architect (intent) and unioned by coder (actual diff)
+                                     #   by architect (intent at design time) and unioned by coder
+                                     #   (v1.17.0+: `git diff --name-only <base>...HEAD` at each /ssd
+                                     #   gate run). Read by code-reviewer to emit OVERLAP-N findings
+                                     #   on cross-workstream file overlap — see code-reviewer/SKILL.md
+                                     #   § "Cross-Workstream Overlap Check".
 archived: []
 ```
 
@@ -1018,6 +1022,22 @@ bash methodology/gate-rules.sh --base main --json    # JSON for jq / CI parsing
 See [ADR-0005](../docs/decisions/ADR-0005-gate-execution-model.md) for why this is a bash script
 rather than orchestrator-internal LLM checks.
 
+**Cross-workstream overlap check (v1.17.0+).** When `/ssd gate` runs on a workstream that has
+peers in `current.yml.active[]`, the orchestrator additionally (a) updates the gated workstream's
+`touches:` by unioning `git diff --name-only <base>...HEAD` into the recorded list, and (b)
+invokes `code-reviewer` which consults the peers' `touches:` fields and emits informational
+OVERLAP-N findings (SUGGESTION tier) for any file-set intersections. The gate is NOT blocked
+by overlap. See [`code-reviewer/SKILL.md`](../code-reviewer/SKILL.md) § "Cross-Workstream Overlap
+Check" for the full algorithm and [ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)
+for the design rationale.
+
+**Workstream-aware base detection (v1.17.0).** The default `--base main` for `gate-rules.sh`
+is kept by design — the script remains standalone and CI-friendly. The orchestrator, when
+invoking the script on behalf of a workstream, passes `--base <ref>` explicitly (typically
+`origin/main`). Future iteration D's `/ssd workstream` commands may introduce a `base:` field
+on the workstream entry; until then the orchestrator computes the appropriate base from the
+git context.
+
 ---
 
 ## Sub-Skill Reference
@@ -1068,6 +1088,21 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.17.0** (2026-05-24) — Iteration C of the parallel-features epic
+  ([ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)): cross-workstream overlap
+  detection at gate time. Makes iter A's `touches:` field load-bearing. The orchestrator now,
+  during `/ssd gate`, (a) unions `git diff --name-only <base>...HEAD` into the gated
+  workstream's recorded `touches:` list, and (b) invokes `code-reviewer` which consults peers'
+  `touches:` fields and emits OVERLAP-N findings (SUGGESTION tier, never blocks) on
+  cross-workstream file intersections. New § "Cross-Workstream Overlap Check" in
+  `code-reviewer/SKILL.md` (v1.4.0 → v1.5.0) defines the algorithm and the `🔗 OVERLAP:`
+  severity prefix. The `touches:` field schema comment in § "Session Continuity" updated to
+  document the coder-pass backfill. § "Methodology Enforcement" gains a paragraph naming the
+  overlap check as part of the gate. `methodology/gate-rules.sh` unchanged in default behavior
+  — the orchestrator passes `--base <ref>` explicitly for non-main workstreams; future iter D
+  may introduce a workstream-base field. With v1.17.0 the parallel-features epic is complete:
+  iter A shipped schema (v1.15.0), iter B shipped commands (v1.16.0), iter C ships the overlap
+  consumer (v1.17.0).
 - **1.16.0** (2026-05-24) — Iteration B of the parallel-features epic
   ([ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)): the three new orchestrator
   commands fully documented. New § "Workstream Lifecycle Commands" between `/ssd ship` and
