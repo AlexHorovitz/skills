@@ -17,6 +17,10 @@
 #   bash methodology/gate-rules.sh                # check current branch vs main
 #   bash methodology/gate-rules.sh --base develop # check vs a different base
 #   bash methodology/gate-rules.sh --json         # emit JSON instead of text
+#   bash methodology/gate-rules.sh --rules no-leaky-state[,other-rule]
+#                                                 # run only the named rules
+#                                                 # (used by the v1.18.0+ pre-commit hook —
+#                                                 # see ADR-0008 and methodology/hooks/)
 #
 # License: see /LICENSE.
 
@@ -32,6 +36,7 @@ set -uo pipefail   # NOTE: not -e — we want to run all rules even if one fails
 # from the caller. Keep the standalone contract.
 BASE="main"
 JSON=0
+RULES_FILTER=""   # comma-separated list of rule names; empty = run all
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PROJECT_YML="$PROJECT_ROOT/.ssd/project.yml"
 
@@ -43,6 +48,11 @@ while [[ $# -gt 0 ]]; do
       fi
       BASE="$2"; shift 2 ;;
     --json) JSON=1; shift ;;
+    --rules)
+      if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+        echo "--rules requires a value (comma-separated rule names)" >&2; exit 2
+      fi
+      RULES_FILTER="$2"; shift 2 ;;
     -h|--help)
       sed -n '1,/^# License/p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -50,6 +60,16 @@ while [[ $# -gt 0 ]]; do
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+# Decide whether a rule should run given any --rules filter. Empty filter = run all.
+should_run() {
+  local rule="$1"
+  [[ -z "$RULES_FILTER" ]] && return 0
+  case ",$RULES_FILTER," in
+    *",$rule,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # ----- result accumulators ---------------------------------------------------
 RESULTS=()      # lines like "PASS rule-name :: detail"
@@ -80,6 +100,89 @@ yaml_get() {
       exit
     }
   ' "$file"
+}
+
+# Read a YAML list value into stdout, one item per line. Handles the simple two-space
+# indented form ssd-init writes:
+#
+#   ssd:
+#     gitignored_state:
+#       - .env.local
+#       - secrets/**
+#
+# Returns empty if the key isn't present or has no items. Quotes around items are stripped.
+yaml_get_list() {
+  local file="$1" key="$2"
+  [[ -f "$file" ]] || return
+  awk -v k="$key" '
+    BEGIN { in_list = 0; list_indent = -1 }
+    /^[[:space:]]*#/ { next }
+    {
+      if (in_list) {
+        match($0, /^[[:space:]]*/)
+        cur_indent = RLENGTH
+        if (match($0, /^[[:space:]]*-[[:space:]]+/)) {
+          item = $0
+          sub(/^[[:space:]]*-[[:space:]]+/, "", item)
+          gsub(/^["'\'']|["'\'']$/, "", item)
+          print item
+          next
+        }
+        # Non-list line at indent <= list_indent ends the list.
+        if (length($0) > cur_indent && cur_indent <= list_indent) {
+          in_list = 0
+        } else {
+          next
+        }
+      }
+      if (match($0, "^[[:space:]]*"k":[[:space:]]*$")) {
+        match($0, /^[[:space:]]*/)
+        list_indent = RLENGTH
+        in_list = 1
+      }
+    }
+  ' "$file"
+}
+
+# Match a path against a gitignore-style pattern. Supports `**` (anything including
+# slashes), `*` (anything but slash), trailing `/` (directory prefix), and `?` (single
+# non-slash char). Returns 0 on match, 1 on no match.
+matches_deny_pattern() {
+  local path="$1" pattern="$2"
+  # Trailing slash = directory prefix: any path that starts with pattern matches.
+  if [[ "$pattern" == */ ]]; then
+    [[ "$path" == "$pattern"* ]] && return 0
+    return 1
+  fi
+  # No globs = exact match.
+  if [[ "$pattern" != *'*'* && "$pattern" != *'?'* ]]; then
+    [[ "$path" == "$pattern" ]] && return 0
+    return 1
+  fi
+  # Convert glob to anchored bash regex. Escape regex metacharacters that are literal in
+  # gitignore semantics (per code-review MINOR-1 on iter A — needed for user-supplied
+  # gitignored_state[] patterns that may contain +, (, ), |, ^, $, \). Curly braces
+  # intentionally NOT escaped: bash parameter expansion has brace-parsing ambiguity with
+  # `${var//\}/...}` syntax, AND bash regex treats { } as literal outside {n,m} quantifier
+  # context, so leaving them un-escaped is safe for the patterns we care about. If a project
+  # ever needs explicit {n,m} matching semantics, they can use [ ] char classes instead.
+  local regex="$pattern"
+  regex="${regex//\\/\\\\}"   # escape backslash first
+  regex="${regex//./\\.}"
+  regex="${regex//+/\\+}"
+  regex="${regex//(/\\(}"
+  regex="${regex//)/\\)}"
+  regex="${regex//|/\\|}"
+  regex="${regex//\^/\\^}"
+  regex="${regex//\$/\\\$}"
+  # Now the glob → regex conversion. Order matters: ** before * (so the ** glob isn't
+  # consumed by the single-* substitution). Brackets [abc] left intact — gitignore char
+  # classes happen to be valid bash regex char classes too, so they work as-is.
+  regex="${regex//\*\*/§§}"   # placeholder for **
+  regex="${regex//\*/[^/]*}"  # single-* → non-slash
+  regex="${regex//§§/.*}"     # ** → any (including slash)
+  regex="${regex//\?/[^/]}"
+  [[ "$path" =~ ^${regex}$ ]]
 }
 
 # Read a newline-separated string into a bash array (caller passes array name).
@@ -267,12 +370,78 @@ rule_frontmatter_valid() {
   fi
 }
 
+# ----- rule: no-leaky-state --------------------------------------------------
+# Catches gitignored-by-policy files smuggled into the diff (force-add via `git add -f`,
+# `.gitignore` edited to remove protections, new artifact types not yet in `.gitignore`).
+# Doctrine cite: ADR-0008 § "Decision" — layered defenses around the selective-commit split.
+rule_no_leaky_state() {
+  is_git_repo || { emit "SKIP" "no-leaky-state" "not a git repo"; return; }
+  local mode
+  mode=$(yaml_get "$PROJECT_YML" "gitignore_mode")
+  [[ -z "$mode" ]] && mode="selective"   # default for v1.18.0+
+  if [[ "$mode" == "blanket" ]]; then
+    emit "SKIP" "no-leaky-state" "project on blanket gitignore mode (project.yml.ssd.gitignore_mode)"
+    return
+  fi
+  if [[ "$mode" != "selective" ]]; then
+    emit "SKIP" "no-leaky-state" "unknown gitignore_mode: '$mode' (expected selective|blanket)"
+    return
+  fi
+  local files
+  files=$(diff_files)
+  if [[ -z "$files" ]]; then
+    emit "SKIP" "no-leaky-state" "no diff vs $BASE"
+    return
+  fi
+  # Baseline deny-list, hard-coded per ADR-0008 § "Decision". Projects extend (not shrink)
+  # via project.yml.ssd.gitignored_state.
+  local baseline=(
+    ".ssd/current.yml"
+    ".ssd/current.notes.yml"
+    ".ssd/init-log.md"
+    ".ssd/project.yml"
+    ".ssd/archive/"
+    ".ssd/audits/"
+    ".ssd/features/**/iterations/**/deferred.yml"
+    ".ssd/features/**/current.yml.bak"
+    ".ssd/milestones/**/sha-before"
+    ".ssd/milestones/**/metrics-before.yml"
+  )
+  # Read project-supplied additional patterns.
+  local additional=()
+  local _line
+  while IFS= read -r _line; do
+    [[ -z "$_line" ]] && continue
+    additional+=("$_line")
+  done < <(yaml_get_list "$PROJECT_YML" "gitignored_state")
+  local forbidden=()
+  local f pattern
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    for pattern in "${baseline[@]}" ${additional[@]+"${additional[@]}"}; do
+      if matches_deny_pattern "$f" "$pattern"; then
+        forbidden+=("$f")
+        break
+      fi
+    done
+  done <<< "$files"
+  if [[ ${#forbidden[@]} -eq 0 ]]; then
+    emit "PASS" "no-leaky-state" "no gitignored-by-policy files in diff"
+  else
+    local count=${#forbidden[@]}
+    local sample
+    sample=$(printf '%s|' "${forbidden[@]:0:3}")
+    emit "FAIL" "no-leaky-state" "$count file(s) gitignored by policy but tracked: ${sample}"
+  fi
+}
+
 # ----- run all rules ---------------------------------------------------------
-rule_wip_commits
-rule_tests_pass
-rule_feature_flag_present
-rule_adr_delta
-rule_frontmatter_valid
+should_run wip-commits        && rule_wip_commits
+should_run tests-pass         && rule_tests_pass
+should_run feature-flag-present && rule_feature_flag_present
+should_run adr-delta          && rule_adr_delta
+should_run frontmatter-valid  && rule_frontmatter_valid
+should_run no-leaky-state     && rule_no_leaky_state
 
 # ----- emit results ----------------------------------------------------------
 if [[ $JSON -eq 1 ]]; then

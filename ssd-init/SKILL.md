@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 
 ## Purpose
 
@@ -176,22 +176,94 @@ nothing important is lost).
 
 Only write if the file does not exist. If it exists, leave it.
 
-### Step 5 — Update `.gitignore`
+### Step 5 — Update `.gitignore` (selective commit per ADR-0008)
 
-Ensure `.ssd/` is in the project's `.gitignore`. Three cases:
+As of v1.6.0 (companion to library v1.18.0 / [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)),
+`.ssd/` is split: durable artifacts (briefs, architect specs, coder-status, code-reviews, deploy
+notes, milestone records) get committed; machine state (`current.yml`, `project.yml`,
+`init-log.md`, `archive/`, `audits/`, snapshot machinery) stays gitignored.
 
-1. **`.gitignore` exists and already contains `.ssd/` or `.ssd`:** no change.
-2. **`.gitignore` exists and does not contain `.ssd/`:** append:
-   ```
-   
-   # SSD working directory (see .ssd/README.md)
-   .ssd/
-   ```
-3. **`.gitignore` does not exist:** create it with the above content.
+**Four cases:**
 
-Check for common variations before writing: `.ssd/`, `.ssd`, `/.ssd/`, `/.ssd`. Any of these counts as already ignored.
+1. **No `.gitignore` exists:** create it with the **selective pattern** below.
+2. **`.gitignore` exists with no `.ssd` reference:** append the selective pattern.
+3. **`.gitignore` exists with a blanket `.ssd/` (or `.ssd`) line:** detect, prompt for
+   migration, and replace with the selective pattern. See § "Migration from blanket gitignore"
+   below.
+4. **`.gitignore` exists with the selective pattern already (heuristic: contains
+   `!.ssd/features/**/01-architect.md`):** no change.
 
-If the project is not a git repo (Step 2 outcome: no git, user declined init), skip this step and note in the log.
+**The selective pattern to write:**
+
+```gitignore
+# SSD working directory — selective commit (ADR-0008, v1.18.0+).
+# Block everything under .ssd/ by default, then allow the durable artifact tree.
+
+.ssd/*
+!.ssd/features/
+!.ssd/milestones/
+!.ssd/features/**/
+!.ssd/features/**/00-brief.md
+!.ssd/features/**/01-architect.md
+!.ssd/features/**/02-systems-designer.md
+!.ssd/features/**/03-coder-status.md
+!.ssd/features/**/04-code-review*.md
+!.ssd/features/**/05-deploy.md
+!.ssd/features/**/iterations/**/brief.md
+!.ssd/features/**/iterations/**/coder-status.md
+!.ssd/features/**/iterations/**/code-review/round-*.md
+!.ssd/features/**/iterations/**/deploy.md
+
+# Machine-managed state even when nested inside features/.
+.ssd/features/**/iterations/**/deferred.yml
+.ssd/features/**/current.yml.bak
+
+# Milestones: durable records committed; snapshot machinery local.
+!.ssd/milestones/**/
+!.ssd/milestones/**/skeptic-before.md
+!.ssd/milestones/**/skeptic-after.md
+!.ssd/milestones/**/refactor-plan.md
+!.ssd/milestones/**/refactor-prs.md
+!.ssd/milestones/**/verification.md
+.ssd/milestones/**/sha-before
+.ssd/milestones/**/metrics-before.yml
+
+# Audits stay gitignored — often sensitive (vendor names, internal opinions).
+.ssd/audits/
+```
+
+**Migration from blanket gitignore.** When `ssd-init` detects an existing `.gitignore` with a
+bare `.ssd/` (or `.ssd`) line — the v1.3.0–v1.17.x convention — surface the migration offer:
+
+> "This project's `.gitignore` is on the legacy blanket convention (everything under `.ssd/` is
+> ignored). The v1.18.0+ default is **selective**: briefs, architect specs, code reviews, and
+> similar design docs get committed; machine state (`current.yml`, `project.yml`, etc.) stays
+> local. See [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md). Migrate now?"
+
+Three options:
+
+- **Yes (migrate):** write `.gitignore.bak` (refuse if `.bak` already exists; surface and ask
+  what to do). Replace the bare `.ssd/` line with the selective pattern. Print a summary of
+  files that will now be trackable (`git ls-files --others --exclude-standard .ssd/features/`).
+  **Do NOT auto-stage or auto-commit** — the user controls what lands in the next commit and
+  in which PR.
+- **No (this session):** leave `.gitignore` as-is, ask again next `ssd-init` run.
+- **Permanent opt-out:** set `project.yml.ssd.gitignore_mode: blanket` and stop asking. Future
+  `ssd-init` runs see the explicit opt-out and skip the prompt.
+
+**Profile-aware default** for whether to surface the prompt at all:
+
+- `developer_profile: novice` — silently skip the prompt; keep blanket. Novices shouldn't
+  have to think about which artifacts get committed. Re-offer the migration when the user is
+  auto-promoted to `standard` (per ADR-0004's promotion flow).
+- `developer_profile: standard` or `expert` — surface the prompt by default.
+
+**Opt-in to blanket on a new project:** `ssd-init --keep-blanket-gitignore` writes a bare
+`.ssd/` line instead of the selective pattern, and sets `project.yml.ssd.gitignore_mode:
+blanket`.
+
+If the project is not a git repo (Step 2 outcome: no git, user declined init), skip this step
+and note in the log.
 
 ### Step 6 — Detect Project Shape
 
@@ -262,6 +334,12 @@ ssd:
   worktree_root: "../"
   worktree_name_pattern: "{repo}-{slug}"
   switch_note_default: prompt    # novice/standard default; profile-aware fallback to `auto` for expert
+
+  # Commit-split defaults (v1.18.0, ADR-0008). Selective is the default; blanket is the
+  # legacy v1.3.0–v1.17.x behavior for solo developers who prefer it.
+  gitignore_mode: selective      # selective | blanket
+  gitignored_state: []           # additional patterns the no-leaky-state gate rule denies;
+                                 # additive only — projects cannot shrink the baseline.
 
 integrations:                    # optional; filled in as features are added
   - type: jira

@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.17.1
+**Version:** 1.18.0
 
 **Canonical methodology**: [Shippable States Development at insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html). For doctrine questions, the in-repo source of truth is `methodology/core.md`; for end-user-facing language and external citations, the website is authoritative.
 
@@ -785,6 +785,26 @@ at the start of any SSD-managed project. `ssd-init` is a prerequisite for any `/
 orchestrator checks for `.ssd/project.yml` on invocation and prompts the user to run `ssd-init` if
 absent.
 
+**Selective commit split (v1.18.0+, [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)).**
+Artifacts under `.ssd/` divide along durable-vs-working lines:
+
+| Path / pattern | Committed? | Why |
+|---|---|---|
+| `.ssd/features/<slug>/00-brief.md`, `01-architect.md`, `02-systems-designer.md`, `03-coder-status.md`, `04-code-review*.md`, `05-deploy.md` | ✅ committed | Durable design records, same class as ADRs |
+| `.ssd/features/<slug>/iterations/<iter>/{brief,coder-status,deploy}.md`, `code-review/round-*.md` | ✅ committed | Same — per-iteration variants of the above |
+| `.ssd/features/<slug>/iterations/<iter>/deferred.yml` | ❌ gitignored | Machine-managed carry-over ledger |
+| `.ssd/milestones/<topic>/{skeptic-before,skeptic-after,refactor-plan,refactor-prs,verification}.md` | ✅ committed | Durable milestone records |
+| `.ssd/milestones/<topic>/{sha-before,metrics-before.yml}` | ❌ gitignored | Snapshot machinery, not design docs |
+| `.ssd/current.yml`, `.ssd/current.notes.yml`, `.ssd/init-log.md`, `.ssd/project.yml` | ❌ gitignored | Machine-managed state with absolute paths, per-user profile, draft handoff notes |
+| `.ssd/archive/` | ❌ gitignored | Historical state of closed workstreams (their durable artifacts stay tracked in `features/<slug>/`) |
+| `.ssd/audits/` | ❌ gitignored | Often sensitive — vendor names, internal opinions |
+
+The gitignore pattern, the `no-leaky-state` gate rule (§ "Methodology Enforcement"), and the
+optional pre-commit hook all share the same deny-list — they're symmetric layered defenses
+around the same boundary. A solo developer who prefers the legacy v1.3.0–v1.17.x blanket
+behavior sets `project.yml.ssd.gitignore_mode: blanket` and replaces the selective `.gitignore`
+pattern with a bare `.ssd/` line; the `no-leaky-state` rule then SKIPs cleanly.
+
 **Worktree note (v1.15.0, [ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)):** a workstream
 with a non-null `worktree:` field has its *working tree* (source files, in-progress edits) at the
 recorded sibling path — but the authoritative `.ssd/` directory remains at the main repo checkout.
@@ -1004,6 +1024,8 @@ per rule. Each rule maps to a principle in `methodology/core.md`.
 | `tests-pass` | core.md §1 | Project's `test_command` (from `.ssd/project.yml`) exits 0 |
 | `feature-flag-present` | core.md §3 | Project's `feature_flag_marker` appears in non-doc changed files (skipped for documentation/config-only diffs) |
 | `adr-delta` | core.md §2 | If architectural diff > 200 lines outside test/doc/migration scope, `docs/decisions/` has a new or modified ADR |
+| `frontmatter-valid` | ADR-0006 | Every changed `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md` artifact validates against its skill schema (via `methodology/frontmatter-validate.py`) |
+| `no-leaky-state` | [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md) | No file matching the `.ssd/` selective-commit deny-list (machine state: `current.yml`, `init-log.md`, `archive/`, `audits/`, etc., plus project-supplied `project.yml.ssd.gitignored_state`) appears in the diff. Catches force-add and edited-gitignore bypasses. SKIPs cleanly on `gitignore_mode: blanket` projects. |
 
 Rule outputs:
 - `PASS` — rule applied and verified.
@@ -1090,6 +1112,22 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.18.0** (2026-05-24) — Iteration A of the ssd-commit-split epic
+  ([ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)): selective `.ssd/` commit
+  split. The blanket-gitignored `.ssd/` convention from v1.3.0–v1.17.x is replaced by a
+  durable-vs-working split. Durable artifacts (briefs, architect specs, coder-status, code
+  reviews, deploy notes, milestone records) get committed; machine state (`current.yml`,
+  `project.yml`, `init-log.md`, `archive/`, `audits/`, snapshot machinery) stays local.
+  Layered defenses enforce the boundary: (1) selective `.gitignore` pattern; (2) `ssd-init`
+  writes / migrates the pattern with prompt + `.bak` backup, idempotent; (3) new
+  `no-leaky-state` gate rule catches force-add and edited-gitignore bypasses. Two new
+  `project.yml.ssd.*` keys: `gitignore_mode: selective|blanket` (default `selective` for new
+  projects; existing projects on blanket get prompted to migrate), and `gitignored_state: []`
+  (additive deny-list extensions — projects can extend, never shrink the baseline). New
+  `--rules <comma-list>` arg on `gate-rules.sh` lets the iter-B pre-commit hook run only the
+  `no-leaky-state` rule (the other rules are too slow for pre-commit). § "The SSD Artifact
+  Tree" gains a committed-vs-gitignored table; § "Methodology Enforcement" gains a
+  `no-leaky-state` row (and a `frontmatter-valid` row that was previously implicit).
 - **1.17.1** (2026-05-24) — Documentation: canonical-reference banner pointing to
   [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html); Purpose paragraph now names
   Alex Horovitz as originator and links the About page. No behavior change. Companion to
