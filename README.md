@@ -10,6 +10,8 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 
 **Core invariant:** If you can't ship it right now, you don't have a product — you have a construction site.
 
+**Dogfood.** As of v1.19.0 (per [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)) this repo tracks its own SSD artifacts under [`.ssd/features/`](.ssd/features/) — briefs, architect specs, coder-status reports, and code-reviews for every epic shipped in v1.5.0+. Read the history of how the methodology was built using the methodology itself.
+
 ## Methodology
 
 This repository is the official Claude Code skill implementation of **Shippable States Development**. The canonical methodology pages are:

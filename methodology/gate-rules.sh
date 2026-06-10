@@ -21,6 +21,8 @@
 #                                                 # run only the named rules
 #                                                 # (used by the v1.18.0+ pre-commit hook —
 #                                                 # see ADR-0008 and methodology/hooks/)
+#   bash methodology/gate-rules.sh --staged       # diff staged-vs-HEAD instead of branch-vs-base
+#                                                 # (v1.19.0+; used by the pre-commit hook)
 #
 # License: see /LICENSE.
 
@@ -37,6 +39,7 @@ set -uo pipefail   # NOTE: not -e — we want to run all rules even if one fails
 BASE="main"
 JSON=0
 RULES_FILTER=""   # comma-separated list of rule names; empty = run all
+MODE="branch"     # branch (default, diff vs $BASE...HEAD) | staged (diff vs --cached)
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PROJECT_YML="$PROJECT_ROOT/.ssd/project.yml"
 
@@ -53,6 +56,7 @@ while [[ $# -gt 0 ]]; do
         echo "--rules requires a value (comma-separated rule names)" >&2; exit 2
       fi
       RULES_FILTER="$2"; shift 2 ;;
+    --staged) MODE="staged"; shift ;;
     -h|--help)
       sed -n '1,/^# License/p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -202,15 +206,37 @@ is_git_repo() {
 }
 
 diff_files() {
-  # Files changed in HEAD vs BASE. Empty if not a git repo.
+  # Files changed in HEAD vs BASE (default mode), or staged vs HEAD (--staged mode).
+  # Empty if not a git repo.
   is_git_repo || { echo ""; return; }
-  git -C "$PROJECT_ROOT" diff --name-only "$BASE"...HEAD 2>/dev/null
+  if [[ "$MODE" == "staged" ]]; then
+    git -C "$PROJECT_ROOT" diff --cached --name-only 2>/dev/null
+  else
+    git -C "$PROJECT_ROOT" diff --name-only "$BASE"...HEAD 2>/dev/null
+  fi
+}
+
+# Human-readable label for the current diff scope. Used in SKIP detail messages.
+diff_scope_label() {
+  if [[ "$MODE" == "staged" ]]; then
+    echo "staged files"
+  else
+    echo "vs $BASE"
+  fi
 }
 
 # ----- rule: wip-commits -----------------------------------------------------
 rule_wip_commits() {
   if ! is_git_repo; then
     emit "SKIP" "wip-commits" "not a git repo"
+    return
+  fi
+  # In --staged mode the commit isn't yet created, so there's nothing to grep for WIP/
+  # checkpoint messages. SKIP cleanly — the rule runs in branch mode after the commit lands,
+  # catching WIP / checkpoint commits at gate time. The pre-commit hook handles state
+  # leakage (no-leaky-state), not commit-message discipline.
+  if [[ "$MODE" == "staged" ]]; then
+    emit "SKIP" "wip-commits" "staged mode (no commits to grep yet)"
     return
   fi
   local matches
@@ -257,7 +283,7 @@ rule_feature_flag_present() {
   local files
   files=$(diff_files)
   if [[ -z "$files" ]]; then
-    emit "SKIP" "feature-flag-present" "no diff vs $BASE"
+    emit "SKIP" "feature-flag-present" "no diff ($(diff_scope_label))"
     return
   fi
   # Skip the rule for documentation-only / infra-only diffs.
@@ -292,7 +318,7 @@ rule_adr_delta() {
   local files
   files=$(diff_files)
   if [[ -z "$files" ]]; then
-    emit "SKIP" "adr-delta" "no diff vs $BASE"
+    emit "SKIP" "adr-delta" "no diff ($(diff_scope_label))"
     return
   fi
   # Heuristic: changes to source code (not tests, migrations, docs, config)
@@ -390,7 +416,7 @@ rule_no_leaky_state() {
   local files
   files=$(diff_files)
   if [[ -z "$files" ]]; then
-    emit "SKIP" "no-leaky-state" "no diff vs $BASE"
+    emit "SKIP" "no-leaky-state" "no diff ($(diff_scope_label))"
     return
   fi
   # Baseline deny-list, hard-coded per ADR-0008 § "Decision". Projects extend (not shrink)

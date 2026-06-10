@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.7.0
+**Version:** 1.8.0
 
 ## Purpose
 
@@ -264,6 +264,57 @@ blanket`.
 
 If the project is not a git repo (Step 2 outcome: no git, user declined init), skip this step
 and note in the log.
+
+### Step 5.5 — Offer pre-commit hook install (v1.8.0+, optional, expert-only)
+
+Available for projects on `gitignore_mode: selective` (the v1.18.0+ default; see Step 5). The
+pre-commit hook at `methodology/hooks/pre-commit-no-leaky-state.sh` catches `no-leaky-state`
+violations *before* the commit lands, complementing the `/ssd gate` enforcement that runs at
+PR time. See [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md) and
+[`methodology/hooks/README.md`](../methodology/hooks/README.md) for the install /
+uninstall / coexistence docs.
+
+**Step 5.5 mode-detection (must run first, before anything else in this step).** Read the
+project's `.gitignore` file. If it contains the selective-pattern marker line
+(`!.ssd/features/**/01-architect.md` is unique and only present under the v1.18.0+
+selective pattern), proceed with Step 5.5. If it contains a bare `.ssd/` line (Step 5 kept
+the legacy blanket OR the user invoked `--keep-blanket-gitignore`), skip Step 5.5 entirely
+— installing the hook would be a no-op since `no-leaky-state` SKIPs under blanket mode.
+Detection is grounded in `.gitignore` state at this point in the init flow because
+`.ssd/project.yml`'s `gitignore_mode` key is not written until Step 6. Do NOT branch on
+`project.yml`'s contents at Step 5.5 time — it may not exist yet (fresh init) or may be on
+an older schema lacking the key.
+
+**Profile-aware behavior:**
+
+- `developer_profile: expert` — offer the install with explicit yes/no/skip prompt.
+- `developer_profile: standard` — silently skip the offer (user can install later via the
+  hooks README).
+- `developer_profile: novice` — silently skip the offer.
+
+**The offer prints the install command for the user to run themselves:**
+
+```bash
+ln -s ../../methodology/hooks/pre-commit-no-leaky-state.sh .git/hooks/pre-commit
+chmod +x methodology/hooks/pre-commit-no-leaky-state.sh   # one-time, if needed
+```
+
+`ssd-init` does NOT execute the symlink. Git hooks are a per-user / per-checkout trust
+boundary; the user installs consciously. Mention that the hook is bypassable with
+`--no-verify` but SSD doctrine forbids that — the gate rule at PR time is the unbypassable
+backstop either way.
+
+**Pre-existing pre-commit hook detection.** If `.git/hooks/pre-commit` already exists when
+`ssd-init` runs Step 5.5, warn the user and print the **coexistence pattern** from
+`methodology/hooks/README.md` instead of the bare-symlink path:
+
+```bash
+# At the top of your existing .git/hooks/pre-commit:
+bash "$(git rev-parse --show-toplevel)/methodology/gate-rules.sh" --staged --rules no-leaky-state || exit $?
+```
+
+(The blanket-mode skip above is handled by the Step 5.5 mode-detection pre-flight, not by
+re-checking `gitignore_mode` after the prompt.)
 
 ### Step 6 — Detect Project Shape
 
@@ -650,6 +701,28 @@ Running `ls .ssd/features/<slug>/` reveals the full phase chain for a feature in
 
 ## Changelog
 
+- **1.8.0** (2026-06-10) — Iteration B of the ssd-commit-split epic
+  ([ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)). New Step 5.5 (Offer
+  pre-commit hook install): expert-profile users get a yes/no/skip prompt offering the
+  symlink-install path for `methodology/hooks/pre-commit-no-leaky-state.sh`; standard /
+  novice profiles silently skip. `ssd-init` never executes the symlink — git hooks are a
+  per-user / per-checkout trust boundary the user installs consciously. Pre-existing
+  `.git/hooks/pre-commit` triggers a coexistence-pattern message instead of the bare
+  symlink path. Step 5.5 skipped entirely when `gitignore_mode: blanket` (the hook would
+  be a no-op anyway).
+- **1.7.0** (2026-05-24) — Iteration A of the ssd-commit-split epic
+  ([ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)). Step 5 rewritten to
+  produce the **selective** gitignore pattern by default (block-then-allow, ~30 lines).
+  Detect-and-migrate path for projects on the legacy blanket `.ssd/` pattern: prompted,
+  `.gitignore.bak` rollback, idempotent, profile-aware suppression for novice. Two new
+  optional `project.yml.ssd.*` keys written at init time: `gitignore_mode: selective` and
+  `gitignored_state: []`.
+- **1.6.0** (2026-05-24) — Iteration B of the parallel-features epic
+  ([ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)). Step 6 (Detect Project
+  Shape) project.yml write block now includes four new optional `ssd.*` keys with their
+  defaults (`branch_pattern: "add-{slug}"`, `worktree_root: "../"`,
+  `worktree_name_pattern: "{repo}-{slug}"`, `switch_note_default: prompt`) so the v1.16.0+
+  workstream lifecycle commands resolve without per-invocation prompting.
 - **1.5.0** (2026-04-29) — Iteration 8 of the ssd-skill-upgrades epic (P2.B, ADR-0004):
   `project.yml` template now includes `developer_profile`, `teaching_mode`, and `rails:` fields.
   Defaults: `standard` profile, teaching mode enabled with 5-invocation decay, default rails
