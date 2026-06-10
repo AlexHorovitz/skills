@@ -6,6 +6,96 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.18.0] — 2026-05-24
+
+### Iteration A — selective `.ssd/` commit split (enforcement floor)
+
+First of three iterations of the ssd-commit-split epic. Replaces the v1.3.0–v1.17.x blanket
+`.ssd/` gitignore with a **selective commit split**: durable artifacts (briefs, architect
+specs, coder-status, code reviews, deploy notes, milestone records) get committed; machine
+state (`current.yml`, `project.yml`, `init-log.md`, `archive/`, `audits/`, snapshot machinery)
+stays gitignored.
+
+See [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md) for the rationale, alternatives
+rejected, and the three-iteration plan. This iteration ships the enforcement floor: gitignore
+pattern, `ssd-init` migration, and the `no-leaky-state` gate rule.
+
+**Why now.** Briefs and architect specs are the same class of artifact as ADRs — they describe
+engineering decisions. With the blanket gitignore they're invisible to PR review, milestone
+audits, and external onboarding. The parallel-features epic (v1.15.0–v1.17.0) added
+cross-user surface area, which compounds the cost of invisible artifacts. Time to split.
+
+**What ships in iter A:**
+
+- **New `.gitignore` pattern** — block-then-allow selective. ~30 lines, fully auditable. The
+  pattern in this repo is now on the selective convention.
+- **`ssd-init/SKILL.md` v1.6.0 → v1.7.0.** Step 5 (Gitignore) rewritten with the four-case
+  flow: no gitignore / no `.ssd` reference / blanket `.ssd/` / already selective. Detects
+  blanket-mode existing projects, surfaces a prompted migration (with `.bak` backup,
+  idempotent, profile-aware suppression for novice). Two new `project.yml.ssd.*` keys
+  written at init time: `gitignore_mode: selective|blanket` (default selective) and
+  `gitignored_state: []` (additive deny-list extensions).
+- **`methodology/gate-rules.sh`** — new `no-leaky-state` rule. Reads
+  `git diff --name-only <base>...HEAD`, matches each file against a hard-coded baseline
+  deny-list + project-supplied additional patterns. PASSes when no forbidden files appear.
+  FAILs on any. SKIPs cleanly on `gitignore_mode: blanket` or no-diff. Catches force-add
+  (`git add -f .ssd/current.yml`), edited `.gitignore` regressions, and new artifact types
+  not yet in the gitignore. Doctrine cite in the rule output: ADR-0008.
+- **`methodology/gate-rules.sh` `--rules <comma-list>` flag.** New CLI arg to filter which
+  rules run. Used by the iter-B pre-commit hook (the other rules are too slow for
+  pre-commit). Default behavior (no `--rules`) runs all rules — unchanged.
+- **`ssd/SKILL.md` v1.17.1 → v1.18.0.** § "The SSD Artifact Tree" gains a committed-vs-
+  gitignored table mapping every artifact path. § "Methodology Enforcement" gains
+  `no-leaky-state` and `frontmatter-valid` rows (the latter was previously implicit).
+  Changelog entry.
+
+**Self-justifying iter A.** When this PR merges, the gitignore change makes this repo's
+previously-untracked `.ssd/features/ssd-commit-split/00-brief.md` and `01-architect.md`
+become tracked. They appear in the PR diff alongside ADR-0008. **This is the intended
+outcome of ADR-0008** — the methodology starts publicly citing its own work product. The
+larger-than-typical diff is the feature, not an oversight.
+
+**Migration UX.** Existing projects (v1.3.0–v1.17.x) on the blanket gitignore get a one-time
+prompt on next `ssd-init` invocation:
+
+> Three options: **migrate** (write `.gitignore.bak`, switch to selective, print summary of
+> now-trackable files for the user to stage), **defer** (ask again next time), **permanent
+> opt-out** (set `gitignore_mode: blanket` in `project.yml`, stop asking).
+
+Profile-aware: novice silently keeps blanket (re-offered on novice→standard promotion);
+standard/expert get the prompt by default.
+
+**Opt-out at any time:** set `project.yml.ssd.gitignore_mode: blanket` and replace the
+selective `.gitignore` pattern with a bare `.ssd/` line. The `no-leaky-state` rule SKIPs
+cleanly under blanket mode.
+
+**Deferred to iteration B (v1.19.0):**
+
+- `methodology/hooks/pre-commit-no-leaky-state.sh` — optional pre-commit hook that runs
+  `gate-rules.sh --rules no-leaky-state` before the commit lands.
+- `methodology/hooks/README.md` — installation docs (symlink convention, no framework
+  dependency).
+- `ssd-init` mention of the hook as an optional install during init for expert profile.
+
+**Deferred to iteration C (v1.20.0):**
+
+- **Dogfood commit:** stage and commit this repo's previously-untracked
+  `.ssd/features/{ssd-skill-upgrades, parallel-features}/**/*.md` artifacts under the new
+  selective convention. The methodology's own history becomes a worked example.
+
+**Touched skills:**
+
+- `ssd` 1.17.1 → 1.18.0 (Artifact Tree table + Methodology Enforcement rows + changelog)
+- `ssd-init` 1.6.0 → 1.7.0 (Step 5 rewrite + new project.yml keys + migration flow)
+
+**Tooling:**
+
+- `methodology/gate-rules.sh` — new `no-leaky-state` rule (6 rules total), new `--rules` flag
+- `methodology/gate-rules.sh` — new `yaml_get_list` helper, new `matches_deny_pattern` glob
+  matcher (handles `**`, `*`, `?`, dir-prefix patterns)
+
+---
+
 ## [1.17.1] — 2026-05-24
 
 ### Docs — canonical-reference and cross-linking pass

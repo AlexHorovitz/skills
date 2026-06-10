@@ -1,10 +1,48 @@
 .DS_Store
 
-# SSD working directory (see .ssd/README.md)
-.ssd/
+# SSD working directory — selective commit (ADR-0008, v1.18.0+).
+# Block everything under .ssd/ by default, then allow the durable artifact tree.
+# Machine state (current.yml, project.yml, init-log, archive, audits) stays local;
+# briefs / architect specs / coder-status / code-review / deploy notes get committed.
+# A solo developer who prefers the legacy v1.3.0–v1.17.x blanket behavior can set
+# project.yml.ssd.gitignore_mode: blanket and replace the block below with a bare `.ssd/`.
 
-# MacoOS
-.DS_Store
+.ssd/*
+
+# Re-include the directories whose contents are partially tracked.
+!.ssd/features/
+!.ssd/milestones/
+
+# Inside features/, allow the durable artifact files. The negation needs each parent
+# dir to be re-included first per gitignore semantics.
+!.ssd/features/**/
+!.ssd/features/**/00-brief.md
+!.ssd/features/**/01-architect.md
+!.ssd/features/**/02-systems-designer.md
+!.ssd/features/**/03-coder-status.md
+!.ssd/features/**/04-code-review*.md
+!.ssd/features/**/05-deploy.md
+!.ssd/features/**/iterations/**/brief.md
+!.ssd/features/**/iterations/**/coder-status.md
+!.ssd/features/**/iterations/**/code-review/round-*.md
+!.ssd/features/**/iterations/**/deploy.md
+
+# Block machine-managed state even when nested inside features/.
+.ssd/features/**/iterations/**/deferred.yml
+.ssd/features/**/current.yml.bak
+
+# Inside milestones/, allow durable design records; block snapshot machinery.
+!.ssd/milestones/**/
+!.ssd/milestones/**/skeptic-before.md
+!.ssd/milestones/**/skeptic-after.md
+!.ssd/milestones/**/refactor-plan.md
+!.ssd/milestones/**/refactor-prs.md
+!.ssd/milestones/**/verification.md
+.ssd/milestones/**/sha-before
+.ssd/milestones/**/metrics-before.yml
+
+# Audits stay gitignored entirely — often sensitive (vendor names, internal opinions).
+.ssd/audits/
 
 # Personal notes
 real-world-artifacts/
