@@ -6,6 +6,91 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.19.0] — 2026-06-10
+
+### Iteration B — ssd-commit-split: optional pre-commit hook + dogfood (epic complete)
+
+Second of (originally) three iterations of the ssd-commit-split epic ([ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)).
+Iter A (v1.18.0) shipped the enforcement floor (selective `.gitignore` + `ssd-init`
+migration + `no-leaky-state` gate rule). Iter B adds the **optional pre-commit hook** that
+catches violations *before* the commit lands and polishes the migration UX. With v1.19.0
+the ssd-commit-split epic is **complete** — iter C's original scope (dogfood the historical
+artifacts) was satisfied by a manual user commit (`b6fc739`) between v1.18.0 ship and this
+iter B start, so its residual polish (the README dogfood paragraph) rolled into this PR.
+
+**New: optional pre-commit hook.**
+
+- `methodology/hooks/pre-commit-no-leaky-state.sh` — plain bash script for symlink install.
+  Locates `methodology/gate-rules.sh` via `git rev-parse --show-toplevel`, invokes
+  `--staged --rules no-leaky-state`, exits with the same code as the gate rule. No
+  framework dependency (no husky / pre-commit.com). Documented at the top of the script
+  with install / coexistence / doctrine reminders.
+- `methodology/hooks/README.md` — full install / uninstall / coexistence docs.
+  Documents the symlink convention, the coexistence pattern for projects that already
+  have a `pre-commit` hook, the CI integration backstop, and the hook script contract for
+  anyone adding additional hooks under `methodology/hooks/` in the future.
+
+**New: `--staged` mode for `gate-rules.sh`.**
+
+- `methodology/gate-rules.sh` — new `--staged` flag. Switches `diff_files()` to use
+  `git diff --cached --name-only` instead of `git diff --name-only $BASE...HEAD`. Used by
+  the pre-commit hook. `wip-commits` SKIPs cleanly in staged mode (no commits to grep
+  yet); other rules read `diff_files()` through the same helper and adapt. New
+  `diff_scope_label()` helper produces the right SKIP detail message ("no diff (vs main)"
+  vs "no diff (staged files)").
+
+**Updated: `ssd-init` Step 5.5 (offer pre-commit hook install).**
+
+- `ssd-init/SKILL.md` v1.7.0 → v1.8.0. New Step 5.5 between Step 5 (gitignore) and Step 6
+  (project shape). Expert-profile users get a yes/no/skip prompt offering the install;
+  standard / novice profiles silently skip. The orchestrator prints the install command
+  but does NOT execute it — git hooks are a per-checkout trust boundary. Pre-existing
+  `.git/hooks/pre-commit` triggers a coexistence-pattern message instead of the bare
+  symlink path. Step 5.5 skipped entirely on `gitignore_mode: blanket` (the hook would be
+  a no-op).
+
+**Updated: README dogfood paragraph.**
+
+- `README.md` — new paragraph between the core invariant and the Methodology section
+  noting that as of v1.19.0 this repo tracks its own SSD artifacts under
+  `.ssd/features/`. Reflects the user-driven manual backfill in commit `b6fc739`
+  (between v1.18.0 ship and this iter B start) which committed 16 historical artifacts
+  from the parallel-features and ssd-skill-upgrades epics. Read the methodology's own
+  history using the methodology itself.
+
+**Acknowledgment: manual dogfood backfill.**
+
+The original ssd-commit-split iter C scope was "stage all previously-untracked
+`.ssd/features/*` artifacts" — satisfied by the user's commit `b6fc739 added features stuff`
+on 2026-06-10 (between v1.18.0 ship and this iter B start). That commit added 16 historical
+artifact files (~4385 lines). Iter B's architect spec accordingly declared the epic complete
+at v1.19.0 with the README dogfood paragraph as the only residual scope.
+
+**Touched skills:**
+
+- `ssd-init` v1.7.0 → v1.8.0 (new Step 5.5 + changelog).
+
+**Tooling:**
+
+- `methodology/gate-rules.sh` — new `--staged` flag + `diff_scope_label()` helper.
+  `wip-commits` rule extended to SKIP in staged mode with explicit detail message.
+- `methodology/hooks/pre-commit-no-leaky-state.sh` NEW (executable, symlink-install).
+- `methodology/hooks/README.md` NEW.
+
+**Epic close: ssd-commit-split**
+
+| Iter | Version | Scope |
+|---|---|---|
+| A | v1.18.0 | Selective `.gitignore` + `ssd-init` migration + `no-leaky-state` gate rule |
+| B | v1.19.0 | Optional pre-commit hook + `--staged` mode + README dogfood polish |
+| C | (n/a — folded into B) | Originally "stage historical artifacts"; satisfied by user commit b6fc739 |
+
+The original ask ("ensure the selective `.ssd/` commit split") is fully delivered:
+gitignore enforces at staging time, gate rule enforces at PR time, optional hook enforces
+at pre-commit time, and the repo dogfoods its own convention.
+
+---
+
 ## [1.18.0] — 2026-05-24
 
 ### Iteration A — selective `.ssd/` commit split (enforcement floor)
