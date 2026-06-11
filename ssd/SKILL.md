@@ -2,7 +2,13 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.18.0
+**Version:** 1.19.1
+
+> **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
+> tracks the **library** version *at the point this skill last changed*. When a release touches
+> other skills but not this one, this banner intentionally diverges from the library `VERSION` and
+> re-aligns on the next change to *this* file. So a banner lagging the library version is expected,
+> not a bug — it records when the skill itself last moved. (Refactor R7, post-v1.19 milestone.)
 
 **Canonical methodology**: [Shippable States Development at insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html). For doctrine questions, the in-repo source of truth is `methodology/core.md`; for end-user-facing language and external citations, the website is authoritative.
 
@@ -324,6 +330,19 @@ existing `04-code-review.md` is permitted in lieu of a separate file. See `code-
 Invoke `systems-designer` deploy checklist for the feature about to ship.
 
 Invoke `systems-designer` to produce the platform-appropriate deploy checklist. The checklist is defined and maintained by that skill — do not duplicate it here. The systems-designer skill covers web, mobile (iOS/Android), and macOS desktop deployment readiness.
+
+**Tag the release (after PR merge).** Once the release PR merges to `main`, tag the merge commit
+so the release history stays navigable (the missing-tags drift the post-v1.19 milestone fixed):
+
+```bash
+git tag -a v<version> <merge-sha> -m "v<version> — <one-line summary>"
+git push origin v<version>
+```
+
+This should be done by hand or via a release script; the orchestrator does **not** auto-tag,
+because tagging pushes to the remote and outward-facing actions stay under explicit human
+control. This step closes the post-merge half of the `core.md` §4 ratchet ("tag every release").
+(Refactor R7, post-v1.19 milestone.)
 
 ---
 
@@ -1004,6 +1023,27 @@ Closing a workstream (after successful deploy + verify) removes it from `current
 artifacts under `.ssd/archive/features/<slug>/`. Corresponding entries in `current.notes.yml` are
 moved to `.ssd/archive/features/<slug>/notes.yml` so the historical context stays with the work.
 
+### Concurrency: one Claude session per project at a time
+
+`current.yml` and `current.notes.yml` have a **single-writer** assumption: at most one Claude
+session operates on a given project's `.ssd/` at a time. This is doctrine, not an enforced
+runtime guarantee.
+
+- The "atomic write" the lifecycle commands promise (write a temp file + rename, or prepare full
+  content in memory before writing — see § "Self-verification") is a **prose contract** that keeps
+  a *single* writer from leaving a half-written file. It does **not** coordinate *concurrent*
+  writers.
+- If two terminals run `/ssd` against the same project simultaneously and both write `current.yml`,
+  the second writer silently overwrites the first. No lock detects this.
+- **Incident recovery.** Human context is recoverable from the git history of `current.notes.yml`
+  (when committed); the `current.yml.bak` written by the ADR-0002 v1→v2 migration is the rollback
+  artifact for that path. For a clobbered `current.yml` with no backup, reconstruct from the active
+  workstreams' branches and latest artifacts under `.ssd/features/<slug>/`.
+- **Future work (ADR-0009-class candidate).** A lockfile or a `writer_token`/version-counter scheme
+  would make concurrent sessions safe; deferred until parallel sessions on one project become a
+  real use case rather than a hypothetical. (Refactor R8, post-v1.19 milestone; cites Hohpe
+  single-writer concurrency + F3.)
+
 ---
 
 ## Methodology Enforcement (runs on /ssd gate)
@@ -1096,15 +1136,22 @@ Three skills do "review" work. Never chain all three — pick the right tier:
 ## Resolving Skill Overlap
 
 When two skills could both handle the same request, the orchestrator picks the more specific one —
-unless the skill's "When NOT to use" clause disqualifies it. Current known overlaps:
+unless the skill's "When NOT to use" clause disqualifies it. There are **7 known overlap pairs**.
+The first three are *substitution* pairs (one skill replaces the other for a request); the last
+four are *coordination* pairs (both skills run, but in a fixed order or role, never competing).
+Skill A / Skill B below name the two skills; the rule says how they relate.
 
-| Generic skill | Specific skill | Priority rule |
+| Skill A | Skill B | Priority / coordination rule |
 |---|---|---|
 | `coder` | `python-django-coder` (when present) | If language = Python AND framework = Django, use `python-django-coder`. Otherwise use `coder`. |
 | `code-reviewer` | `codebase-skeptic` | `code-reviewer` for PR-level review (≤500 changed lines). `codebase-skeptic` for milestone/architectural review. Never chain both on the same scope. |
 | `codebase-skeptic` | `software-standards` | `codebase-skeptic` for continuous stewardship of an owned codebase. `software-standards` for vendor selection / legacy onboarding / pre-acquisition evaluation. Mutually exclusive. |
+| `refactor` | `code-reviewer` | Coordination, not substitution. During `/ssd milestone` step 3, `refactor` *produces* the plan and `code-reviewer` *validates* each refactor PR (`remediation_mode: true` triggers Phase 1.5). `refactor` never reviews; `code-reviewer` never plans. A refactor item that no PR closes is surfaced by the milestone playbook ("no cite → not in scope"), not by either skill. |
+| `architect` | `systems-designer` | Coordination. In `/ssd design`, `architect` runs first (models, APIs, ADRs); `systems-designer` runs second and is **purely additive** (failure modes, observability, deploy safety). Never substitute one for the other. `systems-designer` is N/A for markdown / docs-only projects, where `architect` runs alone. |
+| `methodology` | (all skills) | Reference-tier. `methodology` supplies doctrine + the `/methodology score` self-adherence metric; it is rarely invoked directly in a feature loop. When another skill's behavior is in question, prefer that skill; consult `methodology` only for doctrine adjudication. |
+| `codebase-skeptic` | `refactor` | Producer → consumer. In `/ssd milestone` / `/ssd verify`, `codebase-skeptic` *produces* findings (`skeptic-before.md` / `skeptic-after.md`) and `refactor` *consumes* them into a plan. Never the reverse — don't ask `refactor` to audit or `codebase-skeptic` to plan fixes. |
 
-Each overlapping skill MUST have a "When NOT to use" section naming the other skill(s) and the priority
+Each *substitution*-pair skill MUST have a "When NOT to use" section naming the other skill(s) and the priority
 rule. The orchestrator reads these to decide which skill to invoke when the user's request is
 ambiguous. A new skill added alongside an existing one must declare a priority rule at creation — a
 skill without a declared priority cannot be promoted past draft.
@@ -1113,6 +1160,15 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.19.1** (2026-06-11) — Post-v1.19 milestone refactor (doc-tightening; cites
+  [skeptic-before.md](../.ssd/milestones/2026-06-10-post-v1.19/skeptic-before.md)). Four doc
+  refactors land here: **R5** expands § "Resolving Skill Overlap" from 3 to **7 pairs** (adds the
+  four coordination pairs — refactor↔code-reviewer, architect↔systems-designer, methodology↔all,
+  codebase-skeptic↔refactor); **R7** adds the banner-lag note (top of file) and a "Tag the release"
+  step to § "/ssd ship"; **R8** adds § "Concurrency: one Claude session per project at a time" to
+  § "Session Continuity", documenting the single-writer assumption and incident recovery. (R1 CI
+  workflow, R2 tag backfill, and R3+R4 version-sync/`skill-version-sync` shipped earlier in the
+  same milestone; see [ADR-0009](../docs/decisions/ADR-0009-skill-version-sync.md).)
 - **1.18.0** (2026-05-24) — Iteration A of the ssd-commit-split epic
   ([ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)): selective `.ssd/` commit
   split. The blanket-gitignored `.ssd/` convention from v1.3.0–v1.17.x is replaced by a
