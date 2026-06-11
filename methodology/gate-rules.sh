@@ -461,6 +461,45 @@ rule_no_leaky_state() {
   fi
 }
 
+# ----- rule: skill-version-sync ----------------------------------------------
+# Asserts every <project-root>/*/SKILL.md's required-frontmatter example version
+# matches that file's **Version:** banner. Closes the version-drift-in-examples
+# finding (refactor R4, post-v1.19 milestone) by enforcing self-consistency
+# mechanically. SKIPs cleanly for downstream projects that have no in-repo
+# SKILL.md example blocks, so it's a no-op outside the skills library itself.
+# Doctrine cite: core.md §2 (docs as a first-class deliverable; keep examples honest).
+rule_skill_version_sync() {
+  local validator="$PROJECT_ROOT/methodology/frontmatter-validate.py"
+  if [[ ! -f "$validator" ]]; then
+    emit "SKIP" "skill-version-sync" "validator not found at methodology/frontmatter-validate.py"
+    return
+  fi
+  if ! command -v python3 >/dev/null 2>&1; then
+    emit "SKIP" "skill-version-sync" "python3 not on PATH"
+    return
+  fi
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    emit "SKIP" "skill-version-sync" "PyYAML not installed (pip3 install pyyaml)"
+    return
+  fi
+  local out exit_code
+  out=$(python3 "$validator" --check-skill-examples "$PROJECT_ROOT" 2>&1)
+  exit_code=$?
+  if [[ $exit_code -eq 0 ]]; then
+    local count
+    count=$(echo "$out" | grep -c '^PASS ' || true)
+    if [[ "$count" -gt 0 ]]; then
+      emit "PASS" "skill-version-sync" "$count skill example(s) match banner"
+    else
+      emit "SKIP" "skill-version-sync" "no SKILL.md example blocks to check"
+    fi
+  else
+    local fail_lines
+    fail_lines=$(echo "$out" | grep '^FAIL ' | head -3 | tr '\n' '|')
+    emit "FAIL" "skill-version-sync" "$fail_lines"
+  fi
+}
+
 # ----- run all rules ---------------------------------------------------------
 should_run wip-commits        && rule_wip_commits
 should_run tests-pass         && rule_tests_pass
@@ -468,6 +507,7 @@ should_run feature-flag-present && rule_feature_flag_present
 should_run adr-delta          && rule_adr_delta
 should_run frontmatter-valid  && rule_frontmatter_valid
 should_run no-leaky-state     && rule_no_leaky_state
+should_run skill-version-sync && rule_skill_version_sync
 
 # ----- emit results ----------------------------------------------------------
 if [[ $JSON -eq 1 ]]; then

@@ -351,7 +351,84 @@ EOF
   fixture_teardown "$tdir"
 }
 
-# Fixture 10: --base arg validation (regression for MINOR-2).
+# Fixture 10: skill-version-sync PASS — a SKILL.md whose frontmatter-example
+# version matches its **Version:** banner (refactor R4, post-v1.19 milestone).
+test_fixture_skill_version_match() {
+  echo "fixture: skill-version-match"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    echo "  ⊘ skipped: PyYAML not installed"
+    return
+  fi
+  local tdir
+  tdir=$(fixture_setup "skill-version-match")
+  cd "$tdir" || exit 2
+  mkdir -p methodology
+  ln -s "$VALIDATOR" methodology/frontmatter-validate.py
+  ln -s "$SCHEMAS_DIR" methodology/schemas
+  mkdir -p fakeskill
+  cat > fakeskill/SKILL.md <<'EOF'
+# Fake Skill
+
+**Version:** 1.4.0
+
+Required output frontmatter:
+
+```yaml
+---
+skill: fakeskill
+version: 1.4.0
+produced_at: <ISO-8601>
+---
+```
+EOF
+  echo "x" > a.txt
+  git add -A && git commit -qm "initial with matching skill version"
+
+  assert_rule "skill-version-match" "skill-version-sync" "PASS"
+
+  fixture_teardown "$tdir"
+}
+
+# Fixture 11: skill-version-sync FAIL — example version drifts from the banner.
+# This is the test-first fixture for R4: it demonstrates the FAIL the new check
+# is built to catch.
+test_fixture_skill_version_drift() {
+  echo "fixture: skill-version-drift"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    echo "  ⊘ skipped: PyYAML not installed"
+    return
+  fi
+  local tdir
+  tdir=$(fixture_setup "skill-version-drift")
+  cd "$tdir" || exit 2
+  mkdir -p methodology
+  ln -s "$VALIDATOR" methodology/frontmatter-validate.py
+  ln -s "$SCHEMAS_DIR" methodology/schemas
+  mkdir -p fakeskill
+  cat > fakeskill/SKILL.md <<'EOF'
+# Fake Skill
+
+**Version:** 1.4.0
+
+Required output frontmatter:
+
+```yaml
+---
+skill: fakeskill
+version: 1.0.0
+produced_at: <ISO-8601>
+---
+```
+EOF
+  echo "x" > a.txt
+  git add -A && git commit -qm "initial with drifted skill version"
+
+  assert_rule "skill-version-drift" "skill-version-sync" "FAIL"
+
+  fixture_teardown "$tdir"
+}
+
+# Fixture 12: --base arg validation (regression for MINOR-2).
 test_fixture_base_arg_validation() {
   echo "fixture: base-arg-validation"
   local out exit_code
@@ -388,6 +465,8 @@ test_fixture_yaml_comment_skip
 test_fixture_spaced_path
 test_fixture_frontmatter_valid
 test_fixture_frontmatter_invalid
+test_fixture_skill_version_match
+test_fixture_skill_version_drift
 test_fixture_base_arg_validation
 echo "================================================================"
 
