@@ -1,0 +1,51 @@
+name: quality
+
+# SSD quality gate (refactor R1, post-v1.19 milestone).
+#   - gate-rules: runs methodology/gate-rules.sh against origin/main on every PR to main.
+#   - parity-test: runs scripts/parity-test.sh on every PR and every push to main.
+# Either job failing blocks the merge. See ADR-0005 (gate execution model) and
+# ADR-0006 (frontmatter validator) for why these are executable artifacts rather than
+# orchestrator-internal LLM checks.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  gate-rules:
+    name: SSD gate rules
+    # gate-rules.sh diffs against a base ref; only meaningful on a PR.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install PyYAML
+        run: pip install pyyaml
+      - name: Run gate rules against origin/main
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          bash methodology/gate-rules.sh --base origin/main
+
+  parity-test:
+    name: gate-rules parity test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install PyYAML
+        run: pip install pyyaml
+      - name: Run parity test
+        run: bash scripts/parity-test.sh
