@@ -6,6 +6,47 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.19.1] — 2026-06-11
+
+### Post-v1.19 milestone refactor (first milestone audit; doctrine-tightening patch)
+
+The library's first `/ssd milestone` audit ([skeptic-before.md](.ssd/milestones/2026-06-10-post-v1.19/skeptic-before.md))
+flagged posture **drifting**: the methodology's own documentation had fallen out of sync with
+its own implementation. This patch closes the high-leverage findings (refactor items R1–R8;
+R9 — the profile-awareness audit — is deferred to v1.20.0 as its own pass).
+
+**CI & release discipline.**
+
+- **R1** — new `.github/workflows/quality.yml`: runs `methodology/gate-rules.sh` on every PR to
+  `main` and `scripts/parity-test.sh` on every PR and push. Either job failing blocks merge —
+  the library that preaches "encode the ratchet in CI" now has CI. README gains a status badge.
+- **R2** — backfilled the missing release tags `v1.16.0`–`v1.19.0` (only `v1.15.0` existed).
+- **R7** — documented the banner-lag pattern (skill banners track the library version *at last
+  change*) and added a "Tag the release" step to `ssd/SKILL.md` § "/ssd ship".
+
+**Version-drift defense.**
+
+- **R3** — synced the required-frontmatter `version:` example to the banner in all **8** drifted
+  sub-skills (the audit named 6; `refactor` and `software-standards` were also stale).
+- **R4** — new `skill-version-sync` gate rule + `frontmatter-validate.py --check-skill-examples`
+  mode mechanically enforce example/banner consistency going forward. Scoped to skill
+  documentation examples, not `.ssd/` artifacts (which keep the version that produced them) — see
+  **[ADR-0009](docs/decisions/ADR-0009-skill-version-sync.md)**. Two test-first parity fixtures;
+  harness 14 → 16 assertions. `methodology/SKILL.md` 1.5.0 → 1.6.0.
+
+**Documentation.**
+
+- **R5** — `ssd/SKILL.md` § "Resolving Skill Overlap" expanded from 3 to 7 pairs (adds the four
+  coordination pairs).
+- **R6** — README lists the three dogfooded epics, each linking its architect spec.
+- **R8** — `ssd/SKILL.md` documents the single-Claude-session-per-project concurrency assumption
+  and incident recovery.
+
+`ssd/SKILL.md` 1.18.0 → 1.19.1. Milestone verification (`/ssd verify`) tracked in
+[.ssd/milestones/2026-06-10-post-v1.19/](.ssd/milestones/2026-06-10-post-v1.19/).
+
+---
+
 ## [1.19.0] — 2026-06-10
 
 ### Iteration B — ssd-commit-split: optional pre-commit hook + dogfood (epic complete)
