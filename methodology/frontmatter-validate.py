@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import re
 import sys
 from fnmatch import fnmatch
 from pathlib import Path
@@ -103,6 +104,85 @@ def match_schema(file_path: Path, schemas: list[dict]) -> dict | None:
             if fnmatch(file_str, f"*/{pattern}") or fnmatch(file_str, pattern):
                 return schema
     return None
+
+
+_BANNER_RE = re.compile(r"^\*\*Version:\*\*\s*v?(\d+\.\d+(?:\.\d+)?)", re.MULTILINE)
+_SEMVER_RE = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
+
+
+def _skill_example_version(text: str) -> str | None:
+    """Extract the `version:` from a SKILL.md's required-output-frontmatter
+    example block. The example is the first `skill:`/`version:` pair (the
+    canonical block every skill documents). Returns the raw value string, or
+    None if the file has no such block.
+
+    The value is returned verbatim (minus surrounding whitespace and inline
+    `#` comments); the caller decides whether it is a concrete semver or a
+    template placeholder like `<skill-version>`.
+    """
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if re.match(r"^skill:\s*\S+", line):
+            # Look ahead a few lines for the example's version field.
+            for j in range(i + 1, min(i + 6, len(lines))):
+                m = re.match(r"^version:\s*(.+?)\s*(?:#.*)?$", lines[j])
+                if m:
+                    return m.group(1).strip().strip("\"'")
+            # A skill: line with no nearby version: — keep scanning for another.
+    return None
+
+
+def check_skill_examples(root: Path) -> tuple[list[dict], int]:
+    """Assert each `<root>/*/SKILL.md`'s required-frontmatter example `version:`
+    matches that file's `**Version:**` banner (refactor R4, post-v1.19 milestone).
+
+    This closes the version-drift-in-examples finding by enforcing the
+    self-consistency mechanically. It deliberately does NOT touch artifact
+    validation: historical `.ssd/` artifacts legitimately carry the skill
+    version that produced them, so asserting they equal the *current* banner
+    would be wrong. Only a skill's own documentation example is checked.
+
+    Returns (results, fail_count). SKIPs files without a banner, without an
+    example block, or whose example uses a non-semver placeholder (e.g. the
+    generic `<skill-version>` template in ssd/SKILL.md).
+    """
+    results: list[dict] = []
+    fail_count = 0
+    skill_files = sorted(root.glob("*/SKILL.md"))
+    for path in skill_files:
+        rel = path.relative_to(root) if path.is_relative_to(root) else path
+        try:
+            text = path.read_text()
+        except OSError as exc:
+            results.append({"status": "FAIL", "path": str(rel), "detail": f"cannot read: {exc}"})
+            fail_count += 1
+            continue
+        banner_m = _BANNER_RE.search(text)
+        if not banner_m:
+            results.append({"status": "SKIP", "path": str(rel), "detail": "no **Version:** banner"})
+            continue
+        banner = banner_m.group(1)
+        example = _skill_example_version(text)
+        if example is None:
+            results.append({"status": "SKIP", "path": str(rel), "detail": "no frontmatter example block"})
+            continue
+        if not _SEMVER_RE.match(example):
+            results.append(
+                {"status": "SKIP", "path": str(rel), "detail": f"example version is a placeholder ({example})"}
+            )
+            continue
+        if example != banner:
+            results.append(
+                {
+                    "status": "FAIL",
+                    "path": str(rel),
+                    "detail": f"example version {example} != banner {banner}",
+                }
+            )
+            fail_count += 1
+        else:
+            results.append({"status": "PASS", "path": str(rel), "detail": f"version {banner}"})
+    return results, fail_count
 
 
 def parse_frontmatter(path: Path) -> dict | None:
@@ -203,7 +283,29 @@ def main() -> int:
     parser.add_argument(
         "--json", action="store_true", help="Emit JSON instead of text"
     )
+    parser.add_argument(
+        "--check-skill-examples",
+        nargs="?",
+        const=str(PROJECT_ROOT),
+        default=None,
+        metavar="ROOT",
+        help="Instead of validating artifacts, assert each ROOT/*/SKILL.md's "
+        "frontmatter-example version matches its **Version:** banner "
+        "(default ROOT: project root).",
+    )
     args = parser.parse_args()
+
+    if args.check_skill_examples is not None:
+        results, fail_count = check_skill_examples(Path(args.check_skill_examples))
+        if args.json:
+            print(json.dumps({"fail_count": fail_count, "results": results}, indent=2))
+        else:
+            for r in results:
+                line = f"{r['status']} {r['path']}"
+                if "detail" in r:
+                    line += f" :: {r['detail']}"
+                print(line)
+        return 0 if fail_count == 0 else 1
 
     if args.paths:
         roots = [Path(p) for p in args.paths]

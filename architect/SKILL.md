@@ -43,7 +43,7 @@ stub-only section fails the gate):
 ```yaml
 ---
 skill: architect
-version: 1.1.0
+version: 1.2.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

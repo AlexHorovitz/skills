@@ -30,7 +30,7 @@ not in scope. This enforces the loop-closure contract: every refactor traces to 
 ```yaml
 ---
 skill: refactor
-version: 1.2.0
+version: 1.2.1
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

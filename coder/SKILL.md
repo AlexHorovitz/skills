@@ -28,7 +28,7 @@ Translate designs, specifications, and requirements into clean, working code tha
 ```yaml
 ---
 skill: coder
-version: 1.1.0
+version: 1.2.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

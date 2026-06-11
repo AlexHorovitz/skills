@@ -27,7 +27,7 @@ Ensure every feature and system change is production-ready by systematically eva
 ```yaml
 ---
 skill: systems-designer
-version: 1.2.0
+version: 1.3.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

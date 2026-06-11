@@ -1026,6 +1026,7 @@ per rule. Each rule maps to a principle in `methodology/core.md`.
 | `adr-delta` | core.md §2 | If architectural diff > 200 lines outside test/doc/migration scope, `docs/decisions/` has a new or modified ADR |
 | `frontmatter-valid` | ADR-0006 | Every changed `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md` artifact validates against its skill schema (via `methodology/frontmatter-validate.py`) |
 | `no-leaky-state` | [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md) | No file matching the `.ssd/` selective-commit deny-list (machine state: `current.yml`, `init-log.md`, `archive/`, `audits/`, etc., plus project-supplied `project.yml.ssd.gitignored_state`) appears in the diff. Catches force-add and edited-gitignore bypasses. SKIPs cleanly on `gitignore_mode: blanket` projects. |
+| `skill-version-sync` | core.md §2 | Each `<project-root>/*/SKILL.md`'s required-frontmatter example `version:` matches that file's `**Version:**` banner (via `frontmatter-validate.py --check-skill-examples`). SKIPs files using a placeholder example or projects with no in-repo SKILL.md example blocks. |
 
 Rule outputs:
 - `PASS` — rule applied and verified.

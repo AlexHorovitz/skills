@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 
 **Canonical methodology pages**: [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html) (full doctrine), [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html) (practical implementation), [insanelygreat.com/agile2.html](https://insanelygreat.com/agile2.html) (companion manifesto). The website is the user-facing reference; this skill set is the in-repo doctrine the orchestrator enforces.
 
@@ -100,6 +100,8 @@ Rules implemented in v1.4.0:
 | `feature-flag-present` | core.md §3 (Feature flags for new code) | Project's `feature_flag_marker` (from `project.yml`) appears in non-doc changed files |
 | `adr-delta` | core.md §2 (Documentation matches implementation) | If architectural diff exceeds threshold (200 lines outside test/doc/migration scope), `docs/decisions/` has a new or modified ADR |
 | `frontmatter-valid` | structured output requirement (SSD/SKILL.md § "Structured Output Requirements") | Every changed `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md` artifact has YAML frontmatter that validates against its skill's schema in `methodology/schemas/<skill>.yml`. SKIPs if Python 3 or PyYAML are missing (graceful degradation). |
+| `no-leaky-state` | [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md) | No file matching the `.ssd/` selective-commit deny-list (machine state plus project-supplied `project.yml.ssd.gitignored_state`) appears in the diff. Catches force-add and edited-gitignore bypasses. SKIPs on `gitignore_mode: blanket`. |
+| `skill-version-sync` | core.md §2 (Documentation matches implementation) | Each `<project-root>/*/SKILL.md`'s required-frontmatter example `version:` matches that file's `**Version:**` banner (via `frontmatter-validate.py --check-skill-examples`). SKIPs placeholder examples and projects with no in-repo SKILL.md example blocks. |
 
 The script is the source of truth — `cat methodology/gate-rules.sh` answers "what does the gate
 actually check?" Direct invocation is supported for CI integration:
@@ -147,6 +149,16 @@ see existing schemas for format. Adding a new validator type (beyond `string`/`i
 
 ## Changelog
 
+- **1.6.0** (2026-06-11) — Refactor R4 of the post-v1.19 milestone (cites: Fowler
+  "version-drift in frontmatter examples", Wozniak "validator doesn't enforce version"). New
+  gate rule `skill-version-sync`: asserts each `<project-root>/*/SKILL.md`'s required-frontmatter
+  example `version:` matches that file's `**Version:**` banner, via a new
+  `frontmatter-validate.py --check-skill-examples [ROOT]` mode. Deliberately scoped to skill
+  *documentation examples* — historical `.ssd/` artifacts keep the version that produced them, so
+  artifact validation is untouched. SKIPs placeholder examples (e.g. ssd/SKILL.md's
+  `<skill-version>` template) and projects with no in-repo SKILL.md example blocks. Two new
+  parity-test fixtures (match → PASS, drift → FAIL); harness now at 16 assertions. Also backfills
+  the `no-leaky-state` row (shipped v1.18.0) that was missing from the gate-rules table here.
 - **1.5.0** (2026-05-24) — Methodology docs cross-linked to canonical website at insanelygreat.com.
   `core.md` adds a canonical-reference banner pointing to ssd.html, makes the Continuous-Delivery vs.
   SSD distinction explicit (CD says "can ship"; SSD requires "is shipped"), and links the Ratchet

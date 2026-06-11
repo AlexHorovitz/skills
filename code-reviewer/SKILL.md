@@ -27,7 +27,7 @@ Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabili
 ```yaml
 ---
 skill: code-reviewer
-version: 1.3.0
+version: 1.5.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
