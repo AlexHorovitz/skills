@@ -11,7 +11,11 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 
 **Core invariant:** If you can't ship it right now, you don't have a product — you have a construction site.
 
-**Dogfood.** As of v1.19.0 (per [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)) this repo tracks its own SSD artifacts under [`.ssd/features/`](.ssd/features/) — briefs, architect specs, coder-status reports, and code-reviews for every epic shipped in v1.5.0+. Read the history of how the methodology was built using the methodology itself.
+**Dogfood.** As of v1.19.0 (per [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)) this repo tracks its own SSD artifacts under [`.ssd/features/`](.ssd/features/) — briefs, architect specs, coder-status reports, and code-reviews for every epic shipped in v1.5.0+. Read the history of how the methodology was built using the methodology itself. The epics so far:
+
+- [`ssd-skill-upgrades`](.ssd/features/ssd-skill-upgrades/01-architect.md) — 9-iteration epic implementing v1.5–v1.14 (5 ADRs: iterations, `current.yml` split, rails, profiles, gate execution).
+- [`parallel-features`](.ssd/features/parallel-features/01-architect.md) — concurrent feature workstreams (3 iterations, v1.15–v1.17; [ADR-0007](docs/decisions/ADR-0007-parallel-features.md)).
+- [`ssd-commit-split`](.ssd/features/ssd-commit-split/01-architect.md) — the selective-commit convention that makes this very list visible (2 iterations, v1.18–v1.19; [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)).
 
 ## Methodology
 
