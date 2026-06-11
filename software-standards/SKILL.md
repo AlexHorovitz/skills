@@ -29,7 +29,7 @@ invokes `software-standards` on their own actively-developed codebase, surface a
 ```yaml
 ---
 skill: software-standards
-version: 1.1.0
+version: 1.1.1
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

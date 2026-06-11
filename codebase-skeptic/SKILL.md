@@ -36,7 +36,7 @@ intellectual traditions to bear on whatever codebase is placed in front of you.
 ```yaml
 ---
 skill: codebase-skeptic
-version: 1.2.0
+version: 1.2.1
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

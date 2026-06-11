@@ -543,7 +543,7 @@ Record what was done and what was found. This is the primary output artifact of 
 ```markdown
 ---
 skill: ssd-init
-version: 1.0.0
+version: 1.8.0
 produced_at: <ISO-8601>
 project: <name>
 ---
