@@ -6,6 +6,35 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.21.0] — 2026-06-13
+
+### Feature: `/ssd upgrade` — iteration A (read-only drift report)
+
+First concrete 2.0-era feature ([#17](https://github.com/AlexHorovitz/skills/issues/17),
+[ADR-0013](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md)), shipping ahead of the
+contested 2.0 surface cuts because it's independent of them and is the migration vehicle ADR-0012's
+deprecation path will need.
+
+`/ssd upgrade` detects when a project has drifted past the latest SSD conventions and reports the
+gap. **Iteration A is read-only** (detect-only; no write path, so a bad migration cannot corrupt a
+project — ADR-0013 R1 cannot fire).
+
+- **`methodology/migrations.yml`** — declarative, append-only migration manifest; the 5 historical
+  project-visible conventions (current.yml v2, dev-profile keys, parallel-features keys,
+  selective-gitignore, decision-record doctrine), each tagged `applies_to`/`kind`/`detect`/`adr`.
+- **`methodology/migrate.sh`** — bash+awk detect-only engine (bash 3.2-compatible). Selects
+  `applies_to: project` entries newer than the project's recorded `ssd.version` and reports each as
+  `PENDING` / `SKIP-present` / `GUIDED`. Per-`id` detect probes anchored to YAML-key form (won't
+  false-positive on comments). `--apply` refuses (exit 2) — lands in iter B.
+- **`ssd/SKILL.md`** — `/ssd upgrade` command + § doc; `ssd-init` ↔ `/ssd upgrade` state-disjoint
+  overlap row (now **8 pairs**); `ssd` 1.20.0 → 1.21.0.
+- **`scripts/parity-test.sh`** — +2 fixtures; harness 16 → 20 assertions.
+
+Warnings, not walls (ADR-0012 Pillar 5): reports only; never forces, never silent-rewrites. Iter B
+(`--apply` mechanical migrations) and iter C (guided + manifest-currency gate) follow as v1.22/v1.23.
+
+---
+
 ## [1.20.1] — 2026-06-13
 
 ### Doctrine: decision records + "warnings, not walls"
