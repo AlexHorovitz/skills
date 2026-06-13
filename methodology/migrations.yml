@@ -17,9 +17,10 @@
 #   guidance      (guided) what the maintainer should adopt by hand
 #
 # NOTE: `apply` text is the HUMAN description of the mechanical migration; the executable action
-#       lives in migrate.sh as apply_<id-with-underscores>() (iter B, `--apply`). `current-yml-v2`'s
-#       apply is DEFERred there (the v1→v2 split stays owned by ssd-init). `guidance` text (guided
-#       entries) is informational — guided practices are adopted by hand, never auto-applied.
+#       lives in migrate.sh as apply_<id-with-underscores>() (`--apply`). As of v1.23.0 all four
+#       mechanical entries — including `current-yml-v2` (v1→v2 split, conservative-safe form) — have
+#       an executable apply. `guidance` text (guided entries) is informational — guided practices are
+#       adopted by hand, never auto-applied.
 
 schema_version: 1
 

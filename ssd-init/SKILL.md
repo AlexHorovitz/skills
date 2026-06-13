@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.8.0
+**Version:** 1.9.0
 
 ## Purpose
 
@@ -193,44 +193,12 @@ notes, milestone records) get committed; machine state (`current.yml`, `project.
 4. **`.gitignore` exists with the selective pattern already (heuristic: contains
    `!.ssd/features/**/01-architect.md`):** no change.
 
-**The selective pattern to write:**
-
-```gitignore
-# SSD working directory — selective commit (ADR-0008, v1.18.0+).
-# Block everything under .ssd/ by default, then allow the durable artifact tree.
-
-.ssd/*
-!.ssd/features/
-!.ssd/milestones/
-!.ssd/features/**/
-!.ssd/features/**/00-brief.md
-!.ssd/features/**/01-architect.md
-!.ssd/features/**/02-systems-designer.md
-!.ssd/features/**/03-coder-status.md
-!.ssd/features/**/04-code-review*.md
-!.ssd/features/**/05-deploy.md
-!.ssd/features/**/iterations/**/brief.md
-!.ssd/features/**/iterations/**/coder-status.md
-!.ssd/features/**/iterations/**/code-review/round-*.md
-!.ssd/features/**/iterations/**/deploy.md
-
-# Machine-managed state even when nested inside features/.
-.ssd/features/**/iterations/**/deferred.yml
-.ssd/features/**/current.yml.bak
-
-# Milestones: durable records committed; snapshot machinery local.
-!.ssd/milestones/**/
-!.ssd/milestones/**/skeptic-before.md
-!.ssd/milestones/**/skeptic-after.md
-!.ssd/milestones/**/refactor-plan.md
-!.ssd/milestones/**/refactor-prs.md
-!.ssd/milestones/**/verification.md
-.ssd/milestones/**/sha-before
-.ssd/milestones/**/metrics-before.yml
-
-# Audits stay gitignored — often sensitive (vendor names, internal opinions).
-.ssd/audits/
-```
+**The selective pattern to write:** the canonical pattern is the **single source**
+[`methodology/selective.gitignore`](../methodology/selective.gitignore) (ADR-0013 extraction, library
+v1.23.0). Write that file's contents verbatim. Do **not** maintain a second copy here — `ssd-init`
+and `methodology/migrate.sh` (`apply_selective_gitignore`) both consume the one file, so the pattern
+can never drift between the first-run path and the `/ssd upgrade --apply` migration path. (Closes the
+SUGGESTION-1 duplication flagged in the ssd-upgrade iter-B review.)
 
 **Migration from blanket gitignore.** When `ssd-init` detects an existing `.gitignore` with a
 bare `.ssd/` (or `.ssd`) line — the v1.3.0–v1.17.x convention — surface the migration offer:
@@ -483,6 +451,15 @@ committing, then re-ask the migration question.
 If the project is not a git repo or the user declines all options, leave the file alone and note in
 the init log that v1 was detected and migration was deferred.
 
+> **Shared engine (ADR-0013, library v1.23.0).** The non-interactive equivalent of this v1→v2 split
+> is `/ssd upgrade --apply`, which runs `methodology/migrate.sh`'s `apply_current_yml_v2`. That path
+> uses the **conservative-safe** form — back up to `current.yml.bak`, write a fresh v2 skeleton, and
+> preserve the *entire* original under `current.notes.yml` `legacy_v1_import:` for the user to
+> reconcile — rather than the field-by-field classification this prompted init-time flow performs.
+> Both write a `.bak` and never silently discard data. Use this interactive flow at first-run; use
+> `/ssd upgrade` for an already-initialized project that has drifted (the overlap rule in
+> `ssd/SKILL.md` § "Resolving Skill Overlap").
+
 ### Step 8 — Check for `CLAUDE.md`
 
 If the project root has a `CLAUDE.md`, read it and record that it exists. Surface to the user if it does not mention the SSD convention — they may want to add a pointer.
@@ -543,7 +520,7 @@ Record what was done and what was found. This is the primary output artifact of 
 ```markdown
 ---
 skill: ssd-init
-version: 1.8.0
+version: 1.9.0
 produced_at: <ISO-8601>
 project: <name>
 ---
@@ -701,6 +678,13 @@ Running `ls .ssd/features/<slug>/` reveals the full phase chain for a feature in
 
 ## Changelog
 
+- **1.9.0** (2026-06-13) — ssd-upgrade extraction (ADR-0013, library v1.23.0). Step 5's selective
+  `.gitignore` pattern is no longer duplicated here — it points to the single-source
+  [`methodology/selective.gitignore`](../methodology/selective.gitignore), which `migrate.sh`
+  (`apply_selective_gitignore`) also consumes, so the first-run and `/ssd upgrade --apply` paths
+  can't drift. Step 7 gains a cross-reference: the non-interactive v1→v2 equivalent is
+  `/ssd upgrade --apply` (`apply_current_yml_v2`, conservative-safe form — `.bak` + fresh v2 skeleton
+  + original preserved under `current.notes.yml` `legacy_v1_import:`). Both `.bak` and never discard.
 - **1.8.0** (2026-06-10) — Iteration B of the ssd-commit-split epic
   ([ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)). New Step 5.5 (Offer
   pre-commit hook install): expert-profile users get a yes/no/skip prompt offering the

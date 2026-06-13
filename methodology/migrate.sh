@@ -19,7 +19,6 @@
 #       APPLIED <id>      :: <title> (applied; backup written)
 #       SKIP-present <id> :: already adopted                   # idempotent — re-running is a no-op
 #       GUIDED <id>       :: <title> (<adr>) — outstanding; adopt by hand   # re-surfaced every run (R3)
-#       DEFER <id>        :: handled by /ssd-init (run it, then re-run --apply)
 #       ERROR <id>        :: apply ran but convention still absent — inspect manually
 #
 # The recorded-version bump advances only across the *contiguous* run of adopted entries (ascending
@@ -28,10 +27,11 @@
 # (ADR-0013 R3), without iter C's separate guided-adoption tracking. Mechanical entries above an
 # outstanding guided entry are still applied; they simply don't advance the recorded version yet.
 #
-# This is the engine behind `/ssd upgrade` (orchestrator command). The v1→v2 `current.yml` split is
-# still owned by `ssd-init` (its prose is not yet extracted here — that behavior-preserving refactor
-# is a tracked follow-up); `current-yml-v2` therefore reports DEFER rather than a half-implemented
-# split, keeping R1 (corruption) airtight.
+# This is the engine behind `/ssd upgrade` (orchestrator command). As of v1.23.0 it owns ALL four
+# mechanical migrations including the v1→v2 `current.yml` split (extracted from ssd-init; ADR-0013).
+# The v1→v2 apply is the conservative-safe form — back up + fresh v2 skeleton + original preserved in
+# current.notes.yml `legacy_v1_import:` — so R1 (corruption) stays airtight without a field-classifying
+# heuristic. ssd-init delegates v1→v2 and the selective .gitignore rewrite to this one engine.
 #
 # Usage:
 #   bash methodology/migrate.sh --from <recorded> [--to <version>] [--apply] [--manifest <path>] [--json]
@@ -120,6 +120,38 @@ insert_under_ssd() {
   rm -f "$pf"
 }
 
+apply_current_yml_v2() {          # ADR-0002 — v1→v2 split (extraction from ssd-init, v1.23.0).
+  # Conservative-safe mechanical form (ADR-0013 extraction decision): the original v1 file may carry
+  # arbitrary undocumented keys; a bash heuristic that field-classifies machine-vs-notes is exactly the
+  # R1 corruption hazard. Instead: back up the original verbatim (.bak), write a fresh valid v2 skeleton,
+  # and preserve the ENTIRE original under current.notes.yml `legacy_v1_import:` for human reconciliation.
+  # Zero data loss (original lives in .bak AND in notes); detect (schema_version: 2) passes afterwards.
+  # The user re-populates active[] from the preserved import. ssd-init delegates v1→v2 to this same path.
+  local cy="$ROOT/.ssd/current.yml" notes="$ROOT/.ssd/current.notes.yml"
+  [[ -f "$cy" ]] || return 1
+  grep -qE '^schema_version:' "$cy" && return 0      # already has a schema_version line — nothing to do
+  [[ -f "$cy.bak" ]] && return 1                      # refuse to clobber an existing backup (ssd-init rule 1)
+  cp "$cy" "$cy.bak"
+  # Preserve the full original under a legacy_v1_import block in the notes sidecar (create or append).
+  {
+    printf '\n# legacy_v1_import — original v1 current.yml preserved by /ssd upgrade --apply (ADR-0002/0013).\n'
+    printf '# Reconcile active workstreams from here into current.yml.active[], then delete this block.\n'
+    printf 'legacy_v1_import: |\n'
+    sed 's/^/  /' "$cy.bak"
+  } >> "$notes"
+  # Fresh, valid v2 skeleton.
+  cat > "$cy" <<'EOF'
+# .ssd/current.yml — machine-managed SSD workstreams.
+# Migrated v1→v2 by /ssd upgrade --apply (ADR-0002). The pre-migration file is at current.yml.bak;
+# its full contents are preserved under current.notes.yml `legacy_v1_import:` for reconciliation.
+schema_version: 2
+
+active: []
+
+archived: []
+EOF
+}
+
 apply_dev_profile_keys() {        # ADR-0004 — top-level keys; append at EOF (non-destructive).
   local pj="$ROOT/.ssd/project.yml"
   [[ -f "$pj" ]] || return 1
@@ -152,6 +184,10 @@ apply_selective_gitignore() {     # ADR-0008 — gitignore_mode key + selective 
   local pj="$ROOT/.ssd/project.yml" gi="$ROOT/.gitignore"
   [[ -f "$pj" ]] || return 1
   grep -qE '^ssd:' "$pj" || return 1
+  # Guard (review MINOR-1): bail BEFORE any mutation if the canonical pattern file is missing (broken
+  # install). Otherwise `cat` would no-op and the marker key would still get set → a silent-incomplete
+  # APPLIED (recorded selective, no pattern) — the MAJOR-3/4 class of bug. Fail loud → ERROR instead.
+  [[ -f "$SCRIPT_DIR/selective.gitignore" ]] || return 1
   # Idempotency on .gitignore content (dogfood finding MAJOR-3): detect() only probes the project.yml
   # marker key, but a project can already carry the selective pattern with the key absent (e.g. the
   # pattern was hand-added, or written by an older ssd-init that predated the key). Re-appending would
@@ -165,36 +201,10 @@ apply_selective_gitignore() {     # ADR-0008 — gitignore_mode key + selective 
     if [[ -f "$gi" ]]; then
       grep -vxE '[[:space:]]*\.ssd/[[:space:]]*' "$gi" > "$gi.tmp" && mv "$gi.tmp" "$gi"
     fi
-    cat >> "$gi" <<'EOF'
-
-# SSD working directory — selective commit (ADR-0008, v1.18.0+). Added by /ssd upgrade --apply.
-# Block everything under .ssd/ by default, then allow the durable artifact tree.
-.ssd/*
-!.ssd/features/
-!.ssd/milestones/
-!.ssd/features/**/
-!.ssd/features/**/00-brief.md
-!.ssd/features/**/01-architect.md
-!.ssd/features/**/02-systems-designer.md
-!.ssd/features/**/03-coder-status.md
-!.ssd/features/**/04-code-review*.md
-!.ssd/features/**/05-deploy.md
-!.ssd/features/**/iterations/**/brief.md
-!.ssd/features/**/iterations/**/coder-status.md
-!.ssd/features/**/iterations/**/code-review/round-*.md
-!.ssd/features/**/iterations/**/deploy.md
-.ssd/features/**/iterations/**/deferred.yml
-.ssd/features/**/current.yml.bak
-!.ssd/milestones/**/
-!.ssd/milestones/**/skeptic-before.md
-!.ssd/milestones/**/skeptic-after.md
-!.ssd/milestones/**/refactor-plan.md
-!.ssd/milestones/**/refactor-prs.md
-!.ssd/milestones/**/verification.md
-.ssd/milestones/**/sha-before
-.ssd/milestones/**/metrics-before.yml
-.ssd/audits/
-EOF
+    # Single source (ADR-0013 extraction, v1.23.0): the pattern lives in methodology/selective.gitignore.
+    # ssd-init/SKILL.md Step 5 points to the same file instead of duplicating it (closes review SUGGESTION-1).
+    printf '\n' >> "$gi"
+    cat "$SCRIPT_DIR/selective.gitignore" >> "$gi"
   fi
   # Marker key LAST — see ordering note above. Comment on its OWN line, NOT inline after the value
   # (dogfood MAJOR-4): gate-rules.sh's no-leaky-state value parser does not strip a trailing `# …`,
@@ -212,10 +222,10 @@ EOF
 # other = ERROR (no apply path / mutation failed).
 apply_dispatch() {
   case "$1" in
+    current-yml-v2)         apply_current_yml_v2 ;;
     dev-profile-keys)       apply_dev_profile_keys ;;
     parallel-features-keys) apply_parallel_features_keys ;;
     selective-gitignore)    apply_selective_gitignore ;;
-    current-yml-v2)         return 9 ;;   # v1→v2 split owned by ssd-init (extraction is a follow-up)
     *)                      return 1 ;;   # unknown mechanical id
   esac
 }
@@ -271,10 +281,7 @@ while IFS=$'\t' read -r id iv ap kd ad ti; do
   elif detect "$id"; then
     status="SKIP-present"; detail="already adopted"; satisfied=1
   elif [[ $APPLY -eq 1 ]]; then
-    apply_dispatch "$id"; rc=$?
-    if [[ $rc -eq 9 ]]; then
-      status="DEFER"; detail="v1→v2 current.yml split is performed by /ssd-init (run it, then re-run --apply)"
-    elif [[ $rc -eq 0 ]] && detect "$id"; then
+    if apply_dispatch "$id" && detect "$id"; then
       status="APPLIED"; detail="$ti (applied; backup written)"; satisfied=1
       applied_log="${applied_log}- APPLIED ${id} (v${iv}, ${ad})"$'\n'
     else
