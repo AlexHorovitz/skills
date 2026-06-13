@@ -98,9 +98,17 @@ yaml_get() {
   awk -v k="$key" '
     $0 ~ /^[[:space:]]*#/ { next }
     $0 ~ "^[[:space:]]*"k":" {
-      sub(/^[[:space:]]*[^:]+:[[:space:]]*/, "")
-      gsub(/^["'\'']|["'\'']$/, "")
-      print
+      sub(/^[[:space:]]*[^:]+:[[:space:]]*/, "")          # strip "key: "
+      # Inline-comment handling (ssd-upgrade iter-B MAJOR-4): a trailing ` # …` is a YAML comment, not
+      # part of the value. For an unquoted scalar, strip it; for a quoted scalar, take the value through
+      # the closing quote (so a `#` inside quotes is preserved and a comment after it is dropped).
+      if ($0 ~ /^["'\'']/) {
+        q = substr($0, 1, 1); rest = substr($0, 2); idx = index(rest, q)
+        print (idx > 0 ? substr(rest, 1, idx - 1) : rest)
+      } else {
+        sub(/[[:space:]]+#.*$/, ""); sub(/[[:space:]]+$/, "")
+        print
+      }
       exit
     }
   ' "$file"
@@ -500,6 +508,49 @@ rule_skill_version_sync() {
   fi
 }
 
+# ----- rule: migration-manifest-current --------------------------------------
+# Closes ADR-0013 R2 (manifest drift) at the structural level. Only meaningful in the SSD skills
+# library repo itself (a consuming project has no methodology/migrations.yml — it ships with the
+# installed skills), so it SKIPs cleanly elsewhere. Validates the manifest is healthy: required
+# fields per entry, unique ids, ascending introduced_in (append-only), and no introduced_in newer
+# than the repo's VERSION. The "did a convention change but no entry was added" judgment remains a
+# documented human release obligation (ADR-0013) — a script can't read intent — but these structural
+# checks catch the authoring mistakes that silently rot the manifest.
+rule_migration_manifest_current() {
+  local manifest="$PROJECT_ROOT/methodology/migrations.yml"
+  local version_file="$PROJECT_ROOT/VERSION"
+  if [[ ! -f "$manifest" ]]; then
+    emit "SKIP" "migration-manifest-current" "no methodology/migrations.yml (not the skills-library repo)"
+    return
+  fi
+  local version=""
+  [[ -f "$version_file" ]] && version="$(tr -d '[:space:]' < "$version_file")"
+  # awk validates structure; prints "OK" or "FAIL: <reason>".
+  local result
+  result=$(awk -v ver="$version" '
+    function vle(a, b,   x, y, i) {   # return 1 if a <= b (numeric per dotted component)
+      split(a, x, "."); split(b, y, ".")
+      for (i = 1; i <= 3; i++) { if ((x[i]+0) < (y[i]+0)) return 1; if ((x[i]+0) > (y[i]+0)) return 0 }
+      return 1
+    }
+    /^  - id:/            { n++; id=$3
+                            if (id == "") { print "FAIL: entry "n" has empty id"; failed=1; exit }
+                            ids[id]++; if (ids[id] > 1) { print "FAIL: duplicate id " id; failed=1; exit } ; next }
+    /^    introduced_in:/ { iv=$2; gsub(/"/,"",iv)
+                            if (prev_iv != "" && !vle(prev_iv, iv)) { print "FAIL: introduced_in not ascending at " id " (" prev_iv " then " iv ")"; failed=1; exit }
+                            if (ver != "" && !vle(iv, ver)) { print "FAIL: " id " introduced_in " iv " is newer than VERSION " ver; failed=1; exit }
+                            prev_iv=iv; next }
+    END { if (!failed) { if (n == 0) print "FAIL: manifest has no entries"; else print "OK " n } }
+  ' "$manifest")
+  if [[ "$result" == FAIL:* ]]; then
+    emit "FAIL" "migration-manifest-current" "${result#FAIL: }"
+  elif [[ "$result" == OK* ]]; then
+    emit "PASS" "migration-manifest-current" "manifest valid (${result#OK } entries; ids unique, ascending, ≤ VERSION ${version:-?})"
+  else
+    emit "SKIP" "migration-manifest-current" "manifest unreadable"
+  fi
+}
+
 # ----- run all rules ---------------------------------------------------------
 should_run wip-commits        && rule_wip_commits
 should_run tests-pass         && rule_tests_pass
@@ -508,6 +559,7 @@ should_run adr-delta          && rule_adr_delta
 should_run frontmatter-valid  && rule_frontmatter_valid
 should_run no-leaky-state     && rule_no_leaky_state
 should_run skill-version-sync && rule_skill_version_sync
+should_run migration-manifest-current && rule_migration_manifest_current
 
 # ----- emit results ----------------------------------------------------------
 if [[ $JSON -eq 1 ]]; then
