@@ -8,15 +8,15 @@ scope: add-ssd-upgrade-b (vs main)
 consumed_by: [ssd]
 finding_counts:
   blocker: 0
-  major: 0
+  major: 1
   minor: 2
   question: 0
   suggestion: 1
   nit: 1
-gate_pass: true
+gate_pass: true            # MAJOR-3 found via dogfood + closed (commit f26933b) before merge; 0 open BLOCKER/MAJOR
 remediation_mode: false
-round: 2
-closed_from_previous_round: [MINOR-1, MINOR-2]
+round: 3
+closed_from_previous_round: [MAJOR-3]
 ---
 
 # Code Review — ssd-upgrade iteration B (`/ssd upgrade --apply`), round 1
@@ -102,3 +102,22 @@ skill's inline-round-2 allowance (≤3 closures).
 Re-verified after the fixes: `parity-test.sh` **37/37**, `gate-rules.sh --base main` exit 0,
 `bash -n migrate.sh` clean. SUGGESTION-1 (pattern duplication) + NIT (`.gitignore.bak`) remain open,
 tracked on issue #17 for the `ssd-init` extraction follow-up.
+
+## Round-3 — MAJOR-3 found by dogfooding `--apply` on this repo, fixed
+
+Running `/ssd upgrade --apply` against this repo (recorded `1.15.0`) surfaced a real correctness bug
+the synthetic fixtures missed: this repo's `.gitignore` **already** carries the selective pattern, but
+`project.yml` lacks the `gitignore_mode` marker key. `detect()` probes only the key, so `--apply`
+re-appended the entire pattern block — **duplicating it**.
+
+- **MAJOR-3 closed** ([migrate.sh:151-203](../../../../../methodology/migrate.sh#L151), commit `f26933b`)
+  — the `.gitignore` rewrite is now gated on the sentinel `!.ssd/features/**/01-architect.md` (the
+  same heuristic `ssd-init` uses): already-present pattern → skip the rewrite, set only the marker key.
+  New parity fixture 17 (40 assertions). Verified in production: the dogfood run left `.gitignore`
+  untouched (no `.bak`, no duplication), added `gitignore_mode: selective`, and bumped recorded
+  `1.15.0 → 1.18.0` (capped below the unadopted guided `decision-record-doctrine` 1.20.1, which
+  re-surfaced — R3 working as designed).
+
+This is SSD dogfooding doing its job: the synthetic apply fixtures all used blanket `.gitignore`s; only
+running against a real already-selective repo exposed the gap. Final state: `parity-test.sh` 40/40,
+`gate-rules.sh --base main` exit 0.
