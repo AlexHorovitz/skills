@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.6.1
+**Version:** 1.6.2
 
 **Canonical methodology pages**: [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html) (full doctrine), [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html) (practical implementation), [insanelygreat.com/agile2.html](https://insanelygreat.com/agile2.html) (companion manifesto). The website is the user-facing reference; this skill set is the in-repo doctrine the orchestrator enforces.
 
@@ -151,6 +151,11 @@ see existing schemas for format. Adding a new validator type (beyond `string`/`i
 
 ## Changelog
 
+- **1.6.2** (2026-06-13) — New doctrine in `core.md` § "Recording Decisions": a consequential
+  decision is recorded as an ADR (durable *why*) + a revisit-aware tracking issue (live status +
+  falsifiable `Revisit when:` triggers), cross-linked. Establishes
+  [ADR-0011](../docs/decisions/ADR-0011-decision-record-doctrine.md). Issue tracker is the ledger,
+  never the gate. No behavior change to gate-rules.
 - **1.6.1** (2026-06-13) — Feature ssd-profile-audit (R9): added explicit "Profile stance:
   invariant" note ([ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md)). `/methodology
   score` and doctrine answers do not branch on `developer_profile`. No behavior change.

@@ -218,6 +218,21 @@ Scope cuts should happen **early and often**, not as last-minute panic.
 - Hide features behind flags rather than deleting (easy to resurrect)
 - Communicate cuts early to stakeholders
 
+### Recording Decisions
+
+A consequential decision is recorded in two cross-linked places: an **ADR** in `docs/decisions/`
+that owns the durable *why* (context, alternatives, consequences), and a **revisit-aware tracking
+issue** (GitHub Issues by default) that owns the live *what-happened* timeline and a mandatory
+**`Revisit when:`** section listing the *falsifiable* conditions under which the decision reopens.
+The ADR is source-of-truth for why; the issue is source-of-truth for current status and reopen
+criteria; when a trigger fires, the issue reopens and a new ADR supersedes the old (which is marked
+superseded, never deleted). This makes decisions transparent to everyone who depends on the codebase
+— including those who never clone it — and turns every removal into a reversible-by-stated-criteria
+choice rather than a one-way bet: no decision is a black box. The issue tracker is the *ledger*,
+never the *gate* — the executable gate and artifact tree stay local and offline-capable, and
+projects without an issue tracker carry the `Revisit when:` section inline in the ADR. See
+[ADR-0011](../docs/decisions/ADR-0011-decision-record-doctrine.md).
+
 ---
 
 ## Metrics That Matter
