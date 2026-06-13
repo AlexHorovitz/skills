@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.20.0
+**Version:** 1.21.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -53,6 +53,7 @@ creates `docs/decisions/`, `docs/runbooks/`, `docs/architecture/`, and runs SSD 
 /ssd audit         — Adversarial comparative review (nuclear option)
 /ssd gate          — Shippable state check only (code-reviewer + methodology rules)
 /ssd ship          — Deploy readiness check only (systems-designer checklist)
+/ssd upgrade       — (v1.21.0+) report SSD convention drift; migrate the project to the latest approach
 /ssd feature new   — (v1.16.0+) start a parallel workstream with branch + scaffold
 /ssd switch        — (v1.16.0+) pause current workstream, capture handoff, resume target
 /ssd worktree      — (v1.16.0+) explicit worktree lifecycle (add | remove)
@@ -343,6 +344,39 @@ This should be done by hand or via a release script; the orchestrator does **not
 because tagging pushes to the remote and outward-facing actions stay under explicit human
 control. This step closes the post-merge half of the `core.md` §4 ratchet ("tag every release").
 (Refactor R7, post-v1.19 milestone.)
+
+---
+
+### `/ssd upgrade` — Keep the Project on the Latest SSD Approach
+
+(added v1.21.0, see [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md))
+
+SSD conventions evolve every release (new `project.yml.ssd.*` keys, `current.yml` schema bumps,
+`gitignore_mode`, doctrine). `/ssd upgrade` detects when a project has drifted past the latest
+conventions and — from iteration B — migrates it forward. It reads the declarative manifest
+`methodology/migrations.yml` via the `methodology/migrate.sh` engine.
+
+**Iteration A (v1.21.0) — read-only drift report.** The orchestrator:
+
+1. Reads the project's recorded version from `.ssd/project.yml.ssd.version` (the `--from`).
+2. Reads the installed skills' `VERSION` (the `--to`).
+3. Runs `bash methodology/migrate.sh --from <recorded> --to <current>`, which selects
+   `applies_to: project` manifest entries with `introduced_in > recorded` and reports each:
+   - `PENDING <id>` — a mechanical convention not yet adopted (detect probe found it absent),
+   - `SKIP-present <id>` — already adopted (idempotent; nothing to do),
+   - `GUIDED <id>` — a *practice* (e.g. the decision-record doctrine) to adopt by hand.
+4. Surfaces the report. **Iter A writes nothing** — it is a pure dry-run, so the corruption risk of
+   a bad migration cannot fire (ADR-0013 Risk R1).
+
+**Iterations B/C (planned, v1.22.0 / v1.23.0):** `--apply` runs mechanical migrations with a
+per-file `.bak`, bumps `project.yml.ssd.version`, and appends to `.ssd/init-log.md`; guided
+migrations are re-surfaced until adopted; a `migration-manifest-current` gate rule closes the
+manifest-drift risk (R2). Per ADR-0012 Pillar 5 (warnings, not walls), `/ssd upgrade` never forces —
+a project may stay on old conventions; it only reports until the user opts to `--apply`, and never
+performs a silent rewrite (matching the ADR-0002 v1→v2 prompted/`.bak` precedent).
+
+**Prerequisite:** `.ssd/project.yml` must exist. If absent, the project hasn't been initialized —
+run `/ssd-init` (see the overlap rule in § "Resolving Skill Overlap").
 
 ---
 
@@ -1178,10 +1212,10 @@ Three skills do "review" work. Never chain all three — pick the right tier:
 ## Resolving Skill Overlap
 
 When two skills could both handle the same request, the orchestrator picks the more specific one —
-unless the skill's "When NOT to use" clause disqualifies it. There are **7 known overlap pairs**.
-The first three are *substitution* pairs (one skill replaces the other for a request); the last
-four are *coordination* pairs (both skills run, but in a fixed order or role, never competing).
-Skill A / Skill B below name the two skills; the rule says how they relate.
+unless the skill's "When NOT to use" clause disqualifies it. There are **8 known overlap pairs**.
+The first three are *substitution* pairs (one skill replaces the other for a request); the rest
+are *coordination* pairs (both skills run, but in a fixed order/role, or are selected by project
+state, never competing). Skill A / Skill B below name the two skills; the rule says how they relate.
 
 | Skill A | Skill B | Priority / coordination rule |
 |---|---|---|
@@ -1192,6 +1226,7 @@ Skill A / Skill B below name the two skills; the rule says how they relate.
 | `architect` | `systems-designer` | Coordination. In `/ssd design`, `architect` runs first (models, APIs, ADRs); `systems-designer` runs second and is **purely additive** (failure modes, observability, deploy safety). Never substitute one for the other. `systems-designer` is N/A for markdown / docs-only projects, where `architect` runs alone. |
 | `methodology` | (all skills) | Reference-tier. `methodology` supplies doctrine + the `/methodology score` self-adherence metric; it is rarely invoked directly in a feature loop. When another skill's behavior is in question, prefer that skill; consult `methodology` only for doctrine adjudication. |
 | `codebase-skeptic` | `refactor` | Producer → consumer. In `/ssd milestone` / `/ssd verify`, `codebase-skeptic` *produces* findings (`skeptic-before.md` / `skeptic-after.md`) and `refactor` *consumes* them into a plan. Never the reverse — don't ask `refactor` to audit or `codebase-skeptic` to plan fixes. |
+| `ssd-init` | `/ssd upgrade` | State-disjoint coordination ([ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md)). `ssd-init` when `.ssd/project.yml` is **absent** (first run / create). `/ssd upgrade` when it's **present and behind** (migrate to the latest conventions). Both call `methodology/migrate.sh`; neither duplicates migration logic. Never run `ssd-init` to "catch up" an initialized project — that's `/ssd upgrade`. |
 
 Each *substitution*-pair skill MUST have a "When NOT to use" section naming the other skill(s) and the priority
 rule. The orchestrator reads these to decide which skill to invoke when the user's request is
@@ -1202,6 +1237,16 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.21.0** (2026-06-13) — Feature ssd-upgrade, iteration A (read-only); see
+  [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md). New `/ssd upgrade`
+  command (Invocation list + § "/ssd upgrade — Keep the Project on the Latest SSD Approach") that
+  **reports** SSD convention drift: it runs `methodology/migrate.sh` over the declarative manifest
+  `methodology/migrations.yml` and lists `PENDING`/`SKIP-present`/`GUIDED` migrations between the
+  project's recorded `ssd.version` and the installed `VERSION`. Iter A is **detect-only** (writes
+  nothing; `--apply` is iter B). New `ssd-init` ↔ `/ssd upgrade` state-disjoint coordination row in
+  § "Resolving Skill Overlap" (now **8 pairs**): `ssd-init` creates (no `project.yml`), `/ssd
+  upgrade` migrates (present & behind). Warnings, not walls (ADR-0012 Pillar 5) — never forces,
+  never silent-rewrites. `apply` + guided migrations + a manifest-currency gate land in iters B/C.
 - **1.20.0** (2026-06-13) — Feature ssd-profile-audit (refactor R9; closes the deferred 🔴 P2 +
   F2 from the post-v1.19 milestone). New § "Profile-aware sub-skill behavior" table (single source
   of truth) + normative invariant guarantee, governed by
