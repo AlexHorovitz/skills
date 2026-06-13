@@ -496,6 +496,74 @@ test_fixture_migrate_detect_current() {
   fixture_teardown "$tdir"
 }
 
+# Fixture 15: migrate.sh --apply — a drifted project adopts the mechanical conventions safely.
+test_fixture_migrate_apply_old() {
+  echo "fixture: migrate-apply-old"
+  local tdir out out2
+  tdir=$(fixture_setup "migrate-apply")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'schema_version: 2\nactive: []\n' > .ssd/current.yml
+  printf 'ssd:\n  version: "1.9.0"\n  artifact_root: .ssd/\n' > .ssd/project.yml   # missing dev/parallel/gitignore keys
+  printf '.ssd/\nnode_modules/\n' > .gitignore
+  out=$(bash "$MIGRATE_SCRIPT" --from 1.9.0 --to 1.22.0 --manifest "$MANIFEST" --apply 2>&1)
+
+  _assert "migrate-apply-old" "dev-profile-keys APPLIED" \
+    "$([[ "$out" == *"APPLIED dev-profile-keys"* ]] && echo 0 || echo 1)"
+  _assert "migrate-apply-old" "parallel-features-keys APPLIED" \
+    "$([[ "$out" == *"APPLIED parallel-features-keys"* ]] && echo 0 || echo 1)"
+  _assert "migrate-apply-old" "selective-gitignore APPLIED" \
+    "$([[ "$out" == *"APPLIED selective-gitignore"* ]] && echo 0 || echo 1)"
+  _assert "migrate-apply-old" "guided item re-surfaced (not auto-applied)" \
+    "$([[ "$out" == *"GUIDED decision-record-doctrine"* ]] && echo 0 || echo 1)"
+  # Conventions are now actually present in the files.
+  _assert "migrate-apply-old" "developer_profile key written to project.yml" \
+    "$(grep -qE '^[[:space:]]*developer_profile:' .ssd/project.yml && echo 0 || echo 1)"
+  _assert "migrate-apply-old" "branch_pattern key written to project.yml" \
+    "$(grep -qE '^[[:space:]]*branch_pattern:' .ssd/project.yml && echo 0 || echo 1)"
+  _assert "migrate-apply-old" "gitignore_mode key written to project.yml" \
+    "$(grep -qE '^[[:space:]]*gitignore_mode:' .ssd/project.yml && echo 0 || echo 1)"
+  _assert "migrate-apply-old" "selective .gitignore pattern written" \
+    "$(grep -qF '!.ssd/features/**/01-architect.md' .gitignore && echo 0 || echo 1)"
+  # R1 mitigation: a .bak per mutated file.
+  _assert "migrate-apply-old" "project.yml.bak written" \
+    "$([[ -f .ssd/project.yml.bak ]] && echo 0 || echo 1)"
+  _assert "migrate-apply-old" ".gitignore.bak written" \
+    "$([[ -f .gitignore.bak ]] && echo 0 || echo 1)"
+  # Version bumps to the highest contiguous adopted version (1.18.0), capped below the guided 1.20.1.
+  _assert "migrate-apply-old" "recorded version bumped to 1.18.0 (capped below guided)" \
+    "$(grep -qE '^[[:space:]]*version:[[:space:]]*1\.18\.0' .ssd/project.yml && echo 0 || echo 1)"
+  _assert "migrate-apply-old" "init-log appended" \
+    "$([[ -f .ssd/init-log.md ]] && grep -qF '/ssd upgrade --apply' .ssd/init-log.md && echo 0 || echo 1)"
+
+  # Idempotency: re-run from the freshly recorded version → no mechanical work, guided still surfaces.
+  out2=$(bash "$MIGRATE_SCRIPT" --from 1.18.0 --to 1.22.0 --manifest "$MANIFEST" --apply 2>&1)
+  _assert "migrate-apply-old" "re-run applies nothing mechanical (idempotent)" \
+    "$([[ "$out2" != *APPLIED* ]] && echo 0 || echo 1)"
+  _assert "migrate-apply-old" "re-run still re-surfaces guided item (R3)" \
+    "$([[ "$out2" == *"GUIDED decision-record-doctrine"* ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Fixture 16: migrate.sh --apply — current-yml-v2 (v1→v2 split) DEFERs to ssd-init, never half-applies (R1).
+test_fixture_migrate_apply_defer() {
+  echo "fixture: migrate-apply-defer"
+  local tdir out
+  tdir=$(fixture_setup "migrate-defer")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'active:\n  - slug: legacy\n' > .ssd/current.yml          # v1 (no schema_version)
+  printf 'ssd:\n  version: "1.3.0"\n' > .ssd/project.yml
+  out=$(bash "$MIGRATE_SCRIPT" --from 1.3.0 --to 1.22.0 --manifest "$MANIFEST" --apply 2>&1)
+  _assert "migrate-apply-defer" "current-yml-v2 DEFERs to ssd-init" \
+    "$([[ "$out" == *"DEFER current-yml-v2"* ]] && echo 0 || echo 1)"
+  _assert "migrate-apply-defer" "current.yml left untouched (still v1, no schema_version)" \
+    "$(! grep -qE '^schema_version:' .ssd/current.yml && echo 0 || echo 1)"
+  _assert "migrate-apply-defer" "version NOT advanced past the deferred entry (stays 1.3.0)" \
+    "$(grep -qE '^[[:space:]]*version:[[:space:]]*"?1\.3\.0' .ssd/project.yml && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
 # ---------- run ------------------------------------------------------------
 
 echo "SSD parity-test harness — gate-rules.sh structural conformance"
@@ -514,6 +582,8 @@ test_fixture_skill_version_drift
 test_fixture_base_arg_validation
 test_fixture_migrate_detect_old
 test_fixture_migrate_detect_current
+test_fixture_migrate_apply_old
+test_fixture_migrate_apply_defer
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

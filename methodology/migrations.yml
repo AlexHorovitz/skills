@@ -16,7 +16,10 @@
 #   apply         (mechanical) HUMAN description of the migration action (executed in iter B+)
 #   guidance      (guided) what the maintainer should adopt by hand
 #
-# NOTE (iter A): migrate.sh is DETECT-ONLY. `apply`/`guidance` text is informational until iter B.
+# NOTE: `apply` text is the HUMAN description of the mechanical migration; the executable action
+#       lives in migrate.sh as apply_<id-with-underscores>() (iter B, `--apply`). `current-yml-v2`'s
+#       apply is DEFERred there (the v1→v2 split stays owned by ssd-init). `guidance` text (guided
+#       entries) is informational — guided practices are adopted by hand, never auto-applied.
 
 schema_version: 1
 
