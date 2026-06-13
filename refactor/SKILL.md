@@ -2,10 +2,12 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.1
+**Version:** 1.2.2
 
 ## Purpose
 Continuously scan codebases for refactoring opportunities—improving code quality, reducing technical debt, and enhancing maintainability without changing external behavior. Be opportunistic but disciplined: refactor with purpose, not for sport.
+
+> **Profile stance: invariant.** This skill's output does not branch on `developer_profile` — the refactor plan (what to change, which finding it cites) is substance-invariant; only coaching verbosity would differ, and that is the orchestrator's narration knob, not a duplicate here. See [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md) and `ssd/SKILL.md` § "Profile-aware sub-skill behavior".
 
 ## When to Use
 - After features ship and dust settles
@@ -30,7 +32,7 @@ not in scope. This enforces the loop-closure contract: every refactor traces to 
 ```yaml
 ---
 skill: refactor
-version: 1.2.1
+version: 1.2.2
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -312,6 +314,9 @@ Before completing a refactoring:
 
 ## Changelog
 
+- **1.2.2** (2026-06-13) — Feature ssd-profile-audit (R9): added explicit "Profile stance:
+  invariant" note ([ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md)). The refactor
+  plan does not branch on `developer_profile`. No behavior change.
 - **1.2.1** (2026-04-28) — Working-tree path references updated from `ssd/` to `.ssd/` per repo-wide convention change. See repo CHANGELOG [1.4.0]. No behavior change.
 
 - **1.2.0** (2026-04-18) — Declared output artifact path and YAML frontmatter with per-item finding
