@@ -593,6 +593,78 @@ test_fixture_migrate_apply_gitignore_idempotent() {
   fixture_teardown "$tdir"
 }
 
+# Fixture 18: migrate.sh --adopt — guided adoption decouples re-surfacing from the version gate (iter C).
+test_fixture_migrate_guided_adoption() {
+  echo "fixture: migrate-guided-adoption"
+  local tdir out_before out_after
+  tdir=$(fixture_setup "migrate-adopt")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'schema_version: 2\nactive: []\n' > .ssd/current.yml
+  printf 'ssd:\n  version: "1.18.0"\n  branch_pattern: "add-{slug}"\n  gitignore_mode: selective\ndeveloper_profile: expert\n' > .ssd/project.yml
+  printf '.ssd/*\n!.ssd/features/**/01-architect.md\n' > .gitignore
+  # Before adoption: guided outstanding, version capped below it.
+  out_before=$(bash "$MIGRATE_SCRIPT" --from 1.18.0 --to 1.23.0 --manifest "$MANIFEST" --apply 2>&1)
+  _assert "migrate-guided-adoption" "guided outstanding before adoption" \
+    "$([[ "$out_before" == *"GUIDED decision-record-doctrine"* ]] && echo 0 || echo 1)"
+  _assert "migrate-guided-adoption" "version capped at 1.18.0 before adoption" \
+    "$(grep -qE '^[[:space:]]*version:[[:space:]]*"?1\.18\.0' .ssd/project.yml && echo 0 || echo 1)"
+  # Adopt the guided practice.
+  bash "$MIGRATE_SCRIPT" --adopt decision-record-doctrine --manifest "$MANIFEST" >/dev/null 2>&1
+  _assert "migrate-guided-adoption" "adopted_guided recorded in project.yml" \
+    "$(grep -qE '^[[:space:]]*adopted_guided:' .ssd/project.yml && echo 0 || echo 1)"
+  # After adoption: GUIDED-ADOPTED + version advances to the target (zero drift).
+  out_after=$(bash "$MIGRATE_SCRIPT" --from 1.18.0 --to 1.23.0 --manifest "$MANIFEST" --apply 2>&1)
+  _assert "migrate-guided-adoption" "guided now reports GUIDED-ADOPTED" \
+    "$([[ "$out_after" == *"GUIDED-ADOPTED decision-record-doctrine"* ]] && echo 0 || echo 1)"
+  _assert "migrate-guided-adoption" "version advances to target 1.23.0 after adoption" \
+    "$(grep -qE '^[[:space:]]*version:[[:space:]]*1\.23\.0' .ssd/project.yml && echo 0 || echo 1)"
+  _assert "migrate-guided-adoption" "--adopt of a non-guided id is rejected (exit 2)" \
+    "$(bash "$MIGRATE_SCRIPT" --adopt selective-gitignore --manifest "$MANIFEST" >/dev/null 2>&1; [[ $? -eq 2 ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Fixture 19: gate-rules migration-manifest-current (ADR-0013 R2) — valid PASS, broken manifest FAIL.
+test_fixture_manifest_current() {
+  echo "fixture: migration-manifest-current"
+  local tdir
+  tdir=$(fixture_setup "manifest-current")
+  cd "$tdir" || exit 2
+  mkdir -p methodology
+  printf '1.5.0\n' > VERSION
+  # Valid manifest → PASS.
+  printf 'migrations:\n  - id: a\n    introduced_in: "1.4.0"\n  - id: b\n    introduced_in: "1.5.0"\n' > methodology/migrations.yml
+  assert_rule "manifest-current(valid)" "migration-manifest-current" "PASS"
+  # Duplicate id → FAIL.
+  printf 'migrations:\n  - id: a\n    introduced_in: "1.4.0"\n  - id: a\n    introduced_in: "1.5.0"\n' > methodology/migrations.yml
+  assert_rule "manifest-current(dup)" "migration-manifest-current" "FAIL"
+  # introduced_in newer than VERSION → FAIL.
+  printf 'migrations:\n  - id: a\n    introduced_in: "9.9.9"\n' > methodology/migrations.yml
+  assert_rule "manifest-current(future)" "migration-manifest-current" "FAIL"
+  fixture_teardown "$tdir"
+}
+
+# Fixture 20: gate-rules yaml_get strips an inline comment on a scalar value (iter-B MAJOR-4 parser half).
+test_fixture_yaml_get_inline_comment() {
+  echo "fixture: yaml-get-inline-comment"
+  local tdir
+  tdir=$(fixture_setup "yaml-inline")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  # gitignore_mode carries an inline comment; selective pattern present so no-leaky-state runs its body.
+  printf 'ssd:\n  gitignore_mode: selective   # inline comment must be stripped\n' > .ssd/project.yml
+  printf '.ssd/*\n!.ssd/features/**/01-architect.md\n' > .gitignore
+  printf 'placeholder\n' > a.txt
+  git add a.txt .gitignore && git commit -qm base
+  printf 'change\n' >> a.txt && git add a.txt && git commit -qm change
+  # If yaml_get failed to strip the comment, no-leaky-state would SKIP with "unknown gitignore_mode".
+  local out
+  out=$(bash "$GATE_SCRIPT" --base main --rules no-leaky-state 2>&1)
+  _assert "yaml-get-inline-comment" "gitignore_mode parsed as 'selective' (comment stripped, not 'unknown')" \
+    "$([[ "$out" != *"unknown gitignore_mode"* ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
 # ---------- run ------------------------------------------------------------
 
 echo "SSD parity-test harness — gate-rules.sh structural conformance"
@@ -614,6 +686,9 @@ test_fixture_migrate_detect_current
 test_fixture_migrate_apply_old
 test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
+test_fixture_migrate_guided_adoption
+test_fixture_manifest_current
+test_fixture_yaml_get_inline_comment
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

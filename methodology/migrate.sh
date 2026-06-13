@@ -50,6 +50,7 @@ FROM=""
 TO=""
 JSON=0
 APPLY=0
+ADOPT=""          # id of a guided migration the user asserts they've adopted (iter C)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -58,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --manifest) MANIFEST="${2:-}"; shift 2 ;;
     --json) JSON=1; shift ;;
     --apply) APPLY=1; shift ;;
+    --adopt) ADOPT="${2:-}"; shift 2 ;;
     -h|--help) sed -n '1,/^# License/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "migrate: unknown arg '$1'" >&2; exit 2 ;;
   esac
@@ -67,7 +69,7 @@ done
 if [[ -z "$TO" && -f "$SCRIPT_DIR/../VERSION" ]]; then
   TO="$(tr -d '[:space:]' < "$SCRIPT_DIR/../VERSION")"
 fi
-if [[ -z "$FROM" ]]; then
+if [[ -z "$FROM" && -z "$ADOPT" ]]; then
   echo "migrate: --from <recorded-version> is required (the project's recorded ssd.version)." >&2
   exit 2
 fi
@@ -75,6 +77,27 @@ if [[ ! -f "$MANIFEST" ]]; then
   echo "migrate: manifest not found at $MANIFEST" >&2
   exit 3
 fi
+
+# Is guided id $1 recorded as adopted in project.yml.ssd.adopted_guided? (iter C — decouples guided
+# re-surfacing from the version gate. detect: null guided entries can't be auto-probed, so adoption
+# is an explicit user assertion recorded in project.yml.) Matches the inline-flow `adopted_guided: [a, b]`
+# or the block-list form. Conservative substring-in-list match on the id token.
+is_adopted() {
+  local id="$1" pj="$ROOT/.ssd/project.yml"
+  [[ -f "$pj" ]] || return 1
+  # Pull the adopted_guided value (inline `[a, b]` or following `- item` lines) and look for the id.
+  awk -v id="$id" '
+    /^[[:space:]]*adopted_guided:[[:space:]]*\[/ {            # inline list form
+      line=$0; gsub(/.*\[|\].*/, "", line); gsub(/[",[:space:]]+/, " ", line)
+      n=split(line, a, " "); for (i=1;i<=n;i++) if (a[i]==id) { found=1 }
+      next
+    }
+    /^[[:space:]]*adopted_guided:[[:space:]]*$/ { inblock=1; next }   # block list form
+    inblock && /^[[:space:]]*-[[:space:]]*/ { v=$0; gsub(/^[[:space:]]*-[[:space:]]*|["[:space:]]+$/, "", v); if (v==id) found=1; next }
+    inblock && /^[[:space:]]*[^[:space:]-]/ { inblock=0 }     # a sibling key ends the block
+    END { exit (found ? 0 : 1) }
+  ' "$pj"
+}
 
 # Return 0 if $1 > $2 (semver-ish X.Y.Z, numeric per component). Equal → 1 (not greater).
 ver_gt() {
@@ -261,6 +284,57 @@ read_manifest() {
   ' "$MANIFEST"
 }
 
+# Record a guided practice as adopted in project.yml.ssd.adopted_guided (block-list form), .bak first.
+# Returns 2 if adopted_guided pre-exists in INLINE form (review MINOR-1): appending a `- item` line
+# under an inline `[...]` value would emit malformed YAML, so refuse and let the caller tell the user
+# to add it by hand. The engine only ever writes the block form, so this only fires on a hand-authored
+# inline list.
+adopt_guided() {
+  local id="$1" pj="$ROOT/.ssd/project.yml"
+  [[ -f "$pj" ]] || return 1
+  if grep -qE '^[[:space:]]*adopted_guided:[[:space:]]*\[' "$pj"; then
+    return 2
+  fi
+  cp "$pj" "$pj.bak"
+  if grep -qE '^[[:space:]]*adopted_guided:' "$pj"; then
+    awk -v id="$id" '{ print } /^[[:space:]]*adopted_guided:[[:space:]]*$/ && !done { print "    - " id; done=1 }' \
+      "$pj" > "$pj.tmp" && mv "$pj.tmp" "$pj"
+  else
+    insert_under_ssd "$pj" <<EOF
+  # Guided practices the project asserts it follows (/ssd upgrade --adopt; ADR-0013 iter C).
+  adopted_guided:
+    - $id
+EOF
+  fi
+}
+
+# --adopt <id>: record a guided migration as adopted (iter C). Decouples guided re-surfacing from the
+# version gate — once adopted, the entry is "satisfied" and the recorded version can advance past it.
+if [[ -n "$ADOPT" ]]; then
+  guided_ok=0
+  while IFS=$'\t' read -r id iv ap kd ad ti; do
+    [[ "$id" == "$ADOPT" && "$kd" == "guided" ]] && guided_ok=1
+  done < <(read_manifest)
+  if [[ $guided_ok -ne 1 ]]; then
+    echo "migrate: --adopt '$ADOPT' is not a guided migration id in the manifest." >&2
+    exit 2
+  fi
+  if is_adopted "$ADOPT"; then
+    echo "ADOPTED $ADOPT :: already recorded in project.yml.ssd.adopted_guided"
+    exit 0
+  fi
+  adopt_guided "$ADOPT"; ag_rc=$?
+  if [[ $ag_rc -eq 2 ]]; then
+    echo "migrate: project.yml.ssd.adopted_guided is an inline list ([...]); add '$ADOPT' to it by hand." >&2
+    exit 2
+  elif [[ $ag_rc -ne 0 ]]; then
+    echo "migrate: failed to record adoption of '$ADOPT' (project.yml missing?)." >&2
+    exit 3
+  fi
+  echo "ADOPTED $ADOPT :: recorded in project.yml.ssd.adopted_guided (backup: project.yml.bak)"
+  exit 0
+fi
+
 emitted=0
 engine_error=0
 advancing=1            # while 1, the recorded version may advance across adopted entries
@@ -276,8 +350,12 @@ while IFS=$'\t' read -r id iv ap kd ad ti; do
 
   satisfied=0
   if [[ "$kd" == "guided" ]]; then
-    status="GUIDED"; detail="$ti ($ad)"
-    [[ $APPLY -eq 1 ]] && detail="$detail — outstanding; adopt by hand"
+    if is_adopted "$id"; then
+      status="GUIDED-ADOPTED"; detail="$ti ($ad) — adopted"; satisfied=1
+    else
+      status="GUIDED"; detail="$ti ($ad)"
+      [[ $APPLY -eq 1 ]] && detail="$detail — outstanding; adopt with: /ssd upgrade --adopt $id"
+    fi
   elif detect "$id"; then
     status="SKIP-present"; detail="already adopted"; satisfied=1
   elif [[ $APPLY -eq 1 ]]; then
@@ -309,6 +387,14 @@ while IFS=$'\t' read -r id iv ap kd ad ti; do
 done < <(read_manifest)
 
 [[ $JSON -eq 1 ]] && printf '\n  ]\n}\n'
+
+# If the contiguous adopted run never broke (every selected entry through --to is adopted/applied),
+# the project is fully current — record the target version, not just the highest manifest entry. This
+# is what lets a fully-caught-up project record zero drift (iter C: matters once guided items can be
+# adopted, so the recorded version is no longer permanently pinned below the newest guided entry).
+if [[ $advancing -eq 1 && -n "$TO" ]] && ver_gt "$TO" "$cand_version"; then
+  cand_version="$TO"
+fi
 
 # Post-apply: bump recorded version + append init-log, only if something actually advanced.
 if [[ $APPLY -eq 1 ]] && ver_gt "$cand_version" "$FROM"; then

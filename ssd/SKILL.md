@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.23.0
+**Version:** 1.24.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -402,9 +402,23 @@ Per ADR-0012 Pillar 5 (warnings, not walls), `/ssd upgrade` never forces — a p
 old conventions; it only *reports* until the user opts to `--apply`, and never performs a silent
 rewrite (every mutation is `.bak`-backed and consented, matching the ADR-0002 v1→v2 precedent).
 
-**Iteration C (planned, v1.23.0):** guided-migration adoption tracking + re-surfacing decoupled
-from the version gate, and a `migration-manifest-current` gate rule closing the manifest-drift
-risk (R2).
+**Iteration C (v1.24.0) — guided-adoption tracking + manifest-currency gate.** Guided practices
+(`detect: null`, e.g. the decision-record doctrine) can't be auto-probed, so iter B pinned the
+recorded version below the newest unadopted guided entry forever (R3 re-surfacing). Iter C decouples
+the two: a project asserts it follows a guided practice with
+
+```
+/ssd upgrade --adopt <id>          # records id in project.yml.ssd.adopted_guided (.bak first)
+```
+
+An adopted guided entry reports `GUIDED-ADOPTED` and counts as *satisfied*, so the recorded version
+can finally advance past it — and when the whole contiguous run through `--to` is satisfied, the
+bump goes to `--to` itself (a fully-caught-up project records **zero drift**). Unadopted guided
+entries still re-surface every run (R3 preserved). Adoption is an explicit, consented assertion —
+never auto-detected — matching warnings-not-walls. Iter C also adds the **`migration-manifest-current`
+gate rule** (R2; see § "Methodology Enforcement") and hardens `gate-rules.sh`'s `yaml_get` to strip
+inline comments (the parser half of iter-B's MAJOR-4). With iter C the ssd-upgrade feature (issue #17)
+is **complete**.
 
 **Prerequisite:** `.ssd/project.yml` must exist. If absent, the project hasn't been initialized —
 run `/ssd-init` (see the overlap rule in § "Resolving Skill Overlap").
@@ -1174,6 +1188,7 @@ per rule. Each rule maps to a principle in `methodology/core.md`.
 | `frontmatter-valid` | ADR-0006 | Every changed `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md` artifact validates against its skill schema (via `methodology/frontmatter-validate.py`) |
 | `no-leaky-state` | [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md) | No file matching the `.ssd/` selective-commit deny-list (machine state: `current.yml`, `init-log.md`, `archive/`, `audits/`, etc., plus project-supplied `project.yml.ssd.gitignored_state`) appears in the diff. Catches force-add and edited-gitignore bypasses. SKIPs cleanly on `gitignore_mode: blanket` projects. |
 | `skill-version-sync` | core.md §2 | Each `<project-root>/*/SKILL.md`'s required-frontmatter example `version:` matches that file's `**Version:**` banner (via `frontmatter-validate.py --check-skill-examples`). SKIPs files using a placeholder example or projects with no in-repo SKILL.md example blocks. |
+| `migration-manifest-current` | [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md) | (v1.24.0+) `methodology/migrations.yml` is structurally healthy: required fields per entry, unique `id`s, ascending `introduced_in` (append-only), none newer than `VERSION`. Closes R2 (manifest drift) at the structural level. SKIPs cleanly in any project without `methodology/migrations.yml` (i.e. everything except the SSD skills-library repo itself). The "a convention changed but no entry was added" judgment remains a documented human release obligation. |
 
 Rule outputs:
 - `PASS` — rule applied and verified.
@@ -1268,6 +1283,15 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.24.0** (2026-06-13) — ssd-upgrade iteration C (ADR-0013, issue #17) — **epic complete**. Three
+  closures: (1) **guided-adoption tracking** decoupled from the version gate — `/ssd upgrade --adopt
+  <id>` records a guided practice in `project.yml.ssd.adopted_guided` (`.bak` first); an adopted entry
+  reports `GUIDED-ADOPTED` and is *satisfied*, so the recorded version advances past it, and a fully
+  caught-up project bumps to `--to` (zero drift). Unadopted guided entries still re-surface (R3).
+  (2) New **`migration-manifest-current`** gate rule (§ "Methodology Enforcement") — structural manifest
+  health (unique ids, ascending `introduced_in`, none newer than `VERSION`), closing R2; SKIPs outside
+  the skills-library repo. (3) **`gate-rules.sh` `yaml_get` hardened** to strip inline comments on scalar
+  values (the parser half of iter-B's MAJOR-4), quote-aware. 6 new parity fixtures (53 assertions).
 - **1.23.0** (2026-06-13) — ssd-upgrade extraction (ADR-0013, issue #17). The shared engine
   `methodology/migrate.sh` now owns **all four** mechanical migrations: `current-yml-v2` no longer
   reports `DEFER` — `apply_current_yml_v2` performs the v1→v2 split in the **conservative-safe** form

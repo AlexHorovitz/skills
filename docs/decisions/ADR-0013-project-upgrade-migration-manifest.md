@@ -1,11 +1,12 @@
 # ADR-0013: Project upgrade via a declarative migration manifest
 
 ## Status
-Accepted — 2026-06-13. Shipped across iterations A (v1.21.0, read-only report, PR #18) and B
-(v1.22.0, `--apply` for mechanical migrations). Drives the `ssd-upgrade` feature
-([01-architect.md](../../.ssd/features/ssd-upgrade/01-architect.md), issue #17). Recorded under the
-[ADR-0011](ADR-0011-decision-record-doctrine.md) pattern. Iteration C (guided-adoption tracking +
-`migration-manifest-current` gate rule, R2) remains open on issue #17.
+Accepted — 2026-06-13. **Fully shipped** (issue #17 complete): iter A (v1.21.0, read-only report,
+PR #18), iter B (v1.22.0, `--apply` for mechanical migrations, PR #19), the extraction (v1.23.0,
+PR #20 — engine owns all four mechanical migrations + single-source gitignore), and iter C (v1.24.0,
+guided-adoption tracking + `migration-manifest-current` gate rule + `yaml_get` hardening). Drives the
+`ssd-upgrade` feature ([01-architect.md](../../.ssd/features/ssd-upgrade/01-architect.md)). Recorded
+under the [ADR-0011](ADR-0011-decision-record-doctrine.md) pattern.
 
 ## Iteration-B implementation decisions (2026-06-13)
 
@@ -49,9 +50,26 @@ retire the iter-B `DEFER` and the pattern duplication:
    `migrate.sh` (`apply_selective_gitignore`) `cat`s it; `ssd-init/SKILL.md` Step 5 points to it
    instead of re-listing the block. The two paths can no longer drift (closes iter-B review SUGGESTION-1).
 
-What remains for iter C (issue #17): guided-adoption tracking decoupled from the version gate, the
-`migration-manifest-current` gate rule (R2), and hardening `gate-rules.sh`'s `yaml_get` to strip
-inline comments (the parser half of iter-B's MAJOR-4).
+## Iteration C addendum (v1.24.0) — epic complete
+
+The three items iter-B/extraction left open all shipped:
+
+1. **Guided-adoption tracking, decoupled from the version gate.** `detect: null` guided entries can't
+   be auto-probed, so iter B pinned the recorded version below the newest unadopted guided entry
+   forever. `/ssd upgrade --adopt <id>` now records an explicit, consented adoption assertion in
+   `project.yml.ssd.adopted_guided` (`.bak` first; rejects a non-guided id). An adopted entry reports
+   `GUIDED-ADOPTED` and counts as satisfied — the recorded version advances past it, and when the whole
+   contiguous run through `--to` is satisfied the bump goes to `--to` (a fully caught-up project records
+   zero drift). Unadopted guided entries still re-surface every run (R3 preserved). Adoption is never
+   auto-detected — it's the user's judgment, matching warnings-not-walls.
+2. **`migration-manifest-current` gate rule (R2)** — structural manifest health (unique ids, ascending
+   `introduced_in`, none newer than `VERSION`); SKIPs outside the skills-library repo. The residual
+   "convention changed but no entry added" case stays a documented human release obligation — a script
+   can't read intent, but these checks catch the authoring mistakes that silently rot the manifest.
+3. **`gate-rules.sh` `yaml_get` hardened** to strip inline comments on scalar values, quote-aware
+   (the parser half of iter-B's MAJOR-4 — the emitter half was fixed in iter B).
+
+With iter C the ssd-upgrade feature is fully delivered against this ADR's Decision.
 
 ## Context
 
