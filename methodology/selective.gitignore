@@ -1,0 +1,37 @@
+# SSD working directory — selective commit (ADR-0008, v1.18.0+).
+# Block everything under .ssd/ by default, then allow the durable artifact tree.
+#
+# CANONICAL SINGLE SOURCE (ADR-0013 extraction, v1.23.0). This file is the one authoritative copy of
+# the selective pattern. `methodology/migrate.sh` (apply_selective_gitignore) appends its contents
+# verbatim; `ssd-init/SKILL.md` Step 5 points here instead of re-listing the block. Edit only here.
+.ssd/*
+!.ssd/features/
+!.ssd/milestones/
+!.ssd/features/**/
+!.ssd/features/**/00-brief.md
+!.ssd/features/**/01-architect.md
+!.ssd/features/**/02-systems-designer.md
+!.ssd/features/**/03-coder-status.md
+!.ssd/features/**/04-code-review*.md
+!.ssd/features/**/05-deploy.md
+!.ssd/features/**/iterations/**/brief.md
+!.ssd/features/**/iterations/**/coder-status.md
+!.ssd/features/**/iterations/**/code-review/round-*.md
+!.ssd/features/**/iterations/**/deploy.md
+
+# Machine-managed state even when nested inside features/.
+.ssd/features/**/iterations/**/deferred.yml
+.ssd/features/**/current.yml.bak
+
+# Milestones: durable records committed; snapshot machinery local.
+!.ssd/milestones/**/
+!.ssd/milestones/**/skeptic-before.md
+!.ssd/milestones/**/skeptic-after.md
+!.ssd/milestones/**/refactor-plan.md
+!.ssd/milestones/**/refactor-prs.md
+!.ssd/milestones/**/verification.md
+.ssd/milestones/**/sha-before
+.ssd/milestones/**/metrics-before.yml
+
+# Audits stay gitignored — often sensitive (vendor names, internal opinions).
+.ssd/audits/

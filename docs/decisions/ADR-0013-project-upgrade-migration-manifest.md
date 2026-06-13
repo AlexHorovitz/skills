@@ -23,13 +23,35 @@ Decision above:
    Mixing a behavior-preserving refactor of working `ssd-init` logic with new feature work violates
    SSD Hard Rule 4 (refactor only after shipping, separate PRs). The extraction — which also closes the
    selective-`.gitignore`-pattern duplication between `ssd-init/SKILL.md` and `migrate.sh` — is tracked
-   on issue #17.
+   on issue #17. **Shipped v1.23.0** (see Extraction addendum below).
 3. **Guided re-surfacing (R3) is preserved in iter B by the version-bump rule, not by new state.** The
    recorded-version bump advances only across the *contiguous* run of adopted entries and stops at the
    first outstanding one — including any guided entry (which can never be auto-`detect`ed as adopted).
    A guided entry therefore keeps `introduced_in > recorded`, so it re-surfaces on every run until the
    project adopts it. Iter C's separate guided-adoption tracking then decouples re-surfacing from the
    version gate so the recorded version can advance past an adopted guided practice.
+
+## Extraction addendum (v1.23.0)
+
+The `ssd-init`→engine extraction that iter-B decision §2 deferred has shipped. Two concrete changes
+retire the iter-B `DEFER` and the pattern duplication:
+
+1. **`current-yml-v2` now has an executable apply** (`apply_current_yml_v2` in `migrate.sh`) — it no
+   longer reports `DEFER`. The apply is the **conservative-safe** v1→v2 form: refuse if a `.bak`
+   already exists, copy the original to `current.yml.bak`, write a fresh valid v2 skeleton, and
+   preserve the *entire* original verbatim under `current.notes.yml` `legacy_v1_import:` for the user
+   to reconcile. This was chosen over a bash heuristic that classifies arbitrary v1 keys into
+   machine-vs-notes: that classification is exactly the R1 corruption hazard, and a preserve-everything
+   approach has provably zero data loss (the original lives in both `.bak` and the notes import).
+   `ssd-init`'s prompted, field-by-field flow remains the richer first-run path; `/ssd upgrade --apply`
+   is the non-interactive consented equivalent. Both `.bak` and never discard.
+2. **The selective `.gitignore` pattern is single-sourced** at `methodology/selective.gitignore`.
+   `migrate.sh` (`apply_selective_gitignore`) `cat`s it; `ssd-init/SKILL.md` Step 5 points to it
+   instead of re-listing the block. The two paths can no longer drift (closes iter-B review SUGGESTION-1).
+
+What remains for iter C (issue #17): guided-adoption tracking decoupled from the version gate, the
+`migration-manifest-current` gate rule (R2), and hardening `gate-rules.sh`'s `yaml_get` to strip
+inline comments (the parser half of iter-B's MAJOR-4).
 
 ## Context
 

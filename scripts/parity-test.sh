@@ -548,22 +548,27 @@ test_fixture_migrate_apply_old() {
   fixture_teardown "$tdir"
 }
 
-# Fixture 16: migrate.sh --apply — current-yml-v2 (v1→v2 split) DEFERs to ssd-init, never half-applies (R1).
-test_fixture_migrate_apply_defer() {
-  echo "fixture: migrate-apply-defer"
+# Fixture 16: migrate.sh --apply — current-yml-v2 (v1→v2 split) extracted into the engine (v1.23.0).
+# Conservative-safe form: .bak + fresh v2 skeleton + original preserved verbatim in current.notes.yml.
+test_fixture_migrate_apply_v1_to_v2() {
+  echo "fixture: migrate-apply-v1-to-v2"
   local tdir out
-  tdir=$(fixture_setup "migrate-defer")
+  tdir=$(fixture_setup "migrate-v1v2")
   cd "$tdir" || exit 2
   mkdir -p .ssd
-  printf 'active:\n  - slug: legacy\n' > .ssd/current.yml          # v1 (no schema_version)
+  printf 'active:\n  - slug: legacy\n    custom_user_note: "keep me"\n' > .ssd/current.yml   # v1, undocumented key
   printf 'ssd:\n  version: "1.3.0"\n' > .ssd/project.yml
-  out=$(bash "$MIGRATE_SCRIPT" --from 1.3.0 --to 1.22.0 --manifest "$MANIFEST" --apply 2>&1)
-  _assert "migrate-apply-defer" "current-yml-v2 DEFERs to ssd-init" \
-    "$([[ "$out" == *"DEFER current-yml-v2"* ]] && echo 0 || echo 1)"
-  _assert "migrate-apply-defer" "current.yml left untouched (still v1, no schema_version)" \
-    "$(! grep -qE '^schema_version:' .ssd/current.yml && echo 0 || echo 1)"
-  _assert "migrate-apply-defer" "version NOT advanced past the deferred entry (stays 1.3.0)" \
-    "$(grep -qE '^[[:space:]]*version:[[:space:]]*"?1\.3\.0' .ssd/project.yml && echo 0 || echo 1)"
+  out=$(bash "$MIGRATE_SCRIPT" --from 1.3.0 --to 1.23.0 --manifest "$MANIFEST" --apply 2>&1)
+  _assert "migrate-apply-v1-to-v2" "current-yml-v2 APPLIED (no longer DEFER)" \
+    "$([[ "$out" == *"APPLIED current-yml-v2"* ]] && echo 0 || echo 1)"
+  _assert "migrate-apply-v1-to-v2" "current.yml is now v2 (schema_version: 2)" \
+    "$(grep -qE '^schema_version:[[:space:]]*2' .ssd/current.yml && echo 0 || echo 1)"
+  _assert "migrate-apply-v1-to-v2" "original backed up to current.yml.bak" \
+    "$([[ -f .ssd/current.yml.bak ]] && echo 0 || echo 1)"
+  _assert "migrate-apply-v1-to-v2" "original (incl undocumented key) preserved in notes legacy_v1_import" \
+    "$(grep -q 'legacy_v1_import' .ssd/current.notes.yml && grep -q 'custom_user_note' .ssd/current.notes.yml && echo 0 || echo 1)"
+  _assert "migrate-apply-v1-to-v2" "no data loss — custom key NOT silently dropped" \
+    "$(grep -q 'keep me' .ssd/current.notes.yml && echo 0 || echo 1)"
   fixture_teardown "$tdir"
 }
 
@@ -607,7 +612,7 @@ test_fixture_base_arg_validation
 test_fixture_migrate_detect_old
 test_fixture_migrate_detect_current
 test_fixture_migrate_apply_old
-test_fixture_migrate_apply_defer
+test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
 echo "================================================================"
 

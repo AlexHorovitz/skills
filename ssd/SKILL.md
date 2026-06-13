@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.22.0
+**Version:** 1.23.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -375,8 +375,8 @@ conventions and — from iteration B — migrates it forward. It reads the decla
 1. Backs up every file it will mutate (`<file>.bak`) — the ADR-0013 R1 (corruption) guard.
 2. Runs the per-`id` apply function (non-destructive merges only: add keys / rewrite-with-backup;
    never delete), then **re-runs `detect`** to confirm the convention is now present. Statuses:
-   `APPLIED` (was absent, now present), `SKIP-present` (idempotent no-op), `DEFER` (delegated —
-   see below), `ERROR` (apply ran but `detect` still absent; engine exits 3).
+   `APPLIED` (was absent, now present), `SKIP-present` (idempotent no-op), `ERROR` (apply ran but
+   `detect` still absent; engine exits 3).
 3. After a successful pass, bumps `.ssd/project.yml.ssd.version` to the **highest contiguous
    adopted version** and appends a dated entry to `.ssd/init-log.md`.
 
@@ -388,11 +388,15 @@ just don't advance the recorded version yet. Re-running `--apply` is therefore i
 already-present conventions report `SKIP-present`, guided items re-surface.
 
 `--apply` honors `--to <version>` (apply only entries `introduced_in <= <version>`, staged upgrade)
-and `--json`. The four mechanical migrations have executable apply functions
-(`dev-profile-keys`, `parallel-features-keys`, `selective-gitignore`); **`current-yml-v2` reports
-`DEFER`** — the v1→v2 `current.yml` split is still owned by `ssd-init`, so `--apply` points the
-user there rather than half-implementing the split (R1). Folding that logic into the shared engine
-is a tracked behavior-preserving follow-up.
+and `--json`. As of v1.23.0 **all four** mechanical migrations have executable apply functions in the
+shared engine — `current-yml-v2`, `dev-profile-keys`, `parallel-features-keys`, `selective-gitignore`.
+The `current-yml-v2` apply uses the **conservative-safe** v1→v2 form (back up to `current.yml.bak`,
+write a fresh v2 skeleton, preserve the *entire* original under `current.notes.yml` `legacy_v1_import:`
+for reconciliation) rather than a field-classifying heuristic — so R1 stays airtight. The selective
+`.gitignore` pattern is single-sourced in [`methodology/selective.gitignore`](../methodology/selective.gitignore),
+which both `migrate.sh` and `ssd-init` consume (no drift between the first-run and upgrade paths).
+`ssd-init`'s prompted, field-by-field v1→v2 flow remains the richer first-run path; `/ssd upgrade`
+is the non-interactive consented equivalent.
 
 Per ADR-0012 Pillar 5 (warnings, not walls), `/ssd upgrade` never forces — a project may stay on
 old conventions; it only *reports* until the user opts to `--apply`, and never performs a silent
@@ -1264,6 +1268,16 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.23.0** (2026-06-13) — ssd-upgrade extraction (ADR-0013, issue #17). The shared engine
+  `methodology/migrate.sh` now owns **all four** mechanical migrations: `current-yml-v2` no longer
+  reports `DEFER` — `apply_current_yml_v2` performs the v1→v2 split in the **conservative-safe** form
+  (`.bak` + fresh v2 skeleton + the entire original preserved under `current.notes.yml`
+  `legacy_v1_import:`), keeping R1 airtight without a field-classifying heuristic. The selective
+  `.gitignore` pattern is extracted to the single-source [`methodology/selective.gitignore`](../methodology/selective.gitignore),
+  consumed by both `migrate.sh` and `ssd-init` (closes the iter-B review's SUGGESTION-1 duplication;
+  `ssd-init` → 1.9.0). `/ssd upgrade` is now the non-interactive consented equivalent of `ssd-init`'s
+  prompted v1→v2 flow. 2 parity fixtures updated/added (43 assertions). Iter C (guided-adoption
+  tracking + `migration-manifest-current` gate rule, R2) remains on issue #17.
 - **1.22.0** (2026-06-13) — Feature ssd-upgrade, iteration B; see
   [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md) and
   [iterations/b/brief.md](../.ssd/features/ssd-upgrade/iterations/b/brief.md). `/ssd upgrade --apply`
