@@ -30,6 +30,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GATE_SCRIPT="$REPO_ROOT/methodology/gate-rules.sh"
 VALIDATOR="$REPO_ROOT/methodology/frontmatter-validate.py"
 SCHEMAS_DIR="$REPO_ROOT/methodology/schemas"
+MIGRATE_SCRIPT="$REPO_ROOT/methodology/migrate.sh"
+MANIFEST="$REPO_ROOT/methodology/migrations.yml"
 VERBOSE=0
 
 while [[ $# -gt 0 ]]; do
@@ -452,6 +454,48 @@ test_fixture_base_arg_validation() {
   fi
 }
 
+# Small inline assertion for non-gate-rules scripts (migrate.sh). Args: label condition-desc bool(0/1).
+_assert() {
+  local label="$1" desc="$2" ok="$3"
+  if [[ "$ok" -eq 0 ]]; then
+    PASS_COUNT=$((PASS_COUNT + 1)); [[ $VERBOSE -eq 1 ]] && echo "  ✓ $label / $desc"
+  else
+    FAIL_COUNT=$((FAIL_COUNT + 1)); FAILURES+=("$label: $desc")
+  fi
+}
+
+# Fixture 13: migrate.sh detect — an OLD project sees the expected PENDING/GUIDED drift (ssd-upgrade iter A).
+test_fixture_migrate_detect_old() {
+  echo "fixture: migrate-detect-old"
+  local tdir out
+  tdir=$(fixture_setup "migrate-old")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'schema_version: 2\nactive: []\n' > .ssd/current.yml          # current-yml-v2 present
+  printf 'ssd:\n  version: "1.3.0"\n' > .ssd/project.yml               # no profile/branch/gitignore keys
+  out=$(bash "$MIGRATE_SCRIPT" --from 1.3.0 --to 1.20.1 --manifest "$MANIFEST" 2>&1)
+  _assert "migrate-detect-old" "current-yml-v2 already present → SKIP" \
+    "$([[ "$out" == *"SKIP-present current-yml-v2"* ]] && echo 0 || echo 1)"
+  _assert "migrate-detect-old" "selective-gitignore absent → PENDING" \
+    "$([[ "$out" == *"PENDING selective-gitignore"* ]] && echo 0 || echo 1)"
+  _assert "migrate-detect-old" "decision-record-doctrine → GUIDED" \
+    "$([[ "$out" == *"GUIDED decision-record-doctrine"* ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Fixture 14: migrate.sh detect — a CURRENT project sees no pending migrations.
+test_fixture_migrate_detect_current() {
+  echo "fixture: migrate-detect-current"
+  local tdir out
+  tdir=$(fixture_setup "migrate-current")
+  cd "$tdir" || exit 2
+  # recorded == target → nothing newer than recorded is selected, regardless of file contents.
+  out=$(bash "$MIGRATE_SCRIPT" --from 1.20.1 --to 1.20.1 --manifest "$MANIFEST" 2>&1)
+  _assert "migrate-detect-current" "no migrations newer than recorded → empty report" \
+    "$([[ -z "$out" ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
 # ---------- run ------------------------------------------------------------
 
 echo "SSD parity-test harness — gate-rules.sh structural conformance"
@@ -468,6 +512,8 @@ test_fixture_frontmatter_invalid
 test_fixture_skill_version_match
 test_fixture_skill_version_drift
 test_fixture_base_arg_validation
+test_fixture_migrate_detect_old
+test_fixture_migrate_detect_current
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

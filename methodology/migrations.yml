@@ -1,0 +1,67 @@
+# methodology/migrations.yml — declarative SSD convention-migration manifest (ADR-0013).
+#
+# One entry per SSD release that changed a PROJECT-VISIBLE convention. `/ssd upgrade` reads this
+# (via methodology/migrate.sh) to tell a project what conventions it has drifted past, and — from
+# iter B — to migrate it forward.
+#
+# Append-only, ordered by introduced_in. Each entry:
+#   id            stable kebab-case key (primary key; never renamed/reused)
+#   introduced_in library version that added the convention (the selection key)
+#   applies_to    project | library   (`/ssd upgrade` runs only `project`-scoped entries)
+#   kind          mechanical | guided (guided = a practice; cannot be auto-applied)
+#   adr           the decision record that introduced it
+#   title         one-line human description
+#   detect        HUMAN description of the idempotency probe. The executable probe lives in
+#                 migrate.sh as detect_<id-with-underscores>(); guided entries have detect: null.
+#   apply         (mechanical) HUMAN description of the migration action (executed in iter B+)
+#   guidance      (guided) what the maintainer should adopt by hand
+#
+# NOTE (iter A): migrate.sh is DETECT-ONLY. `apply`/`guidance` text is informational until iter B.
+
+schema_version: 1
+
+migrations:
+  - id: current-yml-v2
+    introduced_in: "1.4.0"
+    applies_to: project
+    kind: mechanical
+    adr: ADR-0002
+    title: "current.yml v2 schema + current.notes.yml sidecar"
+    detect: "current.yml contains 'schema_version: 2'"
+    apply: "split legacy v1 current.yml into v2 machine state + current.notes.yml sidecar (.bak first)"
+
+  - id: dev-profile-keys
+    introduced_in: "1.10.0"
+    applies_to: project
+    kind: mechanical
+    adr: ADR-0004
+    title: "developer_profile + teaching_mode keys in project.yml"
+    detect: "project.yml ssd block has 'developer_profile'"
+    apply: "add developer_profile: standard + teaching_mode block (defaults) if absent (non-destructive merge)"
+
+  - id: parallel-features-keys
+    introduced_in: "1.15.0"
+    applies_to: project
+    kind: mechanical
+    adr: ADR-0007
+    title: "project.yml.ssd.{branch_pattern,worktree_root,worktree_name_pattern,switch_note_default}"
+    detect: "project.yml ssd block has 'branch_pattern'"
+    apply: "add the four ssd.* keys with documented defaults if absent (non-destructive merge)"
+
+  - id: selective-gitignore
+    introduced_in: "1.18.0"
+    applies_to: project
+    kind: mechanical
+    adr: ADR-0008
+    title: "selective .ssd/ commit split (gitignore_mode + selective .gitignore pattern)"
+    detect: "project.yml ssd block has 'gitignore_mode'"
+    apply: "set gitignore_mode: selective; rewrite .gitignore to the selective pattern (.gitignore.bak first)"
+
+  - id: decision-record-doctrine
+    introduced_in: "1.20.1"
+    applies_to: project
+    kind: guided
+    adr: ADR-0011
+    title: "decisions = ADR + revisit-aware tracking issue"
+    detect: null
+    guidance: "Adopt the ADR + revisit-aware tracking-issue pattern (with a falsifiable 'Revisit when:') for consequential decisions."
