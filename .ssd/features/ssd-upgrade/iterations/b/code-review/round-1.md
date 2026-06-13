@@ -8,15 +8,15 @@ scope: add-ssd-upgrade-b (vs main)
 consumed_by: [ssd]
 finding_counts:
   blocker: 0
-  major: 1
+  major: 2
   minor: 2
   question: 0
   suggestion: 1
   nit: 1
-gate_pass: true            # MAJOR-3 found via dogfood + closed (commit f26933b) before merge; 0 open BLOCKER/MAJOR
+gate_pass: true            # MAJOR-3 + MAJOR-4 found via dogfood + both closed before merge; 0 open BLOCKER/MAJOR
 remediation_mode: false
-round: 3
-closed_from_previous_round: [MAJOR-3]
+round: 4
+closed_from_previous_round: [MAJOR-4]
 ---
 
 # Code Review — ssd-upgrade iteration B (`/ssd upgrade --apply`), round 1
@@ -119,5 +119,23 @@ re-appended the entire pattern block — **duplicating it**.
   re-surfaced — R3 working as designed).
 
 This is SSD dogfooding doing its job: the synthetic apply fixtures all used blanket `.gitignore`s; only
-running against a real already-selective repo exposed the gap. Final state: `parity-test.sh` 40/40,
-`gate-rules.sh --base main` exit 0.
+running against a real already-selective repo exposed the gap.
+
+## Round-4 — MAJOR-4, also from dogfooding the same `--apply` run
+
+The same dogfood run wrote `gitignore_mode: selective   # added by …` with an **inline** comment.
+`gate-rules.sh`'s `no-leaky-state` value parser doesn't strip a trailing `# …`, so it read the mode as
+`selective   # added by …` → "unknown gitignore_mode" → the safety rule **silently degraded from
+enforcing to SKIP**. A gate that stops enforcing without failing loudly is a MAJOR.
+
+- **MAJOR-4 closed** ([migrate.sh:198-208](../../../../../methodology/migrate.sh#L198), commit on this
+  branch) — provenance comment moved to its own line so the value is clean (`gitignore_mode: selective`),
+  matching every other `project.yml` key. Fixture 15 now asserts the emitted value is comment-free
+  (41 assertions). Verified: `no-leaky-state` is back to **PASS** (enforcing).
+- Tracked follow-up (issue #17): harden `gate-rules.sh`'s `yaml_get` to strip inline comments
+  defensively — inline comments are valid YAML, so the parser is also at fault. Out of iter-B scope
+  (separate script, Hard Rule 4).
+
+Final state: `parity-test.sh` **41/41**, `gate-rules.sh --base main` exit 0 (all PASS/SKIP,
+`no-leaky-state` PASS). Two MAJORs found and closed by dogfooding the apply path against this real repo —
+exactly the value of running the migration on a live project before declaring it done.
