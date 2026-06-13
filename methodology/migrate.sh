@@ -71,10 +71,12 @@ ver_gt() {
 # convention is ALREADY present in the project at $ROOT. Unknown id → 1 (treat as absent → PENDING).
 detect() {
   case "$1" in
-    current-yml-v2)         grep -q '^schema_version: 2' "$ROOT/.ssd/current.yml" 2>/dev/null ;;
-    dev-profile-keys)       grep -q 'developer_profile' "$ROOT/.ssd/project.yml" 2>/dev/null ;;
-    parallel-features-keys) grep -q 'branch_pattern'    "$ROOT/.ssd/project.yml" 2>/dev/null ;;
-    selective-gitignore)    grep -q 'gitignore_mode'    "$ROOT/.ssd/project.yml" 2>/dev/null ;;
+    # Probes require the YAML *key* form (`^[[:space:]]*<key>:`), so a comment ("# key: …", which
+    # begins with `#`) or a prose mention does NOT false-positive. (Code-review MINOR-1.)
+    current-yml-v2)         grep -qE '^schema_version:[[:space:]]*2([[:space:]]|$)' "$ROOT/.ssd/current.yml" 2>/dev/null ;;
+    dev-profile-keys)       grep -qE '^[[:space:]]*developer_profile:' "$ROOT/.ssd/project.yml" 2>/dev/null ;;
+    parallel-features-keys) grep -qE '^[[:space:]]*branch_pattern:'    "$ROOT/.ssd/project.yml" 2>/dev/null ;;
+    selective-gitignore)    grep -qE '^[[:space:]]*gitignore_mode:'    "$ROOT/.ssd/project.yml" 2>/dev/null ;;
     *) return 1 ;;
   esac
 }
