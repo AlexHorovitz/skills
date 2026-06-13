@@ -695,6 +695,11 @@ produced) — never mere tone, which stays the orchestrator's job. See
 [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md) for the boundary rule. This table
 is the single source of truth; each sub-skill's SKILL.md points back here.
 
+**How a sub-skill learns the profile:** when the orchestrator invokes a profile-aware sub-skill, it
+states the active `developer_profile` (read from `.ssd/project.yml`) in the invocation context. This
+is a prose contract, like the rest of the methodology — there is no separate machine parameter. A
+sub-skill invoked ad hoc (outside the orchestrator) defaults to `standard` behavior.
+
 | Sub-skill | novice | standard (baseline) | expert |
 |---|---|---|---|
 | `architect` | *profile-invariant* — design rigor is absolute | *(unchanged)* | *(unchanged)* |
@@ -707,8 +712,10 @@ is the single source of truth; each sub-skill's SKILL.md points back here.
 
 **Invariant guarantee (normative).** Profile tunes *teaching breadth*, never correctness. A
 `code-reviewer` BLOCKER/MAJOR and a `codebase-skeptic` 💀/🔴 finding surface at **every** profile,
-and the `gate_pass` computation is profile-independent. `standard` behavior is unchanged from
-pre-v1.20.0 — `novice` and `expert` are deltas around it. A future skill declares its profile
+the `gate_pass` computation is profile-independent, `systems-designer` safety-critical gates
+(rollback, migration safety, observability) apply at every profile, and `coder` halts handoff on a
+genuine blocker at every profile. `standard` behavior is unchanged from pre-v1.20.0 — `novice` and
+`expert` are deltas around it. A future skill declares its profile
 stance (invariant or which knob) at creation, the same way it declares a priority rule in
 § "Resolving Skill Overlap".
 
