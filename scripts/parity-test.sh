@@ -523,6 +523,9 @@ test_fixture_migrate_apply_old() {
     "$(grep -qE '^[[:space:]]*branch_pattern:' .ssd/project.yml && echo 0 || echo 1)"
   _assert "migrate-apply-old" "gitignore_mode key written to project.yml" \
     "$(grep -qE '^[[:space:]]*gitignore_mode:' .ssd/project.yml && echo 0 || echo 1)"
+  # Dogfood MAJOR-4: the value must be comment-free so gate-rules.sh's no-leaky-state parser reads it.
+  _assert "migrate-apply-old" "gitignore_mode value has no inline comment (gate-parseable)" \
+    "$(grep -qE '^[[:space:]]*gitignore_mode:[[:space:]]*selective[[:space:]]*$' .ssd/project.yml && echo 0 || echo 1)"
   _assert "migrate-apply-old" "selective .gitignore pattern written" \
     "$(grep -qF '!.ssd/features/**/01-architect.md' .gitignore && echo 0 || echo 1)"
   # R1 mitigation: a .bak per mutated file.

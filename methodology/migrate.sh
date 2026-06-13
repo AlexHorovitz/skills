@@ -196,10 +196,15 @@ apply_selective_gitignore() {     # ADR-0008 — gitignore_mode key + selective 
 .ssd/audits/
 EOF
   fi
-  # Marker key LAST — see ordering note above.
+  # Marker key LAST — see ordering note above. Comment on its OWN line, NOT inline after the value
+  # (dogfood MAJOR-4): gate-rules.sh's no-leaky-state value parser does not strip a trailing `# …`,
+  # so an inline comment makes it read the mode as `selective   # …` → "unknown gitignore_mode" →
+  # the safety rule silently degrades to SKIP. Every other key in project.yml keeps comments on
+  # their own line; match that.
   backup_pj
   insert_under_ssd "$pj" <<'EOF'
-  gitignore_mode: selective   # added by /ssd upgrade --apply (ADR-0008)
+  # gitignore_mode added by /ssd upgrade --apply (ADR-0008).
+  gitignore_mode: selective
 EOF
 }
 
