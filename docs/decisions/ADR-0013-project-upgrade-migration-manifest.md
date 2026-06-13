@@ -1,9 +1,35 @@
 # ADR-0013: Project upgrade via a declarative migration manifest
 
 ## Status
-Proposed — 2026-06-13. Drives the `ssd-upgrade` feature
+Accepted — 2026-06-13. Shipped across iterations A (v1.21.0, read-only report, PR #18) and B
+(v1.22.0, `--apply` for mechanical migrations). Drives the `ssd-upgrade` feature
 ([01-architect.md](../../.ssd/features/ssd-upgrade/01-architect.md), issue #17). Recorded under the
-[ADR-0011](ADR-0011-decision-record-doctrine.md) pattern.
+[ADR-0011](ADR-0011-decision-record-doctrine.md) pattern. Iteration C (guided-adoption tracking +
+`migration-manifest-current` gate rule, R2) remains open on issue #17.
+
+## Iteration-B implementation decisions (2026-06-13)
+
+Three decisions were made while implementing `--apply` that refine, but do not contradict, the
+Decision above:
+
+1. **`current-yml-v2` reports `DEFER`, not a re-implemented split.** The v1→v2 `current.yml`
+   migration logic still lives in `ssd-init`. Re-implementing it inside `migrate.sh` now would
+   duplicate the very logic the planned extraction (Decision §2) is meant to unify, and a half-baked
+   split is exactly the R1 (corruption) hazard this ADR guards hardest. So `--apply` emits
+   `DEFER current-yml-v2` and points the user at `/ssd-init`; the recorded version does **not** advance
+   past a deferred entry. Real pre-v1.4.0 projects are effectively extinct at v1.22.0, so this path is
+   cold.
+2. **The `ssd-init` → engine extraction is split into its own follow-up PR**, not bundled into iter B.
+   Mixing a behavior-preserving refactor of working `ssd-init` logic with new feature work violates
+   SSD Hard Rule 4 (refactor only after shipping, separate PRs). The extraction — which also closes the
+   selective-`.gitignore`-pattern duplication between `ssd-init/SKILL.md` and `migrate.sh` — is tracked
+   on issue #17.
+3. **Guided re-surfacing (R3) is preserved in iter B by the version-bump rule, not by new state.** The
+   recorded-version bump advances only across the *contiguous* run of adopted entries and stops at the
+   first outstanding one — including any guided entry (which can never be auto-`detect`ed as adopted).
+   A guided entry therefore keeps `introduced_in > recorded`, so it re-surfaces on every run until the
+   project adopts it. Iter C's separate guided-adoption tracking then decouples re-surfacing from the
+   version gate so the recorded version can advance past an adopted guided practice.
 
 ## Context
 
