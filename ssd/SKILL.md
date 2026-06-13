@@ -782,8 +782,10 @@ The canonical hard rules are defined in `methodology/core.md` (§ "Core Principl
 
 **Enforcement is warnings, not walls** (see [ADR-0012](../docs/decisions/ADR-0012-ssd-2.0-architecture.md)
 Pillar 5). "Hard rule" means *strongly discouraged and loud when broken* — the gate surfaces
-violations unmissably and an override (`/ssd ship --force`) is logged and recorded in
-`rail_deviations` — **not** that the system physically blocks the merge. SSD trusts the developer and
+violations unmissably and an override (`/ssd ship --force`) is logged — and, per
+[ADR-0012](../docs/decisions/ADR-0012-ssd-2.0-architecture.md) Pillar 5, is *intended* to leave a
+durable `rail_deviations` trace (that wiring is tracked 2.0 work, not yet shipped) — **not** that
+the system physically blocks the merge. SSD trusts the developer and
 keeps a record; it does not lock the door. The one genuinely silent failure SSD forbids is the
 orchestrator advancing a phase *without surfacing the decision* — that's rule-zero, and it is the
 only thing here that is truly inviolable.

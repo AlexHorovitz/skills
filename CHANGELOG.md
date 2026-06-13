@@ -6,6 +6,29 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.20.1] — 2026-06-13
+
+### Doctrine: decision records + "warnings, not walls"
+
+A doc/doctrine patch (no behavior change to the gate). Seeds of the SSD 2.0 epic
+([#15](https://github.com/AlexHorovitz/skills/issues/15)) plus two honesty fixes.
+
+- **[ADR-0011](docs/decisions/ADR-0011-decision-record-doctrine.md) (Accepted):** a consequential
+  decision is recorded as a committed ADR (durable *why*) **+** a revisit-aware tracking issue (live
+  status + a falsifiable `Revisit when:` section), cross-linked. Codified in `methodology/core.md`
+  § "Recording Decisions" (`methodology` 1.6.1 → 1.6.2). The issue tracker is the *ledger*, never the
+  *gate*; non-GitHub projects carry `Revisit when:` inline in the ADR.
+- **Warnings, not walls** (ADR-0012 Pillar 5): `/ssd` informs and records but does not block — the
+  developer may ship past a failing gate, loudly and on the record. Two overclaims fixed to match:
+  `quality.yml` no longer says CI "blocks the merge" (it REPORTS — no branch protection by design),
+  and the `ssd/SKILL.md` Hard Rules now read as strongly-discouraged-with-a-logged-override, not a
+  physical block. The only truly inviolable rule is "never silently advance a phase."
+- **[ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) (Proposed):** the SSD 2.0 architecture
+  seed (progressive disclosure replaces the profile concept; single surface; warnings-not-walls).
+  Lands as a Proposed record only — the 2.0 *decision* is not made here.
+
+---
+
 ## [1.20.0] — 2026-06-13
 
 ### Feature: profile-awareness audit across sub-skills (ssd-profile-audit / R9)
