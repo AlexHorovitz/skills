@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 
 ## Purpose
 
@@ -28,7 +28,7 @@ Translate designs, specifications, and requirements into clean, working code tha
 ```yaml
 ---
 skill: coder
-version: 1.2.0
+version: 1.3.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -272,6 +272,20 @@ will flag this — see `code-reviewer/SKILL.md` § "Deferred-Findings Verificati
 
 ---
 
+## Profile-Aware Behavior
+
+This skill branches on `developer_profile` ([ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md)):
+the **density of `# REVIEW:` markers** it emits.
+
+- **novice** — more markers: flag every uncertainty, even minor ones (a safety net for a newer developer).
+- **standard** *(baseline)* — markers on genuine uncertainties, unchanged from pre-v1.20.0.
+- **expert** — minimal: only blocking unknowns get a marker.
+
+**Invariant:** profile tunes how many *uncertainty* markers appear; it never changes correctness or
+the handoff gate. A genuine blocker — missing feature flag (per § Interface), a red build, or
+recorded spec drift — is surfaced and halts handoff at *every* profile. Single source of truth:
+`ssd/SKILL.md` § "Profile-aware sub-skill behavior".
+
 ## Self-Verification (before emitting `03-coder-status.md`)
 
 1. Did I actually run the test / lint / type-check commands, or am I claiming they pass from memory?
@@ -284,6 +298,10 @@ will flag this — see `code-reviewer/SKILL.md` § "Deferred-Findings Verificati
 
 ## Changelog
 
+- **1.3.0** (2026-06-13) — Feature ssd-profile-audit (R9): this skill is now profile-aware on
+  `# REVIEW:` marker density (novice more → expert minimal), per
+  [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md). Genuine blockers halt handoff
+  at every profile; `standard` is unchanged.
 - **1.2.0** (2026-04-29) — Iteration 4 of the ssd-skill-upgrades epic (P1.5): deferred-findings
   auto-load. New `deferred.yml` schema (v1) per multi-iteration iteration. When entering coder phase
   for `<iter>`, the orchestrator prepends entries with `target_iteration: <iter>` and `status: open`

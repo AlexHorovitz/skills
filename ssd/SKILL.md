@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.19.1
+**Version:** 1.20.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -687,6 +687,38 @@ The `switch_note_default` column (added v1.15.0, [ADR-0007](../docs/decisions/AD
 controls the handoff-note capture behavior of `/ssd switch <slug>` (iteration B). The per-profile
 default can be overridden in `.ssd/project.yml.ssd.switch_note_default` (values: `prompt | auto | skip`).
 
+### Profile-aware sub-skill behavior
+
+The table above is the **orchestrator's** profile knobs. The sub-skills are profile-aware only where
+profile changes output *substance* (which markers, findings, voices, or checklist items are
+produced) — never mere tone, which stays the orchestrator's job. See
+[ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md) for the boundary rule. This table
+is the single source of truth; each sub-skill's SKILL.md points back here.
+
+**How a sub-skill learns the profile:** when the orchestrator invokes a profile-aware sub-skill, it
+states the active `developer_profile` (read from `.ssd/project.yml`) in the invocation context. This
+is a prose contract, like the rest of the methodology — there is no separate machine parameter. A
+sub-skill invoked ad hoc (outside the orchestrator) defaults to `standard` behavior.
+
+| Sub-skill | novice | standard (baseline) | expert |
+|---|---|---|---|
+| `architect` | *profile-invariant* — design rigor is absolute | *(unchanged)* | *(unchanged)* |
+| `methodology` | *profile-invariant* — `/methodology score` is an absolute metric | *(unchanged)* | *(unchanged)* |
+| `refactor` | *profile-invariant* — the refactor plan is substance; verbosity is the orchestrator's | *(unchanged)* | *(unchanged)* |
+| `systems-designer` | full annotated checklist — every item + the "why" | standard checklist | terse: core items only |
+| `coder` | more `# REVIEW:` markers — flag every uncertainty | markers on genuine uncertainties | minimal — only blocking unknowns |
+| `code-reviewer` | MINOR **and** NIT reported inline (teaching) | MINOR inline, NIT summarized | MINOR/NIT summarized; focus on BLOCKER/MAJOR |
+| `codebase-skeptic` | focused voice subset (≤4 most relevant) | relevant voices (today's behavior) | all relevant voices |
+
+**Invariant guarantee (normative).** Profile tunes *teaching breadth*, never correctness. A
+`code-reviewer` BLOCKER/MAJOR and a `codebase-skeptic` 💀/🔴 finding surface at **every** profile,
+the `gate_pass` computation is profile-independent, `systems-designer` safety-critical gates
+(rollback, migration safety, observability) apply at every profile, and `coder` halts handoff on a
+genuine blocker at every profile. `standard` behavior is unchanged from pre-v1.20.0 — `novice` and
+`expert` are deltas around it. A future skill declares its profile
+stance (invariant or which knob) at creation, the same way it declares a priority rule in
+§ "Resolving Skill Overlap".
+
 ### Teaching mode
 
 When enabled, the orchestrator appends a one-line *"under the hood: I called `architect` because
@@ -1160,6 +1192,14 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.20.0** (2026-06-13) — Feature ssd-profile-audit (refactor R9; closes the deferred 🔴 P2 +
+  F2 from the post-v1.19 milestone). New § "Profile-aware sub-skill behavior" table (single source
+  of truth) + normative invariant guarantee, governed by
+  [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md): a sub-skill branches on
+  `developer_profile` only when profile changes output *substance*, never tone, and never suppresses
+  gate-critical output. 3 skills invariant (architect, methodology, refactor); 4 profile-aware
+  (systems-designer checklist depth, coder REVIEW-marker density, code-reviewer MINOR/NIT reporting,
+  codebase-skeptic voice breadth). `standard` is the unchanged baseline.
 - **1.19.1** (2026-06-11) — Post-v1.19 milestone refactor (doc-tightening; cites
   [skeptic-before.md](../.ssd/milestones/2026-06-10-post-v1.19/skeptic-before.md)). Four doc
   refactors land here: **R5** expands § "Resolving Skill Overlap" from 3 to **7 pairs** (adds the

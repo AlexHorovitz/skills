@@ -2,13 +2,15 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 
 ---
 
 ## Purpose
 
 Design scalable, maintainable software architectures that follow established patterns, make the right trade-offs for the project's stage and constraints, and produce a deployable system from Day 1. Platform-aware: adapts to web, macOS, iOS, Android, and headless (API/backend) targets.
+
+> **Profile stance: invariant.** This skill's output does not branch on `developer_profile` — design rigor is absolute; a spec is for the codebase, not its author. See [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md) and `ssd/SKILL.md` § "Profile-aware sub-skill behavior".
 
 ## When to Use
 
@@ -43,7 +45,7 @@ stub-only section fails the gate):
 ```yaml
 ---
 skill: architect
-version: 1.2.0
+version: 1.2.1
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -285,6 +287,9 @@ pause and address it.
 
 ## Changelog
 
+- **1.2.1** (2026-06-13) — Feature ssd-profile-audit (R9): added explicit "Profile stance:
+  invariant" note ([ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md)). This skill
+  does not branch on `developer_profile`. No behavior change.
 - **1.2.0** (2026-04-29) — Iteration 5 of the ssd-skill-upgrades epic (P1.4): documented that this
   skill can be invoked as part of `/ssd design <slug>` (a bundled architect → systems-designer pass)
   in addition to standalone use. No behavior change; the bundle is an orchestrator-level

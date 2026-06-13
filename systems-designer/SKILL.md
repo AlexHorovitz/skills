@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 
 ## Purpose
 Ensure every feature and system change is production-ready by systematically evaluating operational concerns: reliability, observability, security, performance, deployment safety, and failure recovery.
@@ -27,7 +27,7 @@ Ensure every feature and system change is production-ready by systematically eva
 ```yaml
 ---
 skill: systems-designer
-version: 1.3.0
+version: 1.4.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -637,8 +637,25 @@ A Tier 3 failure sets `block_conditions_met: false` in frontmatter. `/ssd ship` 
 
 ---
 
+## Profile-Aware Behavior
+
+This skill branches on `developer_profile` ([ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md)):
+the **depth of the deploy-readiness checklist** it emits.
+
+- **novice** — full annotated checklist: every item plus the *why* (what failure each item guards against).
+- **standard** *(baseline)* — the standard checklist, unchanged from pre-v1.20.0.
+- **expert** — terse: core items only, no annotations.
+
+**Invariant:** profile changes the checklist's explanatory depth, never which **safety-critical**
+gates apply. Rollback plan, migration safety, and observability hooks are required at *every*
+profile. Single source of truth: `ssd/SKILL.md` § "Profile-aware sub-skill behavior".
+
 ## Changelog
 
+- **1.4.0** (2026-06-13) — Feature ssd-profile-audit (R9): this skill is now profile-aware on
+  checklist depth (novice annotated → expert terse), per
+  [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md). Safety-critical gates apply at
+  every profile; `standard` is unchanged.
 - **1.3.0** (2026-04-29) — Iteration 5 of the ssd-skill-upgrades epic (P1.4): documented that this
   skill can be invoked as part of `/ssd design <slug>` (a bundled architect → systems-designer pass)
   in addition to standalone use. The bundle reads the architect output as input and surfaces
