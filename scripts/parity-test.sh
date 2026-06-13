@@ -564,6 +564,27 @@ test_fixture_migrate_apply_defer() {
   fixture_teardown "$tdir"
 }
 
+# Fixture 17: migrate.sh --apply — selective .gitignore already present but marker key absent.
+# Dogfood finding (MAJOR-3): the .gitignore rewrite must NOT duplicate an already-present pattern.
+test_fixture_migrate_apply_gitignore_idempotent() {
+  echo "fixture: migrate-apply-gitignore-idempotent"
+  local tdir
+  tdir=$(fixture_setup "migrate-gi-idem")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'schema_version: 2\nactive: []\n' > .ssd/current.yml
+  printf 'ssd:\n  version: "1.16.0"\n' > .ssd/project.yml                       # gitignore_mode absent
+  printf '.ssd/*\n!.ssd/features/**/01-architect.md\n' > .gitignore             # pattern ALREADY present
+  bash "$MIGRATE_SCRIPT" --from 1.16.0 --to 1.22.0 --manifest "$MANIFEST" --apply >/dev/null 2>&1
+  _assert "migrate-apply-gitignore-idempotent" "selective pattern NOT duplicated (sentinel appears once)" \
+    "$([[ "$(grep -c '01-architect.md' .gitignore)" -eq 1 ]] && echo 0 || echo 1)"
+  _assert "migrate-apply-gitignore-idempotent" "marker key still set in project.yml" \
+    "$(grep -qE '^[[:space:]]*gitignore_mode:' .ssd/project.yml && echo 0 || echo 1)"
+  _assert "migrate-apply-gitignore-idempotent" ".gitignore left untouched (no .bak written)" \
+    "$([[ ! -f .gitignore.bak ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
 # ---------- run ------------------------------------------------------------
 
 echo "SSD parity-test harness — gate-rules.sh structural conformance"
@@ -584,6 +605,7 @@ test_fixture_migrate_detect_old
 test_fixture_migrate_detect_current
 test_fixture_migrate_apply_old
 test_fixture_migrate_apply_defer
+test_fixture_migrate_apply_gitignore_idempotent
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

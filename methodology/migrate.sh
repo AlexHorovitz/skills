@@ -152,14 +152,20 @@ apply_selective_gitignore() {     # ADR-0008 — gitignore_mode key + selective 
   local pj="$ROOT/.ssd/project.yml" gi="$ROOT/.gitignore"
   [[ -f "$pj" ]] || return 1
   grep -qE '^ssd:' "$pj" || return 1
+  # Idempotency on .gitignore content (dogfood finding MAJOR-3): detect() only probes the project.yml
+  # marker key, but a project can already carry the selective pattern with the key absent (e.g. the
+  # pattern was hand-added, or written by an older ssd-init that predated the key). Re-appending would
+  # duplicate the whole block. Use the same sentinel ssd-init uses (`!.ssd/features/**/01-architect.md`)
+  # to skip the .gitignore rewrite when the pattern is already present — then only the marker key is set.
   # Order matters (review MINOR-1): rewrite .gitignore FIRST, then set the marker key LAST. detect()
   # confirms on the marker key, so marker-last means a crash mid-apply leaves the project still
   # *detectably* un-migrated (re-run finishes the job) rather than recorded-selective-but-blanket.
-  backup_gi
-  if [[ -f "$gi" ]]; then
-    grep -vxE '[[:space:]]*\.ssd/[[:space:]]*' "$gi" > "$gi.tmp" && mv "$gi.tmp" "$gi"
-  fi
-  cat >> "$gi" <<'EOF'
+  if ! grep -qF '!.ssd/features/**/01-architect.md' "$gi" 2>/dev/null; then
+    backup_gi
+    if [[ -f "$gi" ]]; then
+      grep -vxE '[[:space:]]*\.ssd/[[:space:]]*' "$gi" > "$gi.tmp" && mv "$gi.tmp" "$gi"
+    fi
+    cat >> "$gi" <<'EOF'
 
 # SSD working directory — selective commit (ADR-0008, v1.18.0+). Added by /ssd upgrade --apply.
 # Block everything under .ssd/ by default, then allow the durable artifact tree.
@@ -189,6 +195,7 @@ apply_selective_gitignore() {     # ADR-0008 — gitignore_mode key + selective 
 .ssd/milestones/**/metrics-before.yml
 .ssd/audits/
 EOF
+  fi
   # Marker key LAST — see ordering note above.
   backup_pj
   insert_under_ssd "$pj" <<'EOF'
