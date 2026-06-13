@@ -3,8 +3,10 @@ name: quality
 # SSD quality gate (refactor R1, post-v1.19 milestone).
 #   - gate-rules: runs methodology/gate-rules.sh against origin/main on every PR to main.
 #   - parity-test: runs scripts/parity-test.sh on every PR and every push to main.
-# Either job failing blocks the merge. See ADR-0005 (gate execution model) and
-# ADR-0006 (frontmatter validator) for why these are executable artifacts rather than
+# Either job failing surfaces a red check on the PR. Per ADR-0012 Pillar 5 (warnings, not walls)
+# this REPORTS — it does not hard-block the merge (no branch protection is required, by design;
+# the developer may ship past it, loudly and on the record). See ADR-0005 (gate execution model)
+# and ADR-0006 (frontmatter validator) for why these are executable artifacts rather than
 # orchestrator-internal LLM checks.
 
 on:

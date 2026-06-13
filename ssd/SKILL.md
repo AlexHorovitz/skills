@@ -780,6 +780,14 @@ The canonical hard rules are defined in `methodology/core.md` (§ "Core Principl
 5. **Deploy beats perfection** — reduce scope rather than delay a deploy
 6. **Production parity from day one** — deploy to your distribution channel before anything else
 
+**Enforcement is warnings, not walls** (see [ADR-0012](../docs/decisions/ADR-0012-ssd-2.0-architecture.md)
+Pillar 5). "Hard rule" means *strongly discouraged and loud when broken* — the gate surfaces
+violations unmissably and an override (`/ssd ship --force`) is logged and recorded in
+`rail_deviations` — **not** that the system physically blocks the merge. SSD trusts the developer and
+keeps a record; it does not lock the door. The one genuinely silent failure SSD forbids is the
+orchestrator advancing a phase *without surfacing the decision* — that's rule-zero, and it is the
+only thing here that is truly inviolable.
+
 ---
 
 ## The SSD Artifact Tree

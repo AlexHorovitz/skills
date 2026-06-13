@@ -54,11 +54,23 @@ stops being taught first.
 **Pillar 4 — Decisions follow [ADR-0011](ADR-0011-decision-record-doctrine.md)** (ADR +
 revisit-aware Issue). The deprecation of removed verbs/flags is itself such an Issue.
 
+**Pillar 5 — Warnings, not walls.** The gate *informs and records*; it does not *block*. SSD
+trusts the developer: `/ssd` will let you ship code with open BLOCKER/MAJOR findings — it just makes
+that choice **loud and logged** (the gate result is surfaced unmissably at the decision point, the
+safe path is the proposed default, and the override leaves a durable trace in `rail_deviations` and,
+per Pillar 4, the decision ledger). This is the same gesture as progressive disclosure (Pillar 1):
+*propose the safe path, allow the informed override.* It is also consistent with Pillar 2 — "never
+*silently* advance" forbids the system sneaking code past you; it never promised the repo *cannot
+receive* ungated code. We deliberately reject hard enforcement (branch-protection walls, a required
+`gate_pass` merge check): a wall is more machinery and less trust, and discouragement-with-a-record
+fits SSD's ethos. The discouragement budget lives in *warning quality + audit trail*, not in a lock.
+
 ## Non-negotiable — survives 2.0 untouched
 
-The committed `.ssd/features/` artifact trail, the `gate-rules.sh` BLOCKER/MAJOR gate, and the ADR
-record. These *are* the product. 2.0 deletes the scaffolding around the discipline, never the
-discipline. 2.0 is **subtraction on the existing core**, not a green-field rewrite.
+The committed `.ssd/features/` artifact trail, the `gate-rules.sh` BLOCKER/MAJOR gate (as a *loud
+signal*, per Pillar 5 — preserved and surfaced, not turned into a wall), and the ADR record. These
+*are* the product. 2.0 deletes the scaffolding around the discipline, never the discipline. 2.0 is
+**subtraction on the existing core**, not a green-field rewrite.
 
 ## Revisit when (reversibility contract — mirrored on #15 per ADR-0011)
 
@@ -69,6 +81,9 @@ discipline. 2.0 is **subtraction on the existing core**, not a green-field rewri
   a stable machine API (the parity doctrine's only genuine justification).
 - **Verb set collapsed** → reopen if power users report the escape-hatch verbs became undiscoverable
   (i.e., progressive disclosure failed to disclose).
+- **Warnings, not walls (Pillar 5)** → reconsider hard enforcement *only* if ungated defects actually
+  reach users at a rate the discouragement + audit trail demonstrably fails to catch. Absent that
+  evidence, the answer to "should the gate block?" stays no.
 
 ## Consequences
 
