@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.21.0
+**Version:** 1.22.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -368,12 +368,39 @@ conventions and — from iteration B — migrates it forward. It reads the decla
 4. Surfaces the report. **Iter A writes nothing** — it is a pure dry-run, so the corruption risk of
    a bad migration cannot fire (ADR-0013 Risk R1).
 
-**Iterations B/C (planned, v1.22.0 / v1.23.0):** `--apply` runs mechanical migrations with a
-per-file `.bak`, bumps `project.yml.ssd.version`, and appends to `.ssd/init-log.md`; guided
-migrations are re-surfaced until adopted; a `migration-manifest-current` gate rule closes the
-manifest-drift risk (R2). Per ADR-0012 Pillar 5 (warnings, not walls), `/ssd upgrade` never forces —
-a project may stay on old conventions; it only reports until the user opts to `--apply`, and never
-performs a silent rewrite (matching the ADR-0002 v1→v2 prompted/`.bak` precedent).
+**Iteration B (v1.22.0) — `--apply` for mechanical migrations.** `/ssd upgrade --apply` runs
+`bash methodology/migrate.sh --from <recorded> --to <current> --apply`, which for each selected
+**mechanical** entry whose `detect` probe reports *absent*:
+
+1. Backs up every file it will mutate (`<file>.bak`) — the ADR-0013 R1 (corruption) guard.
+2. Runs the per-`id` apply function (non-destructive merges only: add keys / rewrite-with-backup;
+   never delete), then **re-runs `detect`** to confirm the convention is now present. Statuses:
+   `APPLIED` (was absent, now present), `SKIP-present` (idempotent no-op), `DEFER` (delegated —
+   see below), `ERROR` (apply ran but `detect` still absent; engine exits 3).
+3. After a successful pass, bumps `.ssd/project.yml.ssd.version` to the **highest contiguous
+   adopted version** and appends a dated entry to `.ssd/init-log.md`.
+
+The version bump walks the adopted entries in ascending order and **stops at the first outstanding
+one — including any guided entry**. That keeps guided practices re-surfacing (their `introduced_in`
+stays `> recorded`) on every run until the project adopts them (ADR-0013 R3), without iter C's
+separate tracking. Mechanical entries above an outstanding guided entry are still applied; they
+just don't advance the recorded version yet. Re-running `--apply` is therefore idempotent:
+already-present conventions report `SKIP-present`, guided items re-surface.
+
+`--apply` honors `--to <version>` (apply only entries `introduced_in <= <version>`, staged upgrade)
+and `--json`. The four mechanical migrations have executable apply functions
+(`dev-profile-keys`, `parallel-features-keys`, `selective-gitignore`); **`current-yml-v2` reports
+`DEFER`** — the v1→v2 `current.yml` split is still owned by `ssd-init`, so `--apply` points the
+user there rather than half-implementing the split (R1). Folding that logic into the shared engine
+is a tracked behavior-preserving follow-up.
+
+Per ADR-0012 Pillar 5 (warnings, not walls), `/ssd upgrade` never forces — a project may stay on
+old conventions; it only *reports* until the user opts to `--apply`, and never performs a silent
+rewrite (every mutation is `.bak`-backed and consented, matching the ADR-0002 v1→v2 precedent).
+
+**Iteration C (planned, v1.23.0):** guided-migration adoption tracking + re-surfacing decoupled
+from the version gate, and a `migration-manifest-current` gate rule closing the manifest-drift
+risk (R2).
 
 **Prerequisite:** `.ssd/project.yml` must exist. If absent, the project hasn't been initialized —
 run `/ssd-init` (see the overlap rule in § "Resolving Skill Overlap").
@@ -1237,6 +1264,20 @@ skill without a declared priority cannot be promoted past draft.
 
 ## Changelog
 
+- **1.22.0** (2026-06-13) — Feature ssd-upgrade, iteration B; see
+  [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md) and
+  [iterations/b/brief.md](../.ssd/features/ssd-upgrade/iterations/b/brief.md). `/ssd upgrade --apply`
+  goes live: `methodology/migrate.sh --apply` runs the manifest's **mechanical** migrations, each
+  `detect`-gated and `.bak`-backed (R1), re-confirms via `detect` (`APPLIED`/`SKIP-present`/`DEFER`/
+  `ERROR`), bumps `project.yml.ssd.version` to the highest **contiguous adopted** version, and
+  appends to `.ssd/init-log.md`. The version bump stops at the first outstanding entry — including a
+  guided one — so guided practices keep re-surfacing every run until adopted (R3) without iter C's
+  separate tracking. Three executable apply functions (`dev-profile-keys`, `parallel-features-keys`,
+  `selective-gitignore`); `current-yml-v2` reports `DEFER` (the v1→v2 split stays owned by `ssd-init`
+  — extraction is a tracked follow-up, kept out of scope to avoid mixing a refactor into feature work
+  per Hard Rule 4, and to keep R1 airtight). Honors `--to`/`--json`. Two new parity fixtures
+  (37 assertions, was 20). Iter C (guided-adoption tracking decoupled from the version gate +
+  `migration-manifest-current` gate rule, R2) remains, tracked on issue #17.
 - **1.21.0** (2026-06-13) — Feature ssd-upgrade, iteration A (read-only); see
   [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md). New `/ssd upgrade`
   command (Invocation list + § "/ssd upgrade — Keep the Project on the Latest SSD Approach") that
