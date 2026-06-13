@@ -6,6 +6,30 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.20.0] — 2026-06-13
+
+### Feature: profile-awareness audit across sub-skills (ssd-profile-audit / R9)
+
+Closes the deferred 🔴 P2 + F2 from the post-v1.19 milestone: the sub-skills were profile-blind
+even though ADR-0004 established a `developer_profile`. **[ADR-0010](docs/decisions/ADR-0010-profile-aware-subskills.md)**
+sets the boundary rule — a sub-skill branches on profile only when profile changes output
+*substance* (markers, findings, voices, checklist items), never tone (which stays the
+orchestrator's job), and **never suppresses gate-critical output**.
+
+- New `ssd/SKILL.md` § "Profile-aware sub-skill behavior" — the single source of truth table, the
+  normative invariant guarantee, and how a sub-skill learns the active profile. (`ssd` 1.19.1 → 1.20.0.)
+- **Invariant** (explicit stance note): `architect` 1.2.1, `methodology` 1.6.1, `refactor` 1.2.2.
+- **Profile-aware** (new `## Profile-Aware Behavior` section): `systems-designer` 1.4.0 (checklist
+  depth), `coder` 1.3.0 (`# REVIEW:` marker density), `code-reviewer` 1.6.0 (MINOR/NIT reporting;
+  BLOCKER/MAJOR + `gate_pass` always profile-independent), `codebase-skeptic` 1.3.0 (voice breadth;
+  milestone/pre-release audits keep full breadth regardless of profile).
+
+`standard` is the unchanged baseline — `novice` and `expert` are deltas around it. Docs-only; the
+`skill-version-sync` gate rule (v1.19.1) kept all eight bumped banners in sync with their
+frontmatter examples throughout.
+
+---
+
 ## [1.19.1] — 2026-06-11
 
 ### Post-v1.19 milestone refactor (first milestone audit; doctrine-tightening patch)
