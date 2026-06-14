@@ -1,7 +1,13 @@
 # ADR-0010: When a sub-skill branches on `developer_profile`
 
 ## Status
-Proposed — 2026-06-11 — drives the ssd-profile-audit feature (R9, ships v1.20.0).
+**Superseded by [ADR-0012](ADR-0012-ssd-2.0-architecture.md) — 2026-06-14** (SSD 2.0, ssd-2.0-cuts
+iter A, v2.0.0). The profile-aware sub-skill boundary rule this ADR set is moot now that the
+`developer_profile` concept is removed: the per-skill behaviors collapsed to their former `standard`
+defaults (unconditional). Retained as the historical record (it was the precondition that made the
+profile subsystem coherent enough to remove surgically — see ADR-0012 Consequences).
+
+Proposed — 2026-06-11 — drove the ssd-profile-audit feature (R9, shipped v1.20.0).
 Extends [ADR-0004](ADR-0004-developer-profile-and-teaching-mode.md).
 
 ## Context

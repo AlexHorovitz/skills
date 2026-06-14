@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.25.0
+**Version:** 2.0.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -155,14 +155,6 @@ user happy with single-feature flow never needs them.
 
 ---
 
-## Developer Profile + Teaching Mode
-
-**→ Full text: [`chapters/profile.md`](chapters/profile.md)** ([ADR-0004](../docs/decisions/ADR-0004-developer-profile-and-teaching-mode.md)).
-Covers § "Profile values", § "Profile-aware defaults", § "Profile-aware sub-skill behavior",
-§ "Teaching mode", and § "Bridge flags". **⚠️ 2.0 deletion candidate (ADR-0012 Pillar 1)** — relocated
-here, not deleted; removal is gated on accepting ADR-0012. Until then this is the live profile doctrine.
-
----
 ## The Rails — Canonical Opinionated Path
 
 The eight-step canonical sequence (brief → design → code → review → gate → deploy →
@@ -276,7 +268,6 @@ lives in `ssd/chapters/` and loads when the relevant work begins:
 | [`chapters/phases.md`](chapters/phases.md) | the eight phase playbooks (start → ship) |
 | [`chapters/upgrade.md`](chapters/upgrade.md) | `/ssd upgrade` (drift report · `--apply` · `--adopt`) |
 | [`chapters/workstreams.md`](chapters/workstreams.md) | `/ssd feature new` · `switch` · `worktree` |
-| [`chapters/profile.md`](chapters/profile.md) | developer profile + teaching mode (⚠️ 2.0 deletion candidate) |
 | [`chapters/artifacts.md`](chapters/artifacts.md) | the `.ssd/` artifact tree + selective-commit split |
 | [`chapters/state.md`](chapters/state.md) | structured output + iterations + session continuity |
 | [`chapters/enforcement.md`](chapters/enforcement.md) | `gate-rules.sh` enforcement table |

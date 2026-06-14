@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 
 ## Purpose
 Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabilities, performance issues, and maintainability problems before they reach production. Be ruthless but constructive—the goal is better code, not crushed developers.
@@ -27,7 +27,7 @@ Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabili
 ```yaml
 ---
 skill: code-reviewer
-version: 1.6.0
+version: 1.7.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -468,20 +468,11 @@ reviewer; a MINOR that goes uncaught gets caught on the next review.
 
 ---
 
-## Profile-Aware Behavior
+## Finding-Severity Reporting
 
-This skill branches on `developer_profile` ([ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md)):
-**which finding severities are reported inline.**
-
-- **novice** — MINOR *and* NIT reported inline, each with a teaching rationale.
-- **standard** *(baseline)* — MINOR inline, NIT summarized; unchanged from pre-v1.20.0.
-- **expert** — MINOR and NIT collapsed into a one-line summary; the review foregrounds BLOCKER/MAJOR.
-
-**Invariant (normative, overrides the profile delta):** BLOCKER and MAJOR findings are reported
-inline at *every* profile, and the `gate_pass` computation (`blocker == 0 AND major == 0`) is
-profile-independent. Profile tunes teaching breadth for low-severity findings only — it can never
-hide a finding that blocks the gate, nor change the gate decision. Single source of truth:
-`ssd/SKILL.md` § "Profile-aware sub-skill behavior".
+**MINOR** findings are reported inline; **NIT** findings are summarized. **BLOCKER** and **MAJOR** are
+always reported inline, and the `gate_pass` computation (`blocker == 0 AND major == 0`) is absolute —
+low-severity reporting style never hides a finding that blocks the gate, nor changes the gate decision.
 
 ## Self-Verification (before emitting output)
 
@@ -575,6 +566,10 @@ small fix-ups where producing a second file is overkill.
 
 ## Changelog
 
+- **1.7.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the `## Profile-Aware
+  Behavior` section. The profile *concept* is gone library-wide; finding-severity reporting collapses
+  to the former `standard` default — **MINOR inline, NIT summarized** (new § "Finding-Severity
+  Reporting"). BLOCKER/MAJOR-inline + `gate_pass` were always profile-independent — unchanged.
 - **1.6.0** (2026-06-13) — Feature ssd-profile-audit (R9): this skill is now profile-aware on
   MINOR/NIT reporting (novice inline-with-rationale → expert summarized), per
   [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md). BLOCKER/MAJOR are reported

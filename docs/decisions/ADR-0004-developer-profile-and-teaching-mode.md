@@ -1,6 +1,11 @@
 # ADR-0004: `developer_profile` field semantics + teaching-mode decay
 
 ## Status
+**Superseded by [ADR-0012](ADR-0012-ssd-2.0-architecture.md) — 2026-06-14** (SSD 2.0, ssd-2.0-cuts
+iter A, v2.0.0). The `developer_profile` concept and teaching-mode decay this ADR introduced were
+removed: SSD 2.0 serves both audiences through progressive disclosure (no mode to declare). Retained as
+the historical record of why the profile concept existed (v1.10.0–v1.25.1).
+
 Accepted — 2026-04-29 — landed in iteration 8 of the ssd-skill-upgrades epic ([epic plan on disk](../../.ssd/features/ssd-skill-upgrades/01-architect.md)).
 
 ## Context

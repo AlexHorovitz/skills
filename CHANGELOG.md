@@ -6,6 +6,41 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.0.0] — 2026-06-14
+
+### SSD 2.0 — iteration A: remove the profile concept (BREAKING)
+
+First of the [ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) cuts (ssd-2.0-cuts;
+[#15](https://github.com/AlexHorovitz/skills/issues/15)). **Subtraction on the v1.x core** — the
+`developer_profile` / `teaching_mode` concept is removed library-wide. One system serves both
+newcomer and expert through **progressive disclosure** (the no-arg Auto-Detect proposes the next
+step; every manual verb stays invokable — NeXTSTEP: remove the *mode*, keep the *capability*).
+
+**Breaking:** `developer_profile` and `teaching_mode` in `.ssd/project.yml` are no longer read. A v1
+`project.yml` that still carries them is **ignored** (no crash); `/ssd upgrade` will surface a guided
+clean-up (iter C).
+
+- **Deleted** `ssd/chapters/profile.md` + its spine stub + chapter-index row + the bridge-flags table.
+- **Collapsed each profile-keyed behavior to its former `standard` default** (no behavior lost): 
+  `code-reviewer` → MINOR inline / NIT summarized (§ "Finding-Severity Reporting"); `coder` → REVIEW
+  markers on genuine uncertainties (§ "REVIEW-Marker Density"); `systems-designer` → the standard
+  checklist (§ "Checklist Depth"); `codebase-skeptic` → relevant voices (§ "Voice Selection").
+  Gate-critical behavior (BLOCKER/MAJOR-inline, `gate_pass`, safety gates, halt-on-blocker) was always
+  profile-independent — unchanged.
+- **`architect` / `methodology` / `refactor`**: dropped the obsolete `> Profile stance: invariant`
+  note — they never branched; no behavior change.
+- **`ssd-init`**: removed `developer_profile`/`teaching_mode` from the `project.yml` template; Step 5 +
+  Step 5.5 no longer branch on profile (always propose, user declines); `switch_note_default` is now a
+  plain knob (default `prompt`).
+- **ADR-0004** + **ADR-0010** marked **Superseded by ADR-0012** (retained as historical record).
+- Banners: `ssd` 1.25.0 → **2.0.0**, `ssd-init` → 1.10.0, `code-reviewer` → 1.7.0, `coder` → 1.4.0,
+  `systems-designer` → 1.5.0, `codebase-skeptic` → 1.4.0, `architect` → 1.3.0, `methodology` → 1.7.0,
+  `refactor` → 1.3.0. `VERSION` → 2.0.0.
+- Iter B (single surface + verb collapse) and iter C (`/ssd upgrade` guided deprecation entries +
+  ADR-0011 tracking issue) follow on #15.
+
+---
+
 ## [1.25.1] — 2026-06-14
 
 ### Docs/decision: accept ADR-0012 (SSD 2.0 greenlit) + README refresh
