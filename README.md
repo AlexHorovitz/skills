@@ -16,9 +16,10 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 - [`ssd-skill-upgrades`](.ssd/features/ssd-skill-upgrades/01-architect.md) — 9-iteration epic implementing v1.5–v1.14 (5 ADRs: iterations, `current.yml` split, rails, profiles, gate execution).
 - [`parallel-features`](.ssd/features/parallel-features/01-architect.md) — concurrent feature workstreams (3 iterations, v1.15–v1.17; [ADR-0007](docs/decisions/ADR-0007-parallel-features.md)).
 - [`ssd-commit-split`](.ssd/features/ssd-commit-split/01-architect.md) — the selective-commit convention that makes this very list visible (2 iterations, v1.18–v1.19; [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)).
-- [`ssd-profile-audit`](.ssd/features/ssd-profile-audit/01-architect.md) — made the sub-skills profile-aware on *substance* not tone (v1.20; [ADR-0010](docs/decisions/ADR-0010-profile-aware-subskills.md)).
+- [`ssd-profile-audit`](.ssd/features/ssd-profile-audit/01-architect.md) — made the sub-skills profile-aware on *substance* not tone (v1.20; [ADR-0010](docs/decisions/ADR-0010-profile-aware-subskills.md)). *Later removed wholesale by SSD 2.0 — see below; the dogfood record keeps the reversal honest.*
 - [`ssd-upgrade`](.ssd/features/ssd-upgrade/01-architect.md) — `/ssd upgrade`: detect SSD convention drift and migrate a project forward idempotently (4 iterations, v1.21–v1.24; [ADR-0013](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md)).
 - [`ssd-skill-chapter-split`](.ssd/features/ssd-skill-chapter-split/00-brief.md) — split the `ssd/SKILL.md` monolith into a thin spine + on-demand chapters (v1.25; the [ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) 2.0 prerequisite P1).
+- [`ssd-2.0-cuts`](.ssd/features/ssd-2.0-cuts/01-architect.md) — **SSD 2.0**, the subtractive milestone ([ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md), greenlit via [`ssd-2.0-greenlight`](.ssd/features/ssd-2.0-greenlight/00-brief.md)). Three iterations: (A) remove the `developer_profile`/`teaching_mode` concept library-wide — BREAKING, v2.0.0; (B) collapse to **one surface, progressively disclosed** — v2.1.0; (C) the `/ssd upgrade` deprecation path via the `obsoleted_in` manifest field — v2.2.0.
 
 ## Methodology
 
@@ -61,17 +62,21 @@ directory (gitignored), writes `.ssd/project.yml` with your stack/framework/plat
 (CI/CD, test harness, feature-flag system, deployed hello-world). Idempotent — safe to re-run.
 `/ssd` phases refuse to proceed until init has run.
 
-**Step 2: `/ssd <phase>` for every session.** The orchestrator sequences the right sub-skills.
+**Step 2: `/ssd` every session.** Since v2.1, SSD has **one surface, progressively disclosed**
+([ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) Pillar 3). The everyday path is the bare
+command — it reads your project state and proposes the next action, naming the explicit step it takes
+so you never have to memorize the verb set.
 
 ```
-/ssd-init       ← first time only (prerequisite to all /ssd phases)
-/ssd feature    ← standard development session
-/ssd start      ← new project or major feature
-/ssd gate       ← quick shippable state check
-/ssd milestone  ← post-sprint consolidation
-/ssd verify     ← mandatory after milestone refactors
-/ssd upgrade    ← keep the project on the latest SSD conventions
+/ssd-init   ← first time only (prerequisite to all /ssd phases)
+/ssd        ← auto-detect state and propose the next action (the path you use)
+/ssd start  ← bootstrap a new project (Walking Skeleton) when there's no state to detect yet
 ```
+
+The full verb set (`feature`, `design`, `gate`, `milestone`, `verify`, `ship`, `audit`, `upgrade`)
+stays a first-class escape hatch — every phase is still directly invokable. The command path is a
+**thin alias** that lowers into the conversational path, not a co-equal surface. See
+[The Meta-Skill](#ssd--the-meta-skill) below for the full set.
 
 ### Skill Taxonomy
 
@@ -97,9 +102,11 @@ SSD prerequisite status (CI/CD, tests, flags, deploy).
 ### `/ssd` — The Meta-Skill
 
 The orchestrator. Sequences the right sub-skills for each development phase. Requires `ssd-init` to
-have run.
+have run. The bare `/ssd` auto-detects state and proposes the next action; the explicit verbs below
+are the escape hatch when you want to force a specific phase.
 
 ```
+/ssd            — Auto-detect state and propose the next action (the everyday path)
 /ssd start      — New project or major feature: Walking Skeleton setup
 /ssd feature    — Active development: design → build → review → deploy loop
 /ssd design     — Bundled architect + systems-designer pass (single invocation)
@@ -249,9 +256,9 @@ by the skill linter (when present) and block `/ssd start` in strict mode.
 - Every skill's `## Interface` table declares explicit input/output *paths* (e.g.,
   `.ssd/features/<slug>/01-architect.md`) — not just downstream skill names.
 - Every primary output artifact has YAML frontmatter conforming to the shared schema documented in
-  `ssd/SKILL.md` § "Structured Output Requirements."
+  `ssd/chapters/state.md` § "Structured Output Requirements."
 - Every skill's Purpose contains a "When NOT to use" clause disambiguating it from any overlapping
-  skill (see `ssd/SKILL.md` § "Resolving Skill Overlap").
+  skill (see `ssd/chapters/skills.md` § "Resolving Skill Overlap").
 
 **Header / license ordering:**
 - Title-first: `# Skill Name` is line 1.
