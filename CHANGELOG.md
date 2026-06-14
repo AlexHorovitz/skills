@@ -6,6 +6,83 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.25.0] — 2026-06-14
+
+### Refactor: `ssd/SKILL.md` chapter-split (2.0 prerequisite P1, path A)
+
+Splits the 1,465-line `ssd/SKILL.md` monolith into a **thin ~295-line spine + on-demand chapter
+files** under `ssd/chapters/`, relieving the context-ceiling forcing function
+([#15](https://github.com/AlexHorovitz/skills/issues/15),
+[ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md)). Shipped on the 1.x line as a
+**behavior-preserving refactor** (Hard Rule 4 — separate PR) ahead of the contested 2.0 deletions, so
+2.0 becomes pure subtraction on an already-chaptered file (mirrors `/ssd upgrade` shipping ahead of
+the cuts).
+
+- **Stub-and-chapter** approach: the spine keeps every section *heading* as a redirect stub, so all
+  live `ssd/SKILL.md § "…"` cross-references (sibling skills, ADRs, README) keep resolving — zero churn.
+- Spine keeps the front matter: Purpose / Prerequisite / Invocation / the no-arg **Auto-Detect** core /
+  The Rails / Hard Rules. Chapters: `phases`, `upgrade`, `workstreams`, `profile`, `artifacts`, `state`,
+  `enforcement`, `skills`.
+- **No deletions.** `chapters/profile.md` (developer profile + teaching mode) is **relocated, not
+  removed**, and flagged as the ADR-0012 Pillar-1 deletion candidate — 2.0 becomes a one-file `rm`.
+- In-file changelog moved out to this file (`CHANGELOG.md`); spine carries a pointer.
+- `ssd/SKILL.md` 1.24.0 → 1.25.0; `VERSION` → 1.25.0.
+
+---
+
+## [1.24.0] — 2026-06-13
+
+### Feature: `/ssd upgrade` — iteration C (guided adoption + manifest-currency gate); **epic complete**
+
+Closes [#17](https://github.com/AlexHorovitz/skills/issues/17) /
+[ADR-0013](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md).
+
+- **Guided-adoption tracking** decoupled from the version gate: `/ssd upgrade --adopt <id>` records a
+  guided practice in `project.yml.ssd.adopted_guided` (`.bak` first; rejects non-guided ids and refuses
+  an inline-form list rather than emit malformed YAML). An adopted entry reports `GUIDED-ADOPTED` and is
+  *satisfied*, so the recorded version advances past it; a fully caught-up project bumps to `--to`
+  (zero drift). Unadopted guided entries still re-surface (R3).
+- New **`migration-manifest-current`** gate rule — structural manifest health (unique ids, ascending
+  `introduced_in`, none newer than `VERSION`); closes R2; SKIPs outside the skills-library repo.
+- **`gate-rules.sh` `yaml_get` hardened** to strip inline comments on scalar values, quote-aware (the
+  parser half of iter-B's MAJOR-4).
+- `scripts/parity-test.sh` → 53 assertions. `ssd` 1.23.0 → 1.24.0.
+
+---
+
+## [1.23.0] — 2026-06-13
+
+### Refactor: `ssd-upgrade` extraction — engine owns all four mechanical migrations
+
+The `ssd-init`→engine extraction deferred from iter B
+([ADR-0013](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md) extraction addendum).
+
+- `current-yml-v2` no longer `DEFER`s — `apply_current_yml_v2` performs the v1→v2 split in the
+  **conservative-safe** form (`.bak` + fresh v2 skeleton + the entire original preserved under
+  `current.notes.yml` `legacy_v1_import:`), keeping R1 airtight without a field-classifying heuristic.
+- Selective `.gitignore` pattern extracted to single-source `methodology/selective.gitignore`, consumed
+  by both `migrate.sh` and `ssd-init` (closes the iter-B review's SUGGESTION-1 duplication).
+- `scripts/parity-test.sh` → 43 assertions. `ssd-init` 1.8.0 → 1.9.0; `ssd` 1.22.0 → 1.23.0.
+
+---
+
+## [1.22.0] — 2026-06-13
+
+### Feature: `/ssd upgrade` — iteration B (`--apply` mechanical migrations)
+
+`/ssd upgrade --apply` runs the manifest's mechanical migrations, each `detect`-gated and `.bak`-backed
+(R1), re-confirmed via `detect` (`APPLIED`/`SKIP-present`/`DEFER`/`ERROR`), bumping
+`project.yml.ssd.version` to the highest **contiguous adopted** version and appending to
+`.ssd/init-log.md`. The bump stops at the first outstanding entry — including a guided one — so guided
+practices re-surface until adopted (R3).
+
+- Three executable apply functions (`dev-profile-keys`, `parallel-features-keys`, `selective-gitignore`);
+  `current-yml-v2` reported `DEFER` (extracted in 1.23.0). Honors `--to`/`--json`.
+- Two MAJORs found + fixed by dogfooding `--apply` on this repo (gitignore pattern duplication; a gate
+  rule silently degraded to SKIP). `scripts/parity-test.sh` → 41 assertions. `ssd` 1.21.0 → 1.22.0.
+
+---
+
 ## [1.21.0] — 2026-06-13
 
 ### Feature: `/ssd upgrade` — iteration A (read-only drift report)
