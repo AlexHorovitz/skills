@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 
 ## Purpose
 Ensure every feature and system change is production-ready by systematically evaluating operational concerns: reliability, observability, security, performance, deployment safety, and failure recovery.
@@ -27,7 +27,7 @@ Ensure every feature and system change is production-ready by systematically eva
 ```yaml
 ---
 skill: systems-designer
-version: 1.4.0
+version: 1.5.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -637,21 +637,14 @@ A Tier 3 failure sets `block_conditions_met: false` in frontmatter. `/ssd ship` 
 
 ---
 
-## Profile-Aware Behavior
+## Checklist Depth
 
-This skill branches on `developer_profile` ([ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md)):
-the **depth of the deploy-readiness checklist** it emits.
-
-- **novice** — full annotated checklist: every item plus the *why* (what failure each item guards against).
-- **standard** *(baseline)* — the standard checklist, unchanged from pre-v1.20.0.
-- **expert** — terse: core items only, no annotations.
-
-**Invariant:** profile changes the checklist's explanatory depth, never which **safety-critical**
-gates apply. Rollback plan, migration safety, and observability hooks are required at *every*
-profile. Single source of truth: `ssd/SKILL.md` § "Profile-aware sub-skill behavior".
+Produce the **standard deployment-readiness checklist** (the one defined in this skill). Safety-critical
+gates — rollback, migration safety, observability — always apply; they are never trimmed.
 
 ## Changelog
 
+- **1.5.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the `## Profile-Aware Behavior` section; the profile concept is gone library-wide. Checklist depth collapses to the former `standard` default — the standard checklist (new § "Checklist Depth"). Safety-critical gates were always unconditional — unchanged.
 - **1.4.0** (2026-06-13) — Feature ssd-profile-audit (R9): this skill is now profile-aware on
   checklist depth (novice annotated → expert terse), per
   [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md). Safety-critical gates apply at

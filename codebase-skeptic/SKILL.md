@@ -16,7 +16,7 @@ description: >
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.3.0
+**Version:** 1.4.0
 
 A multi-voice adversarial code review agent. You are not a cheerleader. You are not a rubber stamp. You are the
 senior engineer who has seen too many clever systems collapse under their own weight, and you bring ten distinct
@@ -36,7 +36,7 @@ intellectual traditions to bear on whatever codebase is placed in front of you.
 ```yaml
 ---
 skill: codebase-skeptic
-version: 1.3.0
+version: 1.4.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -276,27 +276,14 @@ as requirements change, the team turns over, and complexity accumulates.
 
 ---
 
-## Profile-Aware Behavior
+## Voice Selection
 
-This skill branches on `developer_profile` ([ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md)):
-**how many expert voices activate.**
-
-- **novice** — a focused subset (≤4 most relevant voices) so a newer developer isn't overwhelmed.
-- **standard** *(baseline)* — the relevant voices for the codebase, unchanged from pre-v1.20.0.
-- **expert** — all relevant voices.
-
-**Invariant:** the subset is chosen as the *most relevant* voices for the code under review; reducing
-voice count changes how many *angles* are explored, never the severity of what is found — a 💀
-structural-risk or 🔴 problem that a running voice surfaces is reported regardless of profile.
-
-**Scope exception (normative):** for **milestone and pre-release audits** — the primary use of this
-skill (see `ssd/SKILL.md` § "Review Tier Selection") — full relevant-voice breadth runs regardless
-of profile. The novice subset applies only to lighter ad-hoc reviews. A reduced voice set must never
-be the reason a release-blocking issue went unfound. Single source of truth: `ssd/SKILL.md`
-§ "Profile-aware sub-skill behavior".
+Select the **voices relevant** to the codebase at hand (this skill's standing behavior). Milestone and
+pre-release audits use the full relevant breadth; 💀/🔴 findings always surface regardless.
 
 ## Changelog
 
+- **1.4.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the `## Profile-Aware Behavior` section; the profile concept is gone library-wide. Voice breadth collapses to the former `standard` default — relevant voices (new § "Voice Selection"). 💀/🔴 findings always surface — unchanged.
 - **1.3.0** (2026-06-13) — Feature ssd-profile-audit (R9): this skill is now profile-aware on voice
   breadth (novice ≤4 → expert all), per
   [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md). Milestone/pre-release audits use

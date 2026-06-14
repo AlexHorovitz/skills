@@ -13,6 +13,11 @@
 > upgrade` (the deprecation vehicle, #17, complete) and the `ssd/SKILL.md` chapter-split (P1, v1.25.0).
 > Durable doctrine (`methodology/core.md`) continues to cite ADR-0011, **not** this ADR, until the 2.0
 > cuts actually land. Implementation is tracked on #15.
+>
+> **Update — 2026-06-14, v2.0.0:** the cuts have begun shipping. Iter A (Pillar 1 — remove the profile
+> concept) landed in v2.0.0 (ssd-2.0-cuts); ADR-0004 + ADR-0010 are superseded by this ADR. Iter B
+> (single surface + verb collapse) and iter C (deprecation manifest) follow. `methodology/core.md` may
+> now cite this ADR.
 
 ## Context
 

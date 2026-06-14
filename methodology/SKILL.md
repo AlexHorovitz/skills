@@ -2,15 +2,13 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.6.2
+**Version:** 1.7.0
 
 **Canonical methodology pages**: [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html) (full doctrine), [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html) (practical implementation), [insanelygreat.com/agile2.html](https://insanelygreat.com/agile2.html) (companion manifesto). The website is the user-facing reference; this skill set is the in-repo doctrine the orchestrator enforces.
 
 ## Purpose
 
 Explain and apply the Shippable States Development doctrine. Answer questions about SSD principles, help users evaluate whether they are following SSD correctly, and guide decision-making in ambiguous situations. Also provides the machine-checkable rule source that `/ssd gate` enforces and the self-adherence scoring invoked by `/methodology score`.
-
-> **Profile stance: invariant.** This skill's output does not branch on `developer_profile` — `/methodology score` is an absolute self-adherence metric, and doctrine is doctrine regardless of who asks. See [ADR-0010](../docs/decisions/ADR-0010-profile-aware-subskills.md) and `ssd/SKILL.md` § "Profile-aware sub-skill behavior".
 
 ## Interface
 
@@ -151,6 +149,7 @@ see existing schemas for format. Adding a new validator type (beyond `string`/`i
 
 ## Changelog
 
+- **1.7.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the now-obsolete `> Profile stance: invariant` note — the `developer_profile` concept no longer exists library-wide. This skill never branched on profile; no behavior change.
 - **1.6.2** (2026-06-13) — New doctrine in `core.md` § "Recording Decisions": a consequential
   decision is recorded as an ADR (durable *why*) + a revisit-aware tracking issue (live status +
   falsifiable `Revisit when:` triggers), cross-linked. Establishes

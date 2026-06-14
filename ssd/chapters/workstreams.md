@@ -45,7 +45,7 @@ iteration on an existing or new feature rather than a wholly new feature — see
      `iterations/<iter>/brief.md` (no `00-` prefix per iteration-nested convention).
    - **`#<iter>` in slug, feature exists flat:** prompt to promote (per
      § "Iterations Inside a Feature" — promotion is non-destructive; flat artifacts stay
-     in place). On `developer_profile: expert`, also accept `--promote` to skip the prompt.
+     in place). Accept `--promote` to skip the prompt.
    - **`#<iter>` in slug, feature already multi-iter, `<iter>` doesn't exist yet:** create
      `iterations/<iter>/`. Refuse if `<iter>` already exists (FM-12).
 
@@ -184,10 +184,8 @@ workstream by checking out its branch (or `cd`ing into its worktree).
      from recent activity (last few tool calls / recent git diff / current architect or coder
      status) and writes it to
      `current.notes.yml.features.<source-slug>.handoff_notes`, overwriting any existing note.
-   - Default behavior — used when either (a) `project.yml.ssd.switch_note_default: prompt`
-     is set explicitly, or (b) `switch_note_default` is unset AND `developer_profile` is
-     `novice` or `standard` (per § "Profile-aware defaults" table's `switch_note_default`
-     column). The orchestrator drafts a 2–4-line note from recent activity, then **blocks**
+   - Default behavior — used when `switch_note_default` is `prompt` (the default if the key is
+     unset). The orchestrator drafts a 2–4-line note from recent activity, then **blocks**
      waiting for a binding user choice (use `AskUserQuestion` with three options, or the
      conversational-surface equivalent — narrate-without-blocking is insufficient):
      **save** (accept draft as-is), **edit** (user provides replacement text), **skip**

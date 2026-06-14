@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.9.0
+**Version:** 1.10.0
 
 ## Purpose
 
@@ -219,12 +219,8 @@ Three options:
 - **Permanent opt-out:** set `project.yml.ssd.gitignore_mode: blanket` and stop asking. Future
   `ssd-init` runs see the explicit opt-out and skip the prompt.
 
-**Profile-aware default** for whether to surface the prompt at all:
-
-- `developer_profile: novice` — silently skip the prompt; keep blanket. Novices shouldn't
-  have to think about which artifacts get committed. Re-offer the migration when the user is
-  auto-promoted to `standard` (per ADR-0004's promotion flow).
-- `developer_profile: standard` or `expert` — surface the prompt by default.
+Always surface the prompt (warnings-not-walls: propose the migration, let the user decline or opt out
+permanently); never silently skip it.
 
 **Opt-in to blanket on a new project:** `ssd-init --keep-blanket-gitignore` writes a bare
 `.ssd/` line instead of the selective pattern, and sets `project.yml.ssd.gitignore_mode:
@@ -253,12 +249,8 @@ Detection is grounded in `.gitignore` state at this point in the init flow becau
 `project.yml`'s contents at Step 5.5 time — it may not exist yet (fresh init) or may be on
 an older schema lacking the key.
 
-**Profile-aware behavior:**
-
-- `developer_profile: expert` — offer the install with explicit yes/no/skip prompt.
-- `developer_profile: standard` — silently skip the offer (user can install later via the
-  hooks README).
-- `developer_profile: novice` — silently skip the offer.
+Offer the install with an explicit yes/no/skip prompt (the user can also install later via the hooks
+README). The offer never auto-installs.
 
 **The offer prints the install command for the user to run themselves:**
 
@@ -352,7 +344,7 @@ ssd:
   branch_pattern: "add-{slug}"
   worktree_root: "../"
   worktree_name_pattern: "{repo}-{slug}"
-  switch_note_default: prompt    # novice/standard default; profile-aware fallback to `auto` for expert
+  switch_note_default: prompt    # prompt | auto | skip (default: prompt)
 
   # Commit-split defaults (v1.18.0, ADR-0008). Selective is the default; blanket is the
   # legacy v1.3.0–v1.17.x behavior for solo developers who prefer it.
@@ -366,17 +358,14 @@ integrations:                    # optional; filled in as features are added
   - type: github
     enabled: true                # inferred from .git remote
 
-developer_profile: standard      # novice | standard | expert; default: standard
-teaching_mode:                   # see ssd/SKILL.md § "Developer Profile + Teaching Mode"
-  enabled: true                  # auto-true for first 5 invocations
-  invocations_remaining: 5       # decay counter
-
 rails: rails.md                  # default; teams may fork rails.md and point here
 ```
 
-`ssd-init` writes `developer_profile: standard` and `teaching_mode.enabled: true` by default. A
-user who knows they want a different profile sets it explicitly during init or edits `project.yml`
-afterward.
+> **SSD 2.0 (ADR-0012):** the `developer_profile` / `teaching_mode` keys were removed — SSD no longer
+> has a profile *concept*. One system serves both newcomer and expert through progressive disclosure
+> (the orchestrator proposes the next step; every manual step stays invokable). `ssd-init` no longer
+> writes those keys; a v1 `project.yml` that still carries them is simply ignored (run `/ssd upgrade`
+> to clean them up — iter C).
 
 **Parallel-features defaults (v1.6.0):** `ssd-init` writes the four optional `ssd.*` keys
 (`branch_pattern`, `worktree_root`, `worktree_name_pattern`, `switch_note_default`) with their
@@ -520,7 +509,7 @@ Record what was done and what was found. This is the primary output artifact of 
 ```markdown
 ---
 skill: ssd-init
-version: 1.9.0
+version: 1.10.0
 produced_at: <ISO-8601>
 project: <name>
 ---
@@ -678,6 +667,12 @@ Running `ls .ssd/features/<slug>/` reveals the full phase chain for a feature in
 
 ## Changelog
 
+- **1.10.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the `developer_profile`
+  and `teaching_mode` keys from the `project.yml` template (the profile concept is gone library-wide);
+  Step 5 (gitignore migration) and Step 5.5 (pre-commit hook offer) no longer branch on profile — they
+  **always propose, the user declines** (warnings-not-walls); `switch_note_default` is now a plain knob
+  (default `prompt`), no longer profile-derived. A v1 `project.yml` carrying the removed keys is ignored
+  (clean up via `/ssd upgrade`).
 - **1.9.0** (2026-06-13) — ssd-upgrade extraction (ADR-0013, library v1.23.0). Step 5's selective
   `.gitignore` pattern is no longer duplicated here — it points to the single-source
   [`methodology/selective.gitignore`](../methodology/selective.gitignore), which `migrate.sh`
