@@ -16,6 +16,9 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 - [`ssd-skill-upgrades`](.ssd/features/ssd-skill-upgrades/01-architect.md) — 9-iteration epic implementing v1.5–v1.14 (5 ADRs: iterations, `current.yml` split, rails, profiles, gate execution).
 - [`parallel-features`](.ssd/features/parallel-features/01-architect.md) — concurrent feature workstreams (3 iterations, v1.15–v1.17; [ADR-0007](docs/decisions/ADR-0007-parallel-features.md)).
 - [`ssd-commit-split`](.ssd/features/ssd-commit-split/01-architect.md) — the selective-commit convention that makes this very list visible (2 iterations, v1.18–v1.19; [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)).
+- [`ssd-profile-audit`](.ssd/features/ssd-profile-audit/01-architect.md) — made the sub-skills profile-aware on *substance* not tone (v1.20; [ADR-0010](docs/decisions/ADR-0010-profile-aware-subskills.md)).
+- [`ssd-upgrade`](.ssd/features/ssd-upgrade/01-architect.md) — `/ssd upgrade`: detect SSD convention drift and migrate a project forward idempotently (4 iterations, v1.21–v1.24; [ADR-0013](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md)).
+- [`ssd-skill-chapter-split`](.ssd/features/ssd-skill-chapter-split/00-brief.md) — split the `ssd/SKILL.md` monolith into a thin spine + on-demand chapters (v1.25; the [ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) 2.0 prerequisite P1).
 
 ## Methodology
 
@@ -67,6 +70,7 @@ directory (gitignored), writes `.ssd/project.yml` with your stack/framework/plat
 /ssd gate       ← quick shippable state check
 /ssd milestone  ← post-sprint consolidation
 /ssd verify     ← mandatory after milestone refactors
+/ssd upgrade    ← keep the project on the latest SSD conventions
 ```
 
 ### Skill Taxonomy
@@ -98,11 +102,22 @@ have run.
 ```
 /ssd start      — New project or major feature: Walking Skeleton setup
 /ssd feature    — Active development: design → build → review → deploy loop
+/ssd design     — Bundled architect + systems-designer pass (single invocation)
 /ssd milestone  — Post-sprint consolidation: deep audit + targeted refactor
 /ssd verify     — Remediation verification (mandatory after milestone refactors)
 /ssd gate       — Shippable state check only (code-reviewer + methodology rules)
 /ssd ship       — Deploy readiness check only (systems-designer checklist)
 /ssd audit      — Adversarial comparative review (nuclear option)
+/ssd upgrade    — (v1.21+) report/migrate SSD convention drift (--apply · --adopt)
+```
+
+**Parallel workstreams** (v1.16+, [ADR-0007](docs/decisions/ADR-0007-parallel-features.md)) — manage
+more than one feature at once:
+
+```
+/ssd feature new <slug>   — scaffold a new workstream: branch + (optional) worktree + brief + state entry
+/ssd switch <slug>        — pause the current workstream (capture a handoff note), resume the target
+/ssd worktree <slug> …    — explicit git-worktree lifecycle (add | remove) for a workstream
 ```
 
 ### Sub-Skills

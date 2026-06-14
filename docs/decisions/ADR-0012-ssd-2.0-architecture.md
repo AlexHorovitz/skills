@@ -1,14 +1,18 @@
 # ADR-0012: SSD 2.0 — radical simplification via progressive disclosure
 
 ## Status
-Proposed — 2026-06-13. Tracked on [issue #15](https://github.com/AlexHorovitz/skills/issues/15).
-Seeded by the audit `.ssd/audits/2026-06-13-ssd-2.0-simplification.md` (Design B won 72/90).
-Recorded under the [ADR-0011](ADR-0011-decision-record-doctrine.md) pattern; its `Revisit when:`
-triggers live on #15.
+**Accepted — 2026-06-14** (proposed 2026-06-13). Tracked on
+[issue #15](https://github.com/AlexHorovitz/skills/issues/15). Seeded by the audit
+`.ssd/audits/2026-06-13-ssd-2.0-simplification.md` (Design B won 72/90). Recorded under the
+[ADR-0011](ADR-0011-decision-record-doctrine.md) pattern; its `Revisit when:` triggers live on #15.
 
-> This ADR is **Proposed**, not Accepted. It is the spine of a contested major-version epic, not a
-> shipped decision. Durable doctrine (`methodology/core.md`) cites ADR-0011, never this ADR, until
-> 2.0 ships.
+> **Accepted ≠ shipped.** The 2.0 direction — progressive disclosure replacing the profile *concept*
+> (NeXTSTEP: guide the newcomer, never take the Terminal from the expert), single surface, verb
+> collapse, warnings-not-walls — is now a **committed decision**: the cuts may begin. But 2.0 has
+> **not shipped**. The prerequisites done so far are the additive, independent de-riskers: `/ssd
+> upgrade` (the deprecation vehicle, #17, complete) and the `ssd/SKILL.md` chapter-split (P1, v1.25.0).
+> Durable doctrine (`methodology/core.md`) continues to cite ADR-0011, **not** this ADR, until the 2.0
+> cuts actually land. Implementation is tracked on #15.
 
 ## Context
 
