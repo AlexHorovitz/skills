@@ -6,6 +6,39 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.3.0] — 2026-06-14
+
+### GitHub issue state tracking — iteration A (ADR-0014)
+
+New opt-in feature (`github-issue-tracking`; epic [#27](https://github.com/AlexHorovitz/skills/issues/27),
+workstream [#28](https://github.com/AlexHorovitz/skills/issues/28)) that mirrors SSD workstream state to
+GitHub issues, one-way (local `.ssd/` drives GitHub). **Default off — projects without the toggle are
+byte-for-byte unchanged, zero network calls.** Dogfooded on this repo (the convention created its own
+epic + feature issue).
+
+- **New `methodology/issue-sync.sh`** — best-effort bash helper in the `gate-rules.sh`/`migrate.sh`
+  style (bash 3.2, `set -uo pipefail`, `--json`, exit-code driven). Subcommands: `preflight`,
+  `ensure-epic <ADR-NNNN> <title>`, `ensure-feature <slug> <phase> <epic#>`, `set-phase <issue#>
+  <phase>`. Idempotent by local title-prefix match (robust against GitHub search tokenization);
+  distinguishes a `gh` list failure from a genuine empty (refuses to create on failure → no
+  duplicates). `close-feature`/`close-epic` are stubbed for iter B.
+- **Convention (ADR-0014):** ADR → epic issue (`ssd:epic`, title `[ADR-NNNN] …`); workstream → feature
+  issue (`ssd:feature` + one `ssd:phase/<phase>`), linked to its epic. Auto-sync on phase advance;
+  create/update automatic under the toggle, **close gated behind `integrations.github.auto_close`**
+  (default = prompt; ADR-0014 Q2).
+- **`.ssd/project.yml`:** new `integrations.github.issue_tracking` (default `off`) + `auto_close`
+  (default `false`). **`current.yml.active[]`:** new optional `epic:`/`issue:` cache fields
+  (lazy-backfill, `branch:` precedent; no schema bump). Documented in `ssd/chapters/state.md`.
+- **Orchestrator:** `ssd/chapters/phases.md` documents the auto-sync on phase advance — each action
+  surfaced (rule-zero); `gh`-absent (preflight exit 3) → warn + continue, never block a phase.
+- **Gate:** round-1 FAIL (MAJOR-1 stdout/JSON contract) → round-2 PASS after fix; parity 59/59.
+  Banner: `ssd` 2.1.0 → **2.3.0** (chapters changed; banner-lag re-align). `VERSION` → 2.3.0.
+- **Deferred to iter B** (tracked on #28/#27): `close-feature`/`close-epic` automation, the
+  `issue-sync-current` gate rule, a `migrations.yml` entry + `ssd-init` template keys, README docs,
+  `methodology/SKILL.md` script-catalog entry, and the MINOR-2 epic-linkage data-model amendment.
+
+---
+
 ## [2.2.0] — 2026-06-14
 
 ### SSD 2.0 — iteration C: the deprecation path (epic complete)

@@ -62,6 +62,29 @@ The standard daily development cycle. Repeat per feature.
 
 **Shippable state invariant**: At the end of each work session, verify the invariant defined in `methodology/core.md` § "The Shippable State Invariant." The canonical checklist lives there — do not maintain a separate copy here.
 
+#### GitHub issue sync on phase advance (ADR-0014, opt-in)
+
+When `.ssd/project.yml` has `integrations.github.issue_tracking: on`, the orchestrator mirrors the
+advancing workstream's state to GitHub issues on **every** phase transition above. The mirror is
+**one-way** (local `.ssd/` drives GitHub) and **best-effort** — it never blocks a phase.
+
+On each advance, the orchestrator:
+
+1. Runs `bash methodology/issue-sync.sh preflight`. **Exit 3** (no `gh`, unauthenticated, or no repo)
+   → warn once and continue the phase; local state is authoritative and unaffected.
+2. For each ADR in the workstream's `adrs_authored`, runs `issue-sync.sh ensure-epic <ADR-NNNN>
+   "<title>"` and caches the returned number in `current.yml.active[].epic`.
+3. Runs `issue-sync.sh ensure-feature <slug> <phase> <epic#>` and caches `current.yml.active[].issue`.
+4. Runs `issue-sync.sh set-phase <issue#> <phase>` to swap the `ssd:phase/*` label and refresh the
+   issue body block.
+
+Each action is **surfaced in the proposal before it runs** (rule-zero: no silent outward action).
+Per [ADR-0014](../../docs/decisions/ADR-0014-github-issue-state-tracking.md) Q2, create/update are
+automatic under the toggle (additive, low-stakes); **closing** a feature or epic issue is gated
+behind `integrations.github.auto_close` (default = prompt once) and is iteration B. With the toggle
+absent or `off`, this whole block is a no-op — zero network calls, behavior identical to a project
+that never heard of issue tracking.
+
 ---
 
 ### `/ssd design` — Bundled Design Pass
