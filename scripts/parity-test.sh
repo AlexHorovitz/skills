@@ -624,6 +624,44 @@ test_fixture_migrate_guided_adoption() {
   fixture_teardown "$tdir"
 }
 
+# Fixture 21: migrate.sh obsoleted_in — a convention retired in 2.0 is not offered to a 2.x-target
+# upgrade (and is never re-applied), but a staged upgrade to a pre-removal target still sees it.
+# Regression guard for ssd-2.0-cuts iter C (the bug: /ssd upgrade re-adding developer_profile, the
+# key SSD 2.0 removed). ADR-0012/0013 obsoleted_in.
+test_fixture_migrate_obsoleted_in() {
+  echo "fixture: migrate-obsoleted-in"
+  local tdir out_2x out_staged
+  tdir=$(fixture_setup "migrate-obsoleted")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'schema_version: 2\nactive: []\n' > .ssd/current.yml
+  printf 'ssd:\n  version: "1.5.0"\n' > .ssd/project.yml            # old project, NO developer_profile key
+  printf '.ssd/\n' > .gitignore
+
+  # Upgrading TO a 2.x target: the retired convention is NOT offered...
+  out_2x=$(bash "$MIGRATE_SCRIPT" --from 1.5.0 --to 2.2.0 --manifest "$MANIFEST" 2>&1)
+  _assert "migrate-obsoleted-in" "dev-profile-keys NOT offered when target >= obsoleted_in (2.2.0)" \
+    "$([[ "$out_2x" != *"dev-profile-keys"* ]] && echo 0 || echo 1)"
+  # ...and the new 2.0.0 guided deprecation entries ARE surfaced (R3 re-surfacing).
+  _assert "migrate-obsoleted-in" "profile-concept-removed surfaced as GUIDED" \
+    "$([[ "$out_2x" == *"GUIDED profile-concept-removed"* ]] && echo 0 || echo 1)"
+  _assert "migrate-obsoleted-in" "single-surface-doctrine surfaced as GUIDED" \
+    "$([[ "$out_2x" == *"GUIDED single-surface-doctrine"* ]] && echo 0 || echo 1)"
+
+  # Staged upgrade to a PRE-removal target: the convention still applies (that target still had it).
+  out_staged=$(bash "$MIGRATE_SCRIPT" --from 1.5.0 --to 1.25.0 --manifest "$MANIFEST" 2>&1)
+  _assert "migrate-obsoleted-in" "dev-profile-keys STILL offered when target < obsoleted_in (1.25.0)" \
+    "$([[ "$out_staged" == *"dev-profile-keys"* ]] && echo 0 || echo 1)"
+  _assert "migrate-obsoleted-in" "2.0.0 guided entries NOT offered below their introduced_in (1.25.0)" \
+    "$([[ "$out_staged" != *"profile-concept-removed"* ]] && echo 0 || echo 1)"
+
+  # The bug iter C prevents: --apply to a 2.x target must NOT re-write the removed developer_profile key.
+  bash "$MIGRATE_SCRIPT" --from 1.5.0 --to 2.2.0 --manifest "$MANIFEST" --apply >/dev/null 2>&1
+  _assert "migrate-obsoleted-in" "developer_profile NOT re-added by --apply to 2.x (R2 regression)" \
+    "$(grep -qE '^[[:space:]]*developer_profile:' .ssd/project.yml && echo 1 || echo 0)"
+  fixture_teardown "$tdir"
+}
+
 # Fixture 19: gate-rules migration-manifest-current (ADR-0013 R2) — valid PASS, broken manifest FAIL.
 test_fixture_manifest_current() {
   echo "fixture: migration-manifest-current"
@@ -687,6 +725,7 @@ test_fixture_migrate_apply_old
 test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
 test_fixture_migrate_guided_adoption
+test_fixture_migrate_obsoleted_in
 test_fixture_manifest_current
 test_fixture_yaml_get_inline_comment
 echo "================================================================"

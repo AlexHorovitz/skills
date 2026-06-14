@@ -6,7 +6,8 @@ PR #18), iter B (v1.22.0, `--apply` for mechanical migrations, PR #19), the extr
 PR #20 — engine owns all four mechanical migrations + single-source gitignore), and iter C (v1.24.0,
 guided-adoption tracking + `migration-manifest-current` gate rule + `yaml_get` hardening). Drives the
 `ssd-upgrade` feature ([01-architect.md](../../.ssd/features/ssd-upgrade/01-architect.md)). Recorded
-under the [ADR-0011](ADR-0011-decision-record-doctrine.md) pattern.
+under the [ADR-0011](ADR-0011-decision-record-doctrine.md) pattern. **Extended v2.2.0** with the
+`obsoleted_in` manifest field for the ssd-2.0-cuts epic (#15) — see the addendum at the end.
 
 ## Iteration-B implementation decisions (2026-06-13)
 
@@ -70,6 +71,43 @@ The three items iter-B/extraction left open all shipped:
    (the parser half of iter-B's MAJOR-4 — the emitter half was fixed in iter B).
 
 With iter C the ssd-upgrade feature is fully delivered against this ADR's Decision.
+
+## `obsoleted_in` addendum (v2.2.0) — convention retirement (ssd-2.0-cuts iter C)
+
+> Distinct from the "Iteration C addendum" above (that closed the *ssd-upgrade* feature, #17). This
+> addendum extends the manifest **schema** for the *ssd-2.0-cuts* epic (#15, [ADR-0012](ADR-0012-ssd-2.0-architecture.md)).
+
+SSD 2.0 *removed* two project-visible conventions (`developer_profile` / `teaching_mode`, retired in
+iter A). The manifest was append-only and could express "a convention was introduced" but not "a
+convention was removed" — so the stale `dev-profile-keys` mechanical entry would still tell a v1-era
+project to **add** `developer_profile` on `/ssd upgrade --apply`: re-adding the exact key 2.0 deleted.
+
+**Decision.** Add an optional **`obsoleted_in: <version>`** field to a manifest entry. The engine's
+selection loop skips an entry whose `obsoleted_in <= --to` (the convention does not exist in the
+destination world), while a staged upgrade to a target *below* `obsoleted_in` still sees it. The id
+is never deleted (the append-only / stable-id contract holds); the entry simply stops being *offered*
+once you upgrade into the world that removed it. `dev-profile-keys` gets `obsoleted_in: 2.0.0`. The
+"delete the keys if you still carry them" message moves to a new paired **guided** entry
+`profile-concept-removed` (plus `single-surface-doctrine` for the iter-B surface collapse), both
+`introduced_in: 2.0.0`, that re-surface (R3) until the project `--adopt`s them.
+
+**Why guided, not a mechanical deletion.** The mechanical contract is explicitly non-destructive
+("add keys / rewrite-with-backup; never delete"); a deletion-apply is a new R1 corruption hazard for
+marginal benefit, and the dead keys are *ignored* by 2.0 (harmless to leave) — the profile of an
+advisory item, not a must-converge one.
+
+**Alternative rejected — `applies_to: library`.** Flipping `dev-profile-keys` to `library` would
+neutralize it with zero engine change (the engine already skips non-`project` entries). Rejected: it
+overloads the `applies_to` category — a reader of this reference manifest would see a clearly
+project-scoped convention mislabeled "library." For a methodology artifact downstream projects copy,
+the honest, generalizable `obsoleted_in` model (every future convention removal reuses one field) is
+worth one guard line + one parser column + one parity fixture.
+
+Engine: `migrate.sh` `read_manifest()` extracts `obsoleted_in` as a trailing column; the selection
+loop adds `if [[ -n "$ob" && -n "$TO" ]] && ! ver_gt "$ob" "$TO"; then continue; fi`. The
+`migration-manifest-current` gate rule needs no change (it ignores unknown fields). Regression test:
+parity fixture `migrate-obsoleted-in` (not offered at `--to 2.2.0`, still offered at `--to 1.25.0`,
+and `--apply` to 2.x never writes `developer_profile`).
 
 ## Context
 

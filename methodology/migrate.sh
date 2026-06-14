@@ -268,19 +268,22 @@ bump_recorded_version() {
   ' "$pj" > "$pj.tmp" && mv "$pj.tmp" "$pj"
 }
 
-# Extract one tab-separated record per manifest entry: id, introduced_in, applies_to, kind, adr, title.
-# Parser assumes the 2-space-indented list form this repo authors in migrations.yml (same controlled-
-# format caveat gate-rules.sh's yaml_get carries).
+# Extract one tab-separated record per manifest entry: id, introduced_in, applies_to, kind, adr, title,
+# obsoleted_in (trailing; empty when the convention is still live). Parser assumes the 2-space-indented
+# list form this repo authors in migrations.yml (same controlled-format caveat gate-rules.sh's yaml_get
+# carries). NOTE: obsoleted_in is the LAST field — every `read -r ... ob` consumer must list it, or the
+# 7th column folds into the 6th (title) var.
 read_manifest() {
   awk '
     function val(line){ sub(/^[^:]*:[[:space:]]*/, "", line); gsub(/^"|"$/, "", line); return line }
-    /^  - id:/             { if (id != "") print id"\t"iv"\t"ap"\t"kd"\t"ad"\t"ti; id=val($0); iv=ap=kd=ad=ti="" ; next }
+    /^  - id:/             { if (id != "") print id"\t"iv"\t"ap"\t"kd"\t"ad"\t"ti"\t"ob; id=val($0); iv=ap=kd=ad=ti=ob="" ; next }
     /^    introduced_in:/  { iv=val($0); next }
+    /^    obsoleted_in:/   { ob=val($0); next }
     /^    applies_to:/     { ap=val($0); next }
     /^    kind:/           { kd=val($0); next }
     /^    adr:/            { ad=val($0); next }
     /^    title:/          { ti=val($0); next }
-    END                    { if (id != "") print id"\t"iv"\t"ap"\t"kd"\t"ad"\t"ti }
+    END                    { if (id != "") print id"\t"iv"\t"ap"\t"kd"\t"ad"\t"ti"\t"ob }
   ' "$MANIFEST"
 }
 
@@ -312,7 +315,7 @@ EOF
 # version gate — once adopted, the entry is "satisfied" and the recorded version can advance past it.
 if [[ -n "$ADOPT" ]]; then
   guided_ok=0
-  while IFS=$'\t' read -r id iv ap kd ad ti; do
+  while IFS=$'\t' read -r id iv ap kd ad ti ob; do
     [[ "$id" == "$ADOPT" && "$kd" == "guided" ]] && guided_ok=1
   done < <(read_manifest)
   if [[ $guided_ok -ne 1 ]]; then
@@ -342,11 +345,15 @@ cand_version="$FROM"   # highest contiguous adopted introduced_in (>= FROM)
 applied_log=""         # accumulated init-log body
 [[ $JSON -eq 1 ]] && printf '{\n  "from": "%s", "to": "%s", "apply": %s,\n  "migrations": [\n' "$FROM" "$TO" "$([[ $APPLY -eq 1 ]] && echo true || echo false)"
 
-while IFS=$'\t' read -r id iv ap kd ad ti; do
+while IFS=$'\t' read -r id iv ap kd ad ti ob; do
   [[ -z "$id" ]] && continue
   [[ "$ap" != "project" ]] && continue            # skip library-scoped entries
   ver_gt "$iv" "$FROM" || continue                # only conventions newer than recorded
   if [[ -n "$TO" ]] && ver_gt "$iv" "$TO"; then continue; fi   # and no newer than target
+  # An obsoleted convention is not offered when upgrading to a target at/after its removal — the
+  # convention no longer exists in the destination world, so it must never be (re-)applied. A staged
+  # upgrade to a pre-removal --to still sees it. (ssd-2.0-cuts iter C; ADR-0012/0013 obsoleted_in.)
+  if [[ -n "$ob" && -n "$TO" ]] && ! ver_gt "$ob" "$TO"; then continue; fi
 
   satisfied=0
   if [[ "$kd" == "guided" ]]; then
