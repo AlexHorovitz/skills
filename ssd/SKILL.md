@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 2.0.0
+**Version:** 2.1.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -44,24 +44,31 @@ creates `docs/decisions/`, `docs/runbooks/`, `docs/architecture/`, and runs SSD 
 
 ## Invocation
 
+SSD has **one surface, progressively disclosed.** The everyday path is the bare command — it reads
+your project state and proposes the next action, naming the explicit step it's taking so you never
+have to memorize the verb set:
+
 ```
-/ssd start         — New project or major feature: Walking Skeleton setup
-/ssd feature       — Active development: design → build → review → deploy loop
-/ssd design        — Bundled architect + systems-designer pass (single invocation)
-/ssd milestone     — Post-sprint consolidation: deep audit + targeted refactor
-/ssd verify        — Remediation verification after a milestone refactor (mandatory)
-/ssd audit         — Adversarial comparative review (nuclear option)
-/ssd gate          — Shippable state check only (code-reviewer + methodology rules)
-/ssd ship          — Deploy readiness check only (systems-designer checklist)
-/ssd upgrade       — (v1.21.0+) report SSD convention drift; migrate the project to the latest approach
-/ssd feature new   — (v1.16.0+) start a parallel workstream with branch + scaffold
-/ssd switch        — (v1.16.0+) pause current workstream, capture handoff, resume target
-/ssd worktree      — (v1.16.0+) explicit worktree lifecycle (add | remove)
+/ssd               — auto-detect state and propose the next action (the path you use)
+/ssd start         — bootstrap a new project (Walking Skeleton) when there's no state to detect yet
 ```
 
-If no argument is given, the orchestrator **auto-detects state** from `.ssd/current.yml` and
-proposes the next action. See § "/ssd (no-arg) — Auto-Detect" below. The explicit phase commands
-remain as escape hatches for forcing a specific step, but the user almost never needs them.
+That is all most sessions need; `/ssd` walks the canonical rails for you (see
+§ "/ssd (no-arg) — Auto-Detect" below for exactly what it proposes).
+
+The **full verb set** stays a first-class escape hatch — every phase, audit, and lifecycle command
+is still directly invokable, just documented in the chapters rather than taught first:
+
+| To… | Verb(s) | Chapter |
+|---|---|---|
+| force a specific phase | `start` · `feature` · `design` · `milestone` · `verify` · `audit` · `gate` · `ship` | [`chapters/phases.md`](chapters/phases.md) |
+| migrate a project to the latest SSD conventions | `upgrade` | [`chapters/upgrade.md`](chapters/upgrade.md) |
+| run parallel workstreams | `feature new` · `switch` · `worktree` | [`chapters/workstreams.md`](chapters/workstreams.md) |
+
+The command path is a **thin alias** that lowers into the conversational path — a power-user
+shorthand, **not** a co-equal surface with its own state. Everything a command does, `/ssd` can
+propose; nothing is reachable only by command ([ADR-0012](../docs/decisions/ADR-0012-ssd-2.0-architecture.md)
+Pillar 3).
 
 ---
 
