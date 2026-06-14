@@ -6,6 +6,32 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.1.0] — 2026-06-14
+
+### SSD 2.0 — iteration B: single surface + verb collapse
+
+Second of the [ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) cuts (ssd-2.0-cuts;
+[#15](https://github.com/AlexHorovitz/skills/issues/15)), Pillar 3. **Subtraction + reframing on the
+v1.x spine** — SSD now presents **one surface, progressively disclosed**. Not breaking: every v1
+invocation still works.
+
+- **Collapsed `ssd/SKILL.md` § "Invocation"** from the front-loaded 13-verb table into a
+  progressive-disclosure block: the bare `/ssd` (no-arg Auto-Detect) is the headline everyday path
+  (+ `/ssd start` for an un-stated project), and the **full verb set is relocated** into an
+  intent→verb→chapter pointer table. Every verb stays one hop away and now names the chapter that
+  documents it (`chapters/{phases,upgrade,workstreams}.md`).
+- **Stated the single-surface doctrine once, in the live spine:** the command path is a **thin alias**
+  that lowers into the conversational path — a power-user shorthand, *not* a co-equal surface with its
+  own state. (ADR-0012 Pillar 3.)
+- The "dual-surface perfect parity" doctrine required **no live edit** — iter A already removed it with
+  `chapters/profile.md` and the superseded ADR-0004; it now survives only in immutable/historical files
+  (governing ADR-0012, superseded ADR-0004, `.ssd/` history). Verified by grep at the gate.
+- **NeXTSTEP held:** no verb added, removed, or renamed; only the front-page teaching order changed.
+- Banner: `ssd` 2.0.0 → **2.1.0**. `VERSION` → 2.1.0. No other skill touched.
+- Iter C (`/ssd upgrade` guided deprecation entries + ADR-0011 tracking issue) follows on #15.
+
+---
+
 ## [2.0.0] — 2026-06-14
 
 ### SSD 2.0 — iteration A: remove the profile concept (BREAKING)
