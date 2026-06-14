@@ -6,6 +6,25 @@ Format: `[version] — date — description`
 
 ---
 
+## [1.25.1] — 2026-06-14
+
+### Docs/decision: accept ADR-0012 (SSD 2.0 greenlit) + README refresh
+
+No behavior change. Two bundled docs/decision updates.
+
+- **[ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) Proposed → Accepted.** The SSD 2.0
+  direction (progressive disclosure replacing the profile *concept* — NeXTSTEP: lead the newcomer,
+  never take the Terminal from the expert; single surface; verb collapse; warnings-not-walls) is now a
+  committed decision — the cuts may begin ([#15](https://github.com/AlexHorovitz/skills/issues/15)).
+  **Accepted ≠ shipped:** `methodology/core.md` keeps citing ADR-0011, not ADR-0012, until the 2.0
+  cuts land; the de-riskers done so far are `/ssd upgrade` (#17) and the chapter-split (P1, v1.25.0).
+- **README refresh** (doc currency): command lists now include `/ssd upgrade` and the v1.16+ parallel
+  workstream commands (`/ssd feature new` · `switch` · `worktree`); the dogfood epics list is current
+  through v1.25 (adds `ssd-profile-audit`, `ssd-upgrade`, `ssd-skill-chapter-split`).
+- `VERSION` → 1.25.1. `ssd/SKILL.md` unchanged (banner stays 1.25.0 per the banner-lag pattern).
+
+---
+
 ## [1.25.0] — 2026-06-14
 
 ### Refactor: `ssd/SKILL.md` chapter-split (2.0 prerequisite P1, path A)
