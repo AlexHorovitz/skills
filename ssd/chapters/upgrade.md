@@ -73,6 +73,17 @@ gate rule** (R2; see § "Methodology Enforcement") and hardens `gate-rules.sh`'s
 inline comments (the parser half of iter-B's MAJOR-4). With iter C the ssd-upgrade feature (issue #17)
 is **complete**.
 
+**Retiring a convention — the `obsoleted_in` field (v2.2.0, ssd-2.0-cuts iter C).** SSD 2.0 *removed*
+project-visible conventions (the `developer_profile` / `teaching_mode` keys). An append-only manifest
+can express "introduced" but not "removed", so a retired convention's entry gains an optional
+`obsoleted_in: <version>`. A project upgrading **to a target `>= obsoleted_in`** no longer sees the
+entry — the convention doesn't exist in the destination world, so `/ssd upgrade --apply` never
+(re-)applies it. A **staged** upgrade to a target *below* `obsoleted_in` still sees it (that target
+still had the convention). The id stays stable (never deleted). The "delete it if you still carry it"
+message is carried by a paired **guided** entry (e.g. `profile-concept-removed`, `single-surface-doctrine`,
+both `introduced_in: 2.0.0`) that re-surfaces (R3) until the project `--adopt`s it. See
+[ADR-0013](../../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md) § "`obsoleted_in` addendum".
+
 **Prerequisite:** `.ssd/project.yml` must exist. If absent, the project hasn't been initialized —
 run `/ssd-init` (see the overlap rule in § "Resolving Skill Overlap").
 

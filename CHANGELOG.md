@@ -6,6 +6,34 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.2.0] — 2026-06-14
+
+### SSD 2.0 — iteration C: the deprecation path (epic complete)
+
+Third and final [ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) cut (ssd-2.0-cuts;
+[#15](https://github.com/AlexHorovitz/skills/issues/15)). Makes the `/ssd upgrade` deprecation path
+coherent: *teach the 2.0 removals, and stop teaching the dead key.* Not breaking.
+
+- **New `obsoleted_in` manifest field** ([ADR-0013](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md)
+  addendum). An append-only manifest could express "introduced" but not "removed", so the stale
+  `dev-profile-keys` entry would *re-add* `developer_profile` — the exact key 2.0 deleted — on
+  `--apply`. `dev-profile-keys` now carries `obsoleted_in: "2.0.0"`; `migrate.sh` skips any entry
+  whose `obsoleted_in <= --to` (a staged upgrade to a pre-removal target still sees it). The stable
+  id is never deleted.
+- **Two new guided entries** (`introduced_in: 2.0.0`): `profile-concept-removed` ("delete
+  `developer_profile` / `teaching_mode` — now ignored") and `single-surface-doctrine` (commands are a
+  thin alias, not a co-equal surface). Both re-surface (R3) on `/ssd upgrade` until a project
+  `--adopt`s them, so v1-era projects learn what 2.0 changed.
+- **Engine:** `read_manifest()` extracts `obsoleted_in` as a trailing column; one guard line in the
+  selection loop. `migration-manifest-current` gate rule unchanged (ignores unknown fields).
+- **Parity:** new fixture `migrate-obsoleted-in` (not offered at `--to 2.2.0`, still offered at
+  `--to 1.25.0`, `--apply` to 2.x never writes `developer_profile`). Harness 53 → **59** assertions.
+- **Deprecation ledger:** ADR-0012's four "Revisit when" reversibility triggers are tracked on #15
+  (ADR-0012 Pillar 4 / ADR-0011 revisit-aware issue) — no separate issue, per ADR-0012's anchoring.
+- `VERSION` → 2.2.0. No skill banner behavior change (no SKILL.md logic touched).
+
+---
+
 ## [2.1.0] — 2026-06-14
 
 ### SSD 2.0 — iteration B: single surface + verb collapse

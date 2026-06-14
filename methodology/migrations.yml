@@ -7,6 +7,12 @@
 # Append-only, ordered by introduced_in. Each entry:
 #   id            stable kebab-case key (primary key; never renamed/reused)
 #   introduced_in library version that added the convention (the selection key)
+#   obsoleted_in  (optional) library version that RETIRED the convention. A project upgrading to a
+#                 target >= obsoleted_in no longer sees the entry — the convention does not exist in
+#                 the destination world, so it is never (re-)applied. A staged upgrade to a target
+#                 BELOW obsoleted_in still sees it (that target still had the convention). This is how
+#                 an append-only manifest expresses removal without deleting the (stable) id. Added
+#                 v2.2.0 (ssd-2.0-cuts iter C, ADR-0012/0013) when SSD 2.0 removed the profile keys.
 #   applies_to    project | library   (`/ssd upgrade` runs only `project`-scoped entries)
 #   kind          mechanical | guided (guided = a practice; cannot be auto-applied)
 #   adr           the decision record that introduced it
@@ -36,6 +42,9 @@ migrations:
 
   - id: dev-profile-keys
     introduced_in: "1.10.0"
+    # retired in SSD 2.0 (ADR-0012); see guided entry profile-concept-removed. Comment on its own line:
+    # an inline `# …` after the value would leak into the parsed obsoleted_in (iter-B MAJOR-4 class).
+    obsoleted_in: "2.0.0"
     applies_to: project
     kind: mechanical
     adr: ADR-0004
@@ -69,3 +78,21 @@ migrations:
     title: "decisions = ADR + revisit-aware tracking issue"
     detect: null
     guidance: "Adopt the ADR + revisit-aware tracking-issue pattern (with a falsifiable 'Revisit when:') for consequential decisions."
+
+  - id: profile-concept-removed
+    introduced_in: "2.0.0"
+    applies_to: project
+    kind: guided
+    adr: ADR-0012
+    title: "developer_profile / teaching_mode removed from project.yml (now ignored)"
+    detect: null
+    guidance: "SSD 2.0 removed the profile concept. Delete the 'developer_profile' key and the 'teaching_mode:' block from .ssd/project.yml — 2.0 ignores them (no crash), but they are dead config. Progressive disclosure (no-arg /ssd Auto-Detect) replaces tiered guidance; the escape-hatch chapters replace expert depth-on-demand."
+
+  - id: single-surface-doctrine
+    introduced_in: "2.0.0"
+    applies_to: project
+    kind: guided
+    adr: ADR-0012
+    title: "one surface, progressively disclosed — commands are a thin alias, not a co-equal surface"
+    detect: null
+    guidance: "SSD 2.0 collapsed the dual-surface 'perfect parity' doctrine. The conversational/no-arg /ssd path is primary; /ssd <verb> is a thin alias that lowers into it, not a separate stateful surface. The full verb set is retained as a discoverable escape hatch in ssd/chapters/. No project.yml change is required — this entry exists so a v1-era project learns the doctrine shift on /ssd upgrade (R3 re-surfacing)."
