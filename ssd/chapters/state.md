@@ -131,6 +131,11 @@ active:
                                      #   gate run). Read by code-reviewer to emit OVERLAP-N findings
                                      #   on cross-workstream file overlap — see code-reviewer/SKILL.md
                                      #   § "Cross-Workstream Overlap Check".
+
+    # GitHub issue-tracking fields (ADR-0014). All optional; present only when
+    # project.yml integrations.github.issue_tracking is on. Lazy-cached on first sync.
+    epic: null                       # parent epic issue number (the workstream's ADR, via adrs_authored)
+    issue: null                      # this workstream's `ssd:feature` issue number
 archived: []
 ```
 
@@ -149,6 +154,15 @@ with the workstream's slug (default: `add-<slug>`). The second guard prevents in
 when the user is checked out on an unrelated branch (a debug/experiment/hotfix branch). If
 either guard fails, the orchestrator leaves `branch:` absent and prompts the user the next time
 disambiguation matters.
+
+The `epic` and `issue` fields (ADR-0014) are optional additive extensions, present only when the
+project opts into GitHub issue tracking (`project.yml` `integrations.github.issue_tracking: on`).
+They cache the workstream's parent epic issue (resolved from `adrs_authored` via the
+`[ADR-NNNN]`-titled `ssd:epic` issue) and its own `ssd:feature` issue number, lazily backfilled on
+the first sync exactly like `branch:`. Absence is valid and means "not yet synced" (or tracking off).
+The cache lets steady-state sync be a single `gh issue edit` with no search. See
+[ADR-0014](../../docs/decisions/ADR-0014-github-issue-state-tracking.md) and
+`methodology/issue-sync.sh`.
 
 ### `current.notes.yml` (free-form)
 
