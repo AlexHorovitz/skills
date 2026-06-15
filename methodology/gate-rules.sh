@@ -551,6 +551,75 @@ rule_migration_manifest_current() {
   fi
 }
 
+# Extract active workstreams from .ssd/current.yml as `slug|phase|issue` lines (one per active[]
+# entry). Crude YAML list walker (no PyYAML dependency, consistent with yaml_get): tracks the
+# top-level `active:` section, starts a record at each `  - ` item, and captures slug/phase/issue.
+# `issue:` may be `null`, empty, or a number; callers filter to numeric bindings.
+parse_active_workstreams() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  awk '
+    function flush() { if (have) printf "%s|%s|%s\n", slug, phase, issue; have=0; slug=""; phase=""; issue="" }
+    /^[^[:space:]#]/ { flush(); section = ($0 ~ /^active:/) ? "active" : "other"; next }
+    section != "active" { next }
+    /^[[:space:]]*-[[:space:]]/ {
+      flush(); have=1
+      if ($0 ~ /slug:/) { s=$0; sub(/.*slug:[[:space:]]*/,"",s); sub(/[[:space:]]*#.*/,"",s); slug=s }
+      next
+    }
+    /^[[:space:]]+slug:/  { s=$0; sub(/.*slug:[[:space:]]*/,"",s);  sub(/[[:space:]]*#.*/,"",s); slug=s;  next }
+    /^[[:space:]]+phase:/ { s=$0; sub(/.*phase:[[:space:]]*/,"",s); sub(/[[:space:]]*#.*/,"",s); phase=s; next }
+    /^[[:space:]]+issue:/ { s=$0; sub(/.*issue:[[:space:]]*/,"",s); sub(/[[:space:]]*#.*/,"",s); issue=s; next }
+    END { flush() }
+  ' "$file"
+}
+
+# issue-sync-current (ADR-0014 Q3): when GitHub issue tracking is on, verify each active workstream's
+# cached `issue:` is still OPEN and its single ssd:phase/* label matches current.yml's phase. The
+# issue is a one-way MIRROR, so this rule is informational and SKIP-by-default — it SKIPs whenever
+# tracking is off, gh is unavailable, or no workstream has an issue binding (i.e. every project except
+# an opted-in one). It FAILs only on a hard inconsistency. Models on rule_migration_manifest_current.
+rule_issue_sync_current() {
+  local current="$PROJECT_ROOT/.ssd/current.yml"
+  local tracking; tracking="$(yaml_get "$PROJECT_YML" "issue_tracking")"
+  case "$tracking" in
+    on|true|yes) ;;
+    *) emit "SKIP" "issue-sync-current" "issue_tracking not on (mirror dormant)"; return ;;
+  esac
+  [[ -f "$current" ]] || { emit "SKIP" "issue-sync-current" "no .ssd/current.yml"; return; }
+  # Collect workstreams with a numeric issue binding FIRST — before touching the network. A repo that
+  # opted in but hasn't synced any issue yet (every issue: null) then SKIPs with zero gh calls (MINOR-1).
+  local bindings; bindings="$(parse_active_workstreams "$current" | awk -F'|' '$3 ~ /^[0-9]+$/')"
+  if [[ -z "$bindings" ]]; then
+    emit "SKIP" "issue-sync-current" "no active workstream has an issue binding"; return
+  fi
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1 || ! gh repo view >/dev/null 2>&1; then
+    emit "SKIP" "issue-sync-current" "gh unavailable/unauthenticated — mirror not checkable"; return
+  fi
+  local checked=0 problems="" slug phase issue
+  while IFS='|' read -r slug phase issue; do
+    [[ -n "$slug" ]] || continue
+    local out state labels
+    out="$(gh issue view "$issue" --json state,labels \
+            --jq '.state + "\t" + ([.labels[].name | select(startswith("ssd:phase/"))] | join(","))' 2>/dev/null)" \
+      || continue                                  # flaky per-issue lookup → don't FAIL on it
+    checked=$((checked + 1))
+    state="${out%%$'\t'*}"; labels="${out#*$'\t'}"
+    if [[ "$state" == "CLOSED" ]]; then
+      problems+=" #$issue($slug:closed-while-active)"
+    elif [[ "$labels" != "ssd:phase/$phase" ]]; then
+      problems+=" #$issue($slug:label='${labels:-none}'≠phase/$phase)"
+    fi
+  done < <(printf '%s\n' "$bindings")
+  if [[ "$checked" -eq 0 ]]; then
+    emit "SKIP" "issue-sync-current" "issue binding(s) present but gh lookups all failed — mirror not checkable"
+  elif [[ -n "$problems" ]]; then
+    emit "FAIL" "issue-sync-current" "mirror drift:${problems}"
+  else
+    emit "PASS" "issue-sync-current" "$checked issue binding(s) open and phase-label in sync"
+  fi
+}
+
 # ----- run all rules ---------------------------------------------------------
 should_run wip-commits        && rule_wip_commits
 should_run tests-pass         && rule_tests_pass
@@ -560,6 +629,7 @@ should_run frontmatter-valid  && rule_frontmatter_valid
 should_run no-leaky-state     && rule_no_leaky_state
 should_run skill-version-sync && rule_skill_version_sync
 should_run migration-manifest-current && rule_migration_manifest_current
+should_run issue-sync-current && rule_issue_sync_current
 
 # ----- emit results ----------------------------------------------------------
 if [[ $JSON -eq 1 ]]; then

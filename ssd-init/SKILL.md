@@ -357,6 +357,11 @@ integrations:                    # optional; filled in as features are added
     enabled: false
   - type: github
     enabled: true                # inferred from .git remote
+    issue_tracking: off          # ADR-0014: mirror workstream state to GitHub issues (ADR=epic,
+                                 # workstream=feature issue, ssd:phase/* labels). off (default) =
+                                 # feature dormant, zero network. Set `on` to opt in.
+    auto_close: false            # close feature/epic issues automatically on `done`? false (default)
+                                 # = prompt once per close; true = close without prompting.
 
 rails: rails.md                  # default; teams may fork rails.md and point here
 ```
