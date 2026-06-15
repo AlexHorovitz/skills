@@ -6,6 +6,34 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.4.0] — 2026-06-14
+
+### GitHub issue state tracking — iteration B (ADR-0014)
+
+Completes the close lifecycle and read-back check deferred from iter A. **Still default-off** — a
+project without `integrations.github.issue_tracking: on` is byte-for-byte unchanged, zero network.
+
+- **`issue-sync.sh` `close-feature` / `close-epic`** (replace the iter A exit-2 stubs). Closing is the
+  only outward-destructive action and is double-gated: the `integrations.github.auto_close` toggle
+  (default `false`) OR an explicit `--confirm` must be present, and `close-epic` additionally refuses
+  while any `ssd:feature` child issue is still open. New exit code **10 = needs-confirm** (the
+  orchestrator prompts, then re-runs with `--confirm`). Idempotent: closing a closed issue is a no-op.
+- **Child discovery by label query** (MINOR-2/D2): an epic's children are the `ssd:feature` issues
+  whose body references `Epic: #<n>`, not the epic task list. Word-boundary match (`#27` ≠ `#270`).
+- **D1 split guard for epic close:** the script answers "are all GitHub children closed?"; the
+  orchestrator (reading `.ssd/current.yml`) owns "is another iteration planned?". Neither closes alone —
+  why epic #27 stayed open when iter A's #28 closed.
+- **D3 iteration-qualified feature issue:** an iterated workstream syncs under `<slug>#<iter>:` so a new
+  iteration gets its own issue instead of re-opening the closed prior one.
+- **New `issue-sync-current` gate rule** (ADR-0014 Q3) — informational, SKIP-by-default (tracking off /
+  no `gh` / no issue binding); FAILs only on hard mirror drift (recorded issue closed while active, or
+  phase-label ≠ local phase). Checks bindings before any network call.
+- **Discoverability:** `migrations.yml` `github-issue-tracking-keys` (guided); `ssd-init` template gains
+  the two toggles; README "GitHub Issue Tracking" section; `methodology/SKILL.md` script catalog
+  (`issue-sync.sh` + `migrate.sh`); `ssd/chapters/phases.md` close-lifecycle prose.
+- **Tests:** first unit coverage for `issue-sync.sh` via a mock-`gh` shim. parity 59 → 69.
+- ADR-0014 → Accepted, amended (MINOR-2, D1, D3, Q3). `ssd` skill banner 2.3.0 → 2.4.0.
+
 ## [2.3.0] — 2026-06-14
 
 ### GitHub issue state tracking — iteration A (ADR-0014)

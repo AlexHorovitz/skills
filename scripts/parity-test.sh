@@ -32,6 +32,7 @@ VALIDATOR="$REPO_ROOT/methodology/frontmatter-validate.py"
 SCHEMAS_DIR="$REPO_ROOT/methodology/schemas"
 MIGRATE_SCRIPT="$REPO_ROOT/methodology/migrate.sh"
 MANIFEST="$REPO_ROOT/methodology/migrations.yml"
+ISSUE_SYNC_SCRIPT="$REPO_ROOT/methodology/issue-sync.sh"
 VERBOSE=0
 
 while [[ $# -gt 0 ]]; do
@@ -703,6 +704,140 @@ test_fixture_yaml_get_inline_comment() {
   fixture_teardown "$tdir"
 }
 
+# ---------- issue-sync.sh (mock-gh unit coverage, iter B) -------------------
+#
+# First real test coverage for methodology/issue-sync.sh. We can't hit live GitHub in CI, so we put a
+# stub `gh` on PATH that answers only the handful of invocations close-feature/close-epic + the
+# issue-sync-current gate rule make. The stub is driven by a fixture file ($MOCK_GH_ISSUES) with one
+# `num|state|labels-csv|body` line per issue. This documents the exact gh contract issue-sync.sh
+# depends on — if a real `gh` ever changes that contract, the stub (and these asserts) must follow.
+
+# Write the mock `gh` into <dir>/bin/gh (executable) and echo that bin dir. Caller prepends to PATH.
+setup_mock_gh() {
+  local dir="$1"
+  mkdir -p "$dir/bin"
+  cat > "$dir/bin/gh" <<'MOCK'
+#!/usr/bin/env bash
+# Mock gh for issue-sync.sh tests. State source: $MOCK_GH_ISSUES (num|state|labels|body per line).
+set -uo pipefail
+F="${MOCK_GH_ISSUES:-/dev/null}"
+case "${1:-} ${2:-}" in
+  "auth status") exit 0 ;;
+  "repo view")   echo '{"nameWithOwner":"mock/repo"}'; exit 0 ;;
+  "label create") exit 0 ;;
+esac
+if [[ "${1:-}" == "issue" && "${2:-}" == "view" ]]; then
+  num="${3:-}"; line="$(grep "^${num}|" "$F" | head -1)"
+  [[ -n "$line" ]] || exit 1
+  IFS='|' read -r n state labels body <<<"$line"
+  if printf '%s ' "$@" | grep -q 'state,labels'; then        # gate rule: "STATE\tphase-labels"
+    phl="$(printf '%s' "$labels" | tr ',' '\n' | grep '^ssd:phase/' | paste -sd, - 2>/dev/null)"
+    printf '%s\t%s\n' "$state" "$phl"
+  elif printf '%s ' "$@" | grep -q 'body'; then               # set-phase body read (unused here)
+    printf '%s\n' "$body"
+  else
+    printf '%s\n' "$state"                                     # --json state --jq .state
+  fi
+  exit 0
+fi
+if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then       # open ssd:feature issues → "num\tbody"
+  while IFS='|' read -r n state labels body; do
+    [[ "$state" == "OPEN" ]] || continue
+    printf '%s' "$labels" | tr ',' '\n' | grep -qx 'ssd:feature' || continue
+    printf '%s\t%s\n' "$n" "$body"
+  done < "$F"
+  exit 0
+fi
+[[ "${1:-}" == "issue" && "${2:-}" == "close" ]] && exit 0
+exit 0
+MOCK
+  chmod +x "$dir/bin/gh"
+  echo "$dir/bin"
+}
+
+# Run issue-sync.sh in a mock-gh sandbox. Args: <issues-file-content> <auto_close-bool> <subcmd...>.
+# Echoes "exit=<code>" on the last line plus any stderr/stdout, for the caller to grep.
+run_issue_sync() {
+  local issues="$1" auto_close="$2"; shift 2
+  local tdir; tdir=$(mktemp -d "/tmp/ssd-issuesync.XXXXXX")
+  local bindir; bindir=$(setup_mock_gh "$tdir")
+  mkdir -p "$tdir/.ssd"
+  printf 'integrations:\n  - type: github\n    issue_tracking: on\n    auto_close: %s\n' "$auto_close" > "$tdir/.ssd/project.yml"
+  printf '%s\n' "$issues" > "$tdir/issues.txt"
+  local out code
+  out=$(cd "$tdir" && MOCK_GH_ISSUES="$tdir/issues.txt" PATH="$bindir:$PATH" \
+        bash "$ISSUE_SYNC_SCRIPT" "$@" 2>&1); code=$?
+  rm -rf "$tdir"
+  printf '%s\nexit=%s\n' "$out" "$code"
+}
+
+# Fixture 21: close-feature is idempotent — an already-CLOSED issue → exit 0, state=closed.
+test_fixture_close_feature_idempotent() {
+  echo "fixture: close-feature-idempotent"
+  local out; out=$(run_issue_sync "28|CLOSED|ssd:feature,ssd:phase/done|x: Epic: #27" false close-feature 28)
+  _assert "close-feature-idempotent" "already-closed → exit 0" \
+    "$([[ "$out" == *"exit=0"* ]] && echo 0 || echo 1)"
+  _assert "close-feature-idempotent" "reports state=closed (idempotent)" \
+    "$([[ "$out" == *"state=closed"* ]] && echo 0 || echo 1)"
+}
+
+# Fixture 22: close-feature on an OPEN issue with auto_close off and no --confirm → exit 10 needs-confirm.
+test_fixture_close_feature_needs_confirm() {
+  echo "fixture: close-feature-needs-confirm"
+  local out; out=$(run_issue_sync "28|OPEN|ssd:feature,ssd:phase/done|x: Epic: #27" false close-feature 28)
+  _assert "close-feature-needs-confirm" "auto_close off, no --confirm → exit 10" \
+    "$([[ "$out" == *"exit=10"* ]] && echo 0 || echo 1)"
+  _assert "close-feature-needs-confirm" "state=needs-confirm" \
+    "$([[ "$out" == *"needs-confirm"* ]] && echo 0 || echo 1)"
+}
+
+# Fixture 23: close-feature --confirm overrides the gate → closes (exit 0, state=closed).
+test_fixture_close_feature_confirm() {
+  echo "fixture: close-feature-confirm"
+  local out; out=$(run_issue_sync "28|OPEN|ssd:feature,ssd:phase/done|x: Epic: #27" false close-feature 28 --confirm)
+  _assert "close-feature-confirm" "--confirm → exit 0 (closes)" \
+    "$([[ "$out" == *"exit=0"* && "$out" == *"state=closed"* ]] && echo 0 || echo 1)"
+}
+
+# Fixture 24: close-epic refuses while a child ssd:feature issue is still OPEN → exit 0, state=skipped.
+test_fixture_close_epic_open_children() {
+  echo "fixture: close-epic-open-children"
+  local issues; issues=$'27|OPEN|ssd:epic|[ADR-0014] x\n28|OPEN|ssd:feature,ssd:phase/code|x: Epic: #27'
+  local out; out=$(run_issue_sync "$issues" true close-epic 27)   # auto_close ON, yet must still skip
+  _assert "close-epic-open-children" "open child → exit 0 (not an error)" \
+    "$([[ "$out" == *"exit=0"* ]] && echo 0 || echo 1)"
+  _assert "close-epic-open-children" "state=skipped (open child blocks close even with auto_close)" \
+    "$([[ "$out" == *"state=skipped"* ]] && echo 0 || echo 1)"
+}
+
+# Fixture 25: close-epic with all children closed + auto_close on → closes (exit 0, state=closed).
+# Also guards the #27-vs-#270 word boundary: #270 is an open child of a DIFFERENT epic and must not count.
+test_fixture_close_epic_all_closed() {
+  echo "fixture: close-epic-all-closed"
+  local issues; issues=$'27|OPEN|ssd:epic|[ADR-0014] x\n28|CLOSED|ssd:feature,ssd:phase/done|x: Epic: #27\n270|OPEN|ssd:feature,ssd:phase/code|y: Epic: #270'
+  local out; out=$(run_issue_sync "$issues" true close-epic 27)
+  _assert "close-epic-all-closed" "all children closed + auto_close → exit 0 closes" \
+    "$([[ "$out" == *"exit=0"* && "$out" == *"state=closed"* ]] && echo 0 || echo 1)"
+  _assert "close-epic-all-closed" "#270 (different epic) not miscounted as #27 child" \
+    "$([[ "$out" != *"state=skipped"* ]] && echo 0 || echo 1)"
+}
+
+# Fixture 26: issue-sync-current gate rule SKIPs cleanly when gh is absent (CI without gh stays green).
+test_fixture_issue_sync_current_skip_no_gh() {
+  echo "fixture: issue-sync-current-skip-no-gh"
+  local tdir; tdir=$(fixture_setup "issuesync-nogh")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'integrations:\n  - type: github\n    issue_tracking: on\n' > .ssd/project.yml
+  printf 'active:\n  - slug: x\n    phase: code\n    issue: 28\n' > .ssd/current.yml
+  printf 'base\n' > a.txt; git add a.txt .ssd && git commit -qm base
+  # Empty PATH (only coreutils via absolute calls inside the script) → `command -v gh` fails → SKIP.
+  local out; out=$(PATH="/usr/bin:/bin" bash "$GATE_SCRIPT" --base main --rules issue-sync-current 2>&1)
+  _assert "issue-sync-current-skip-no-gh" "no gh on PATH → SKIP (not FAIL)" \
+    "$([[ "$out" == SKIP* ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
 # ---------- run ------------------------------------------------------------
 
 echo "SSD parity-test harness — gate-rules.sh structural conformance"
@@ -728,6 +863,12 @@ test_fixture_migrate_guided_adoption
 test_fixture_migrate_obsoleted_in
 test_fixture_manifest_current
 test_fixture_yaml_get_inline_comment
+test_fixture_close_feature_idempotent
+test_fixture_close_feature_needs_confirm
+test_fixture_close_feature_confirm
+test_fixture_close_epic_open_children
+test_fixture_close_epic_all_closed
+test_fixture_issue_sync_current_skip_no_gh
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

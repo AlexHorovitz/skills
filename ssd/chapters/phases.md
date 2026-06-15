@@ -75,15 +75,33 @@ On each advance, the orchestrator:
 2. For each ADR in the workstream's `adrs_authored`, runs `issue-sync.sh ensure-epic <ADR-NNNN>
    "<title>"` and caches the returned number in `current.yml.active[].epic`.
 3. Runs `issue-sync.sh ensure-feature <slug> <phase> <epic#>` and caches `current.yml.active[].issue`.
+   For an **iterated** workstream the orchestrator passes the iteration-qualified slug
+   (`<slug>#<iter>`, e.g. `github-issue-tracking#b`) so a new iteration gets its **own** feature issue
+   rather than re-opening the closed prior-iteration one (ADR-0014 iter-B D3).
 4. Runs `issue-sync.sh set-phase <issue#> <phase>` to swap the `ssd:phase/*` label and refresh the
    issue body block.
 
+**Closing on `done` (iter B, ADR-0014 Q2).** When a workstream advances to `done`:
+
+5. Runs `issue-sync.sh close-feature <issue#>`. With `auto_close: false` (default) this returns
+   **exit 10 = needs-confirm**: surface the intent and prompt once ("Close feature issue #F?"); on
+   yes, re-run with `--confirm`. With `auto_close: true` it closes immediately (still announced).
+6. Then closes the epic **only if both guards pass** (the [D1 split](../../docs/decisions/ADR-0014-github-issue-state-tracking.md)):
+   - **Orchestrator guard (local):** inspect `.ssd/current.yml` (incl. archived entries' planned-
+     iteration markers, e.g. `iter_b_tracked_on`). If any further iteration for this epic is planned
+     or active, **do not** propose `close-epic`. This is why epic #27 stayed open when iter A's #28
+     closed.
+   - **Script guard (GitHub):** `issue-sync.sh close-epic <epic#>` refuses (exit 0, `state=skipped`,
+     `reason=open-children`) while any `ssd:feature` child is still open, and otherwise returns
+     exit 10 / closes under the same `auto_close`/`--confirm` gate as the feature.
+
 Each action is **surfaced in the proposal before it runs** (rule-zero: no silent outward action).
 Per [ADR-0014](../../docs/decisions/ADR-0014-github-issue-state-tracking.md) Q2, create/update are
-automatic under the toggle (additive, low-stakes); **closing** a feature or epic issue is gated
-behind `integrations.github.auto_close` (default = prompt once) and is iteration B. With the toggle
-absent or `off`, this whole block is a no-op — zero network calls, behavior identical to a project
-that never heard of issue tracking.
+automatic under the toggle (additive, low-stakes); **closing** is gated behind
+`integrations.github.auto_close` (default = prompt once). The `issue-sync-current` gate rule
+(informational, SKIP-by-default) flags any mirror drift at `/ssd gate` time. With the toggle absent
+or `off`, this whole block is a no-op — zero network calls, behavior identical to a project that never
+heard of issue tracking.
 
 ---
 

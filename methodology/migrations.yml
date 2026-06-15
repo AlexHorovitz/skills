@@ -96,3 +96,12 @@ migrations:
     title: "one surface, progressively disclosed — commands are a thin alias, not a co-equal surface"
     detect: null
     guidance: "SSD 2.0 collapsed the dual-surface 'perfect parity' doctrine. The conversational/no-arg /ssd path is primary; /ssd <verb> is a thin alias that lowers into it, not a separate stateful surface. The full verb set is retained as a discoverable escape hatch in ssd/chapters/. No project.yml change is required — this entry exists so a v1-era project learns the doctrine shift on /ssd upgrade (R3 re-surfacing)."
+
+  - id: github-issue-tracking-keys
+    introduced_in: "2.3.0"
+    applies_to: project
+    kind: guided
+    adr: ADR-0014
+    title: "integrations.github.issue_tracking / auto_close toggles in project.yml"
+    detect: null
+    guidance: "SSD can mirror workstream state to GitHub issues (ADR=epic, workstream=feature issue, ssd:phase/* labels), one-way and opt-in. To enable, add `issue_tracking: on` (and optionally `auto_close: true`) under the `- type: github` entry in .ssd/project.yml integrations. Absent ≡ off — zero network, no behavior change — so this is guided, not mechanical: there is nothing to migrate unless you want the feature. See ADR-0014 and the README 'GitHub issue tracking' section."

@@ -41,6 +41,8 @@ This skill is organized into three focused files. Load the relevant file based o
 | `patterns.md` | Five implementation patterns, Advanced topics (dependencies, DB migrations, emergencies) | User asks "how do I implement X with SSD?" |
 | `adoption.md` | Getting started checklist, Common objections, Org adoption, Comparisons to Agile/CD/TBD, Resources | User is onboarding a team, handling pushback, or comparing SSD to other methods |
 | `gate-rules.sh` | Executable bash routine implementing the methodology gate rules; invoked by `/ssd gate` | Automated — not loaded in conversation. See [ADR-0005](../docs/decisions/ADR-0005-gate-execution-model.md). |
+| `migrate.sh` + `migrations.yml` | Declarative convention-drift detector / migrator; powers `/ssd upgrade` | Automated — invoked by `/ssd upgrade`. See [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md). |
+| `issue-sync.sh` | One-way GitHub issue mirror (ensure-epic/ensure-feature/set-phase/close-*); invoked by the orchestrator on phase advance when `integrations.github.issue_tracking: on` | Automated — opt-in, best-effort. See [ADR-0014](../docs/decisions/ADR-0014-github-issue-state-tracking.md). |
 | `frontmatter-validate.py` | Python validator for SSD artifact YAML frontmatter; invoked by the `frontmatter-valid` gate rule | Automated — runs against `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md`. |
 | `schemas/<skill>.yml` | Per-skill schema describing required frontmatter fields and types | Read by `frontmatter-validate.py`. One file per consuming skill. |
 

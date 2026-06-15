@@ -175,6 +175,40 @@ Or call a sub-skill directly when working outside the SSD workflow:
 
 ---
 
+## GitHub Issue Tracking (optional)
+
+SSD can mirror workstream state to GitHub issues so teammates, reviewers, and future-you see live
+progress without a local checkout ([ADR-0014](docs/decisions/ADR-0014-github-issue-state-tracking.md)).
+It is **opt-in and one-way** — local `.ssd/` is always the source of truth; SSD never reads issue
+state back to mutate a workstream.
+
+**The convention:**
+
+| | Maps to | Label | Title |
+|---|---|---|---|
+| An **ADR** | an **epic** issue | `ssd:epic` | `[ADR-NNNN] <decision title>` |
+| A **workstream** | a **feature** issue, linked to its epic | `ssd:feature` + one `ssd:phase/<phase>` | `<slug>[#<iter>]: <one-line>` |
+
+On each phase advance the orchestrator ensures the epic + feature issues exist, swaps the
+`ssd:phase/*` label, and refreshes a machine-managed body block. On `done` it closes the feature
+issue; the epic closes once its last child closes **and** no further iteration is planned.
+
+**Enable it** in `.ssd/project.yml`:
+
+```yaml
+integrations:
+  - type: github
+    enabled: true
+    issue_tracking: on     # default off → feature dormant, zero network calls
+    auto_close: false      # default false → prompt once before closing; true → close automatically
+```
+
+Requires the `gh` CLI, authenticated. With the toggle off or `gh` unavailable, the mirror is a silent
+no-op (best-effort — a sync failure never blocks SSD work). The mechanism is
+[`methodology/issue-sync.sh`](methodology/issue-sync.sh).
+
+---
+
 ## Hard Rules
 
 1. **No merge without a clean `/ssd gate`** — No BLOCKER or MAJOR findings. No exceptions.

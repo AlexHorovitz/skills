@@ -1,11 +1,13 @@
 # ADR-0014: GitHub issue state tracking (ADR = epic, workstream = feature issue)
 
 ## Status
-Proposed — 2026-06-14. Drives the `github-issue-tracking` feature
-([01-architect.md](../../.ssd/features/github-issue-tracking/01-architect.md)). Recorded under the
+Accepted — 2026-06-14. Iter A shipped v2.3.0 (PR #29); iter B (close lifecycle + gate rule) amends
+this record (see § "Amendments — iter B"). Drives the `github-issue-tracking` feature
+([01-architect.md](../../.ssd/features/github-issue-tracking/01-architect.md),
+[iter B](../../.ssd/features/github-issue-tracking/iterations/b/01-architect.md)). Recorded under the
 [ADR-0011](ADR-0011-decision-record-doctrine.md) decision-record doctrine. **Self-referential:** this
-ADR is the first epic the convention describes — its own epic issue + this workstream's feature issue
-are the dogfood instance (see § "Bootstrap").
+ADR is the first epic the convention describes — its own epic issue (#27) + this workstream's feature
+issues are the dogfood instance (see § "Bootstrap").
 
 ## Context
 SSD workstream state lives only in `.ssd/current.yml` — invisible to anyone not at the developer's
@@ -110,6 +112,31 @@ The convention is applied to itself immediately, by hand, before the helper exis
   `ssd:phase/design`, linked to the epic, with `epic:`/`issue:` cached in `current.yml`.
 This is the first instance the convention produces and the live test fixture for the helper built in
 the Code phase.
+
+## Amendments — iter B (2026-06-14)
+Recorded as iter B implemented the close lifecycle and the `issue-sync-current` gate rule.
+
+- **MINOR-2 — child-tracking is the `ssd:feature` label query, not the epic task list.** The Data
+  Model said an epic links children "via a task-list entry"; iter A's `ensure-feature` in fact links
+  by an `Epic: #E` body line. Formalized: the **set of children of epic `#E` is every issue with
+  label `ssd:feature` whose body references `Epic: #E`.** This is the discovery key `close-epic` uses
+  to decide "are all children closed?" The task list becomes optional human affordance, not
+  load-bearing state.
+- **Close-epic guard split (D1).** Closing an epic requires two independent conditions, each owned by
+  the source of truth that can see it: (a) **all GitHub `ssd:feature` children closed** — checked by
+  `issue-sync.sh close-epic`; (b) **no further iteration planned locally** — checked by the
+  orchestrator against `.ssd/current.yml`. Neither closes the epic alone. This is why epic #27 stayed
+  open when iter A's #28 closed (iter B was planned) and is the general rule for any multi-iteration
+  epic. `close-epic` never reads local state; the orchestrator never re-counts GitHub children.
+- **A new iteration gets a new feature issue (D3).** Because a prior iteration's feature issue is
+  closed for good, an iterated workstream syncs under the iteration-qualified title prefix
+  `<slug>#<iter>:` (e.g. `github-issue-tracking#b:`). The bare `<slug>:` prefix is reserved for
+  non-iterated workstreams, so a re-opened iteration never re-finds (and re-opens) the closed prior
+  issue. `find_issue_by_prefix` still matches `--state all` *within* an iteration (idempotency).
+- **`issue-sync-current` gate rule (resolves Q3).** Implemented as informational + SKIP-by-default
+  (the `migration-manifest-current` precedent): SKIPs when tracking off / `gh` unavailable / no
+  `issue:` bindings; FAILs only on a hard mirror inconsistency (recorded issue closed while workstream
+  active, or phase-label ≠ local phase).
 
 ## Alternatives Rejected
 - **Bidirectional sync** — reading issue state back to drive workstreams. Needs conflict resolution;

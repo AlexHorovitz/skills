@@ -15,12 +15,25 @@
 # title prefix locally (robust against GitHub search tokenization of hyphens/brackets) before
 # creating. Re-running a phase converges to one issue.
 #
-# Subcommands (iter A — ADR-0014):
+# Subcommands (ADR-0014):
 #   preflight                              gh present + authed + repo resolvable? exit 3 if not.
 #   ensure-epic    <ADR-NNNN> <title>      find-or-create the epic; echo its number.
 #   ensure-feature <slug> <phase> <epic#>  find-or-create the feature issue linked to <epic#>; echo number.
+#                                          For an iterated workstream, the caller passes the iteration-
+#                                          qualified slug (e.g. github-issue-tracking#b) so a new
+#                                          iteration gets a new issue instead of re-opening the closed
+#                                          prior one (iter-B D3).
 #   set-phase      <issue#> <phase>        swap the ssd:phase/* label; refresh the body Phase token.
-#   close-feature / close-epic             iter B (ADR-0014 Q2, gated behind auto_close) — not yet.
+#   close-feature  <issue#> [--confirm]    close the feature issue on `done`; gated behind auto_close.
+#   close-epic     <epic#>  [--confirm]    close the epic iff all ssd:feature children are closed AND
+#                                          the close gate (auto_close/--confirm) is satisfied (iter B).
+#
+# Closing (iter B, ADR-0014 Q2) is the only outward-destructive action and is double-gated:
+#   * the auto_close toggle (.ssd/project.yml integrations.github.auto_close, default false) OR an
+#     explicit --confirm from the orchestrator (the "user said yes once" signal) must be present;
+#   * close-epic additionally refuses while any child ssd:feature issue is still OPEN.
+# The "no further iteration planned" half of the epic guard lives in the ORCHESTRATOR (it reads
+# .ssd/current.yml); this script only answers "are all GitHub children closed?" (iter-B D1 split).
 #
 # Matches the style of methodology/gate-rules.sh and methodology/migrate.sh: pure bash (3.2-compatible,
 # no associative arrays), set -uo pipefail, exit-code driven, optional --json.
@@ -30,8 +43,11 @@
 #   bash methodology/issue-sync.sh ensure-epic ADR-0014 "GitHub issue state tracking" [--json]
 #   bash methodology/issue-sync.sh ensure-feature github-issue-tracking design 27 [--json]
 #   bash methodology/issue-sync.sh set-phase 28 code [--json]
+#   bash methodology/issue-sync.sh close-feature 28 [--confirm] [--json]
+#   bash methodology/issue-sync.sh close-epic 27 [--confirm] [--json]
 #
-# Exit: 0 ok; 2 bad args / not-yet-implemented subcommand; 3 gh unavailable (caller treats as no-op).
+# Exit: 0 ok (incl. skipped/idempotent no-op); 2 bad args; 3 gh unavailable/error (caller no-ops);
+#       10 close needs confirmation (auto_close off and no --confirm — caller prompts then re-runs).
 #
 # License: see /LICENSE.
 
@@ -42,17 +58,54 @@ EPIC_LABEL_COLOR="5319e7"
 FEATURE_LABEL_COLOR="1d76db"
 
 JSON=0
+CONFIRM=0          # set by --confirm; the orchestrator's per-call "user approved this close" signal.
 ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --json) JSON=1; shift ;;
+    --confirm) CONFIRM=1; shift ;;
     -h|--help) sed -n '1,/^# License/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "issue-sync: unknown flag '$1'" >&2; exit 2 ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
 
-[[ ${#ARGS[@]} -ge 1 ]] || { echo "issue-sync: a subcommand is required (preflight|ensure-epic|ensure-feature|set-phase)" >&2; exit 2; }
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+PROJECT_YML="$PROJECT_ROOT/.ssd/project.yml"
+
+# Crude single-scalar YAML reader (consistent with gate-rules.sh yaml_get): first `key:` at any
+# indentation, inline ` # comment` stripped, surrounding quotes removed. Used only to read the
+# auto_close toggle, which is unique in project.yml. Empty if absent.
+yaml_scalar() {
+  local file="$1" key="$2"
+  [[ -f "$file" ]] || { echo ""; return; }
+  awk -v k="$key" '
+    $0 ~ /^[[:space:]]*#/ { next }
+    $0 ~ "^[[:space:]]*"k":" {
+      sub(/^[[:space:]]*[^:]+:[[:space:]]*/, "")
+      sub(/[[:space:]]+#.*$/, ""); sub(/[[:space:]]+$/, "")
+      gsub(/^["'\'']|["'\'']$/, "")
+      print; exit
+    }
+  ' "$file"
+}
+
+# True iff integrations.github.auto_close is truthy in project.yml.
+auto_close_enabled() {
+  local v; v="$(yaml_scalar "$PROJECT_YML" auto_close)"
+  [[ "$v" == "true" || "$v" == "yes" || "$v" == "on" ]]
+}
+
+# Gate a close: proceed iff --confirm was passed OR auto_close is enabled. Emits the needs-confirm
+# status and exits 10 otherwise (the orchestrator catches 10, prompts, and re-runs with --confirm).
+close_gate_or_exit10() {
+  local action="$1" issue="$2" detail="$3"
+  if [[ $CONFIRM -eq 1 ]] || auto_close_enabled; then return 0; fi
+  emit "$action" "$issue" needs-confirm "$detail"
+  exit 10
+}
+
+[[ ${#ARGS[@]} -ge 1 ]] || { echo "issue-sync: a subcommand is required (preflight|ensure-epic|ensure-feature|set-phase|close-feature|close-epic)" >&2; exit 2; }
 SUBCMD="${ARGS[0]}"
 
 # Emit the status line. STDOUT is reserved as the single MACHINE channel (MAJOR-1 fix, round 2):
@@ -205,15 +258,67 @@ do_set_phase() {
   emit set-phase "$issue" updated "ssd:phase/$phase"
 }
 
+# Read an issue's state ("OPEN"/"CLOSED"); exit 3 on a gh error (issue unreadable / offline).
+issue_state() {
+  local issue="$1" st
+  st="$(gh issue view "$issue" --json state --jq .state 2>/dev/null)" || return 1
+  printf '%s\n' "$st"
+}
+
+do_close_feature() {
+  local issue="$1"
+  [[ -n "$issue" ]] || { echo "close-feature: <issue#> required" >&2; exit 2; }
+  local st; st="$(issue_state "$issue")" || { echo "close-feature: cannot read issue #$issue (gh error)" >&2; exit 3; }
+  if [[ "$st" == "CLOSED" ]]; then
+    emit close-feature "$issue" closed "already closed (idempotent)"
+    return 0
+  fi
+  close_gate_or_exit10 close-feature "$issue" "auto_close off — confirm to close feature #$issue"
+  gh issue close "$issue" >/dev/null 2>&1 || { echo "close-feature: close failed for #$issue" >&2; exit 3; }
+  emit close-feature "$issue" closed "closed"
+}
+
+# Echo the numbers of OPEN ssd:feature issues whose body references "Epic: #<epic>" (word-boundary,
+# so #27 never matches #270). Return 2 if the `gh issue list` itself fails (caller treats as unknown,
+# NOT as "no open children" — closing an epic on a failed lookup is the dangerous false negative).
+# MINOR-2 (iter B): child membership is THIS label query, not the epic task list.
+find_open_children() {
+  local epic="$1" raw rc
+  raw="$(gh issue list --label ssd:feature --state open --limit 1000 \
+          --json number,body --jq '.[] | "\(.number)\t\(.body | gsub("\n";" "))"' 2>/dev/null)"
+  rc=$?
+  [[ $rc -ne 0 ]] && return 2
+  printf '%s\n' "$raw" | awk -F'\t' -v e="$epic" '
+    $2 ~ ("Epic: #" e "([^0-9]|$)") { print $1 }'
+}
+
+do_close_epic() {
+  local epic="$1"
+  [[ -n "$epic" ]] || { echo "close-epic: <epic#> required" >&2; exit 2; }
+  local st; st="$(issue_state "$epic")" || { echo "close-epic: cannot read epic #$epic (gh error)" >&2; exit 3; }
+  if [[ "$st" == "CLOSED" ]]; then
+    emit close-epic "$epic" closed "already closed (idempotent)"
+    return 0
+  fi
+  local open_children rc
+  open_children="$(find_open_children "$epic")"; rc=$?
+  [[ $rc -eq 2 ]] && { echo "close-epic: could not list children (gh error) — skipping to avoid a premature close." >&2; exit 3; }
+  if [[ -n "$open_children" ]]; then
+    local n; n="$(printf '%s\n' "$open_children" | grep -c .)"
+    emit close-epic "$epic" skipped "$n open child(ren): $(printf '%s' "$open_children" | tr '\n' ' ')"
+    return 0
+  fi
+  close_gate_or_exit10 close-epic "$epic" "all children closed; auto_close off — confirm to close epic #$epic"
+  gh issue close "$epic" >/dev/null 2>&1 || { echo "close-epic: close failed for #$epic" >&2; exit 3; }
+  emit close-epic "$epic" closed "closed (all children closed)"
+}
+
 case "$SUBCMD" in
   preflight)      do_preflight ;;
   ensure-epic)    do_ensure_epic    "${ARGS[1]:-}" "${ARGS[2]:-}" ;;
   ensure-feature) do_ensure_feature "${ARGS[1]:-}" "${ARGS[2]:-}" "${ARGS[3]:-}" ;;
   set-phase)      do_set_phase      "${ARGS[1]:-}" "${ARGS[2]:-}" ;;
-  close-feature|close-epic)
-    # ADR-0014 Q2: closing is gated behind integrations.github.auto_close (default = prompt) and is
-    # the highest-stakes action (epic close fans out notifications). Deferred to iteration B.
-    echo "issue-sync: '$SUBCMD' is iter B (ADR-0014 Q2) — not yet implemented." >&2
-    exit 2 ;;
+  close-feature)  do_close_feature  "${ARGS[1]:-}" ;;
+  close-epic)     do_close_epic     "${ARGS[1]:-}" ;;
   *) echo "issue-sync: unknown subcommand '$SUBCMD'" >&2; exit 2 ;;
 esac
