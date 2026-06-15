@@ -84,5 +84,8 @@ Both non-blocking findings were fixed inline before ship (gate already passed; n
   `parse_active_workstreams` *before* any `gh` call; SKIPs with zero network when there are none.
   Verified: this repo still SKIPs "no active workstream has an issue binding" and ran no gh calls.
 - **NIT-1 closed** — `issue-sync.sh:108` required-subcommand string now lists `close-feature|close-epic`.
-- **QUESTION-1** — left open for the user (prose-only orchestrator guard under `auto_close: true`);
-  no code change pending an answer. Default `auto_close: false` keeps the close prompted + reversible.
+- **QUESTION-1 — RESOLVED (user-ratified 2026-06-14): leave as-is (prose-only).** The team accepts
+  that under `auto_close: true` the planned-iteration epic-close guard is the orchestrator's
+  responsibility (D1), not code. Rationale: close is reversible (reopen) and `auto_close` defaults to
+  `false` (prompted). No `--has-planned-iterations` code guard added. The D1 split stands as the
+  intended design, not a gap.
