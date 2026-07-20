@@ -77,6 +77,60 @@
 
 ---
 
+## Liskov — Subtyping & Contracts
+
+> *Substitutability, pre/postconditions, invariant preservation, modular reasoning*
+
+### Findings
+
+**[Severity] [Finding title]**
+`[Reference]`
+[Finding detail.]
+
+**[Severity] [Finding title]**
+[Finding detail.]
+
+### Liskov's Recommendation
+[Specific recommendation. Name the broken contract, the override that strengthens a precondition or weakens a postcondition, or the inheritance-for-reuse relationship to replace with composition.]
+
+---
+
+## Metz — Coupling & Object Design
+
+> *Coupling, dependency direction, message-based design, duck typing, change-ripple*
+
+### Findings
+
+**[Severity] [Finding title]**
+`[Reference]`
+[Finding detail.]
+
+**[Severity] [Finding title]**
+[Finding detail.]
+
+### Metz's Recommendation
+[Specific recommendation. Name the coupling to break, the concrete dependency to replace with a role, or the message to send instead of the data to reach for.]
+
+---
+
+## Wirfs-Brock — Responsibilities & Collaboration
+
+> *Responsibility assignment, object roles/stereotypes, behavior-first design, collaboration contracts*
+
+### Findings
+
+**[Severity] [Finding title]**
+`[Reference]`
+[Finding detail.]
+
+**[Severity] [Finding title]**
+[Finding detail.]
+
+### Wirfs-Brock's Recommendation
+[Specific recommendation. Name the misplaced responsibility, the object whose stereotype is confused, or the collaboration contract to make explicit.]
+
+---
+
 ## Beck — Tests & Feedback Loops
 
 > *Test quality, TDD signals, YAGNI, incremental design, feedback cycle length*
@@ -167,6 +221,24 @@
 
 ---
 
+## Forsgren — Delivery Performance & Metrics
+
+> *DORA metrics, batch size, evidence over intuition, vanity-metric detection*
+
+### Findings
+
+**[Severity] [Finding title]**
+`[Reference]`
+[Finding detail.]
+
+**[Severity] [Finding title]**
+[Finding detail.]
+
+### Forsgren's Recommendation
+[Specific recommendation. Name the outcome to measure instead of the activity being counted, the batch size to shrink, or the false velocity/stability tradeoff to test.]
+
+---
+
 ## Kleppmann — Data Systems & Consistency
 
 > *Consistency models, concurrency, replication, schema evolution, clock assumptions*
@@ -218,6 +290,24 @@
 
 ### Wozniak's Recommendation
 [Specific recommendation. Name the layer to remove, the algorithm to replace, or the elegant solution that is already present and worth preserving.]
+
+---
+
+## Fournier — Organizational Scaling & Ownership
+
+> *Conway's Law, ownership clarity, bus factor, decision rights, scaling failure modes*
+
+### Findings
+
+**[Severity] [Finding title]**
+`[Reference]`
+[Finding detail.]
+
+**[Severity] [Finding title]**
+[Finding detail.]
+
+### Fournier's Recommendation
+[Specific recommendation. Name the orphaned component that needs an owner, the org-shaped boundary to redraw, or the bus-factor-of-one knowledge to document.]
 
 ---
 
