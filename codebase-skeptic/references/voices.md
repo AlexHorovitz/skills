@@ -1,7 +1,7 @@
 <!-- License: See /LICENSE -->
 
 
-# Voice Reference: Ten Authorities on Software
+# Voice Reference: Fifteen Authorities on Software
 
 This file defines the intellectual character, diagnostic focus, and expected register for each voice.
 Read before scoring. The goal is not impersonation — it is discipline. Each voice imposes a specific
@@ -73,6 +73,108 @@ mysterious naming, comment as apology
 
 **Severity escalation:** Uncle Bob escalates when infrastructure (frameworks, databases, HTTP) is
 entangled with business logic such that you cannot test the business rules without the infrastructure running.
+
+---
+
+## Barbara Liskov
+*Type theory, subtyping, data abstraction, modular correctness*
+
+**Intellectual register:** Rigorous, formal, unhurried. Liskov thinks in contracts and correctness, not
+vibes. She is the reason "is-a" has a mathematical definition instead of just a diagramming convention.
+She distrusts inheritance used as a shortcut for code reuse rather than a genuine behavioral promise, and
+she is unmoved by an override that "basically" respects its supertype's contract. Where Uncle Bob names
+SOLID, Liskov is the reason the L exists at all — her substitutability requirement is what makes "is-a" a
+testable claim rather than a diagram arrow.
+
+**Core concerns:**
+- Subtype substitutability — can a subtype be used wherever the supertype is expected without breaking caller assumptions?
+- Preconditions and postconditions — does an override strengthen what it demands, or weaken what it promises?
+- Invariant preservation across inheritance hierarchies
+- Data abstraction — does the interface hide implementation, or does the abstraction leak?
+- Modular reasoning — can a module's correctness be judged from its interface alone, without reading every caller?
+- Inheritance for reuse vs. inheritance as a true behavioral relationship
+
+**Diagnostic questions Liskov asks:**
+- If you swap this subtype in for its parent, does any caller's assumption break?
+- Does this override throw an exception the base method never promised to throw?
+- Does this override require more from its caller, or promise less to it, than the method it replaces?
+- Is this "is-a" relationship behavioral, or just a convenient way to share fields?
+- Can you reason about this module's correctness from its interface alone, or do you need to read the implementation?
+
+**Failure vocabulary:** LSP violation, precondition strengthening, postcondition weakening, refused
+bequest, inheritance for reuse (not behavior), fragile base class, contract violation by override,
+leaky abstraction, is-a masquerading as has-a
+
+**Severity escalation:** Liskov escalates when a subtype's override forces every caller to know which
+concrete subtype it's holding — at that point polymorphism has failed, and the hierarchy is actively
+making the code harder to reason about than no hierarchy at all.
+
+---
+
+## Sandi Metz
+*Practical object-oriented design, coupling, message-passing, dependency management*
+
+**Intellectual register:** Plainspoken, example-driven, allergic to dogma. Metz teaches design the way a
+good editor teaches writing — through concrete rules applicable today, not principles admired from a
+distance. She cares less about naming a violation after a famous acronym and more about whether a change
+to one object forces a ripple of changes through others. Her lens is behavioral: objects should be defined
+by what they do and what they know, not by what they are.
+
+**Core concerns:**
+- Coupling — how many things does a change to this object force you to also change?
+- Dependency direction — does this object depend on things more volatile than itself?
+- Message-based design — is this object told what to do, or does it reach in and grab data to decide for itself?
+- Duck typing and interface trust — does the code depend on concrete classes when it could depend on a role?
+- Method and class size as an early-warning signal, not a rule to satisfy mechanically
+- Inheritance vs. composition — is this hierarchy modeling a true specialization, or borrowing behavior it doesn't fully want?
+
+**Diagnostic questions Metz asks:**
+- If this class changes, how many other classes have to change with it?
+- Does this object know too much about the internals of its collaborators?
+- Could this method be sent as a message instead of computed by reaching into another object?
+- Is this inheritance relationship "is-a," or is it "acts-like-a-and-I-was-lazy"?
+- What is the cost, in future changes, of the coupling this design just introduced?
+
+**Failure vocabulary:** Tight coupling, shotgun surgery in miniature, concrete dependency (should be a
+role), train wreck (`a.b.c.d`), inheritance abuse, primitive obsession, method that knows too much,
+dependency on volatility
+
+**Severity escalation:** Metz escalates when a single, reasonable-looking change requires touching many
+unrelated classes — not because the change is conceptually hard, but because the design distributed
+knowledge in a way that guarantees any change ripples.
+
+---
+
+## Rebecca Wirfs-Brock
+*Responsibility-driven design, object roles, collaboration, behavior over data*
+
+**Intellectual register:** Conversational, role-focused, allergic to data-first thinking. Wirfs-Brock
+asks what an object is responsible for before she asks what it contains. She originated Responsibility-Driven
+Design specifically to counter the instinct to model software as data structures with functions attached.
+Her recurring question is not "what does this object have" but "what does this object know, what does it
+do about it, and who does it ask for help."
+
+**Core concerns:**
+- Responsibility assignment — does each object have a clear, coherent set of things it is responsible for knowing or doing?
+- Roles and collaborations — do objects have well-defined roles relative to their collaborators, or is responsibility scattered?
+- Object stereotypes (information holder, structurer, interfacer, coordinator, controller, service provider) — is each object mostly one of these, or an unfocused mix?
+- Behavior-first design — was this object designed around what it does, or did its shape emerge from a database table or payload?
+- Contracts between collaborating objects — is it clear what each object promises the others?
+
+**Diagnostic questions Wirfs-Brock asks:**
+- What is this object responsible for, in one sentence, and does it stay in that lane?
+- Who does this object collaborate with, and is that relationship a fair trade of responsibility?
+- Is this a coordinator that delegates, or a controller that hoards logic it should be delegating?
+- Did this class's shape come from what it needs to do, or from what a table or JSON payload happened to look like?
+- If two objects are fighting over the same responsibility, which one should actually own it?
+
+**Failure vocabulary:** Responsibility sprawl, data-first design, coordinator doing a controller's job,
+unclear collaboration contract, stereotype confusion, responsibility without authority, god object (by
+another name)
+
+**Severity escalation:** Wirfs-Brock escalates when no one on the team can say, without checking the
+code, what a given object is actually responsible for — when the honest answer is "it does a bunch of
+stuff," the design has already lost its organizing principle.
 
 ---
 
@@ -279,6 +381,40 @@ organization has learned to fear shipping and has encoded that fear into process
 
 ---
 
+## Nicole Forsgren
+*Empirical delivery performance, DORA metrics, evidence over intuition*
+
+**Intellectual register:** Empirical, statistically careful, allergic to folklore. Forsgren does not
+accept "we feel like we ship fast" or "our tests are probably fine" as evidence of anything. She built
+her career converting software delivery from a set of opinions into a set of measured outcomes — and she
+is just as skeptical of a metric that looks good but doesn't correlate with organizational performance as
+she is of no metric at all. She wants to know what was measured, how, and whether it actually predicts
+anything.
+
+**Core concerns:**
+- The four key metrics: deployment frequency, lead time for changes, change failure rate, time to restore service
+- Whether "we're agile" or "we do CI/CD" is backed by measured outcomes or asserted as identity
+- Batch size — is work broken into pieces small enough to measure and ship independently?
+- Whether reliability and velocity are being falsely treated as a tradeoff (they are usually correlated, not opposed)
+- Psychological safety and its measurable relationship to delivery performance
+- Vanity metrics — activity that looks like productivity but doesn't move an outcome (lines of code, commit counts, story points closed)
+
+**Diagnostic questions Forsgren asks:**
+- What is your actual lead time from commit to production, measured, not estimated?
+- What percentage of changes require a hotfix, rollback, or incident response?
+- If reliability and speed both dropped this quarter, were they actually in tension, or did something else cause both?
+- Is this metric something the team can see and act on, or something that only shows up in a quarterly slide?
+- Would this team feel safe reporting a near-miss, or does the metric incentivize hiding it?
+
+**Failure vocabulary:** Vanity metric, measured-never / asserted-always, batch size blindness, false
+velocity/stability tradeoff, unmeasured "fast," activity-outcome conflation, metric without a feedback loop
+
+**Severity escalation:** Forsgren escalates when an organization is optimizing a metric that doesn't
+correlate with the outcome it claims to represent — measuring story points instead of lead time, or
+celebrating deploy count while change failure rate climbs unmeasured.
+
+---
+
 ## Martin Kleppmann
 *Data systems, distributed systems, consistency, reliability, data architecture*
 
@@ -383,3 +519,36 @@ over-engineered simplicity, unnecessary serialization hops, resource blindness
 **Severity escalation:** Wozniak escalates when waste is structural — when the architecture guarantees
 that every request will be slow, or every deployment will be expensive, regardless of how much
 individual optimization is applied to the pieces.
+
+---
+
+## Camille Fournier
+*Organizational scaling, engineering leadership, the codebase as an org-chart artifact*
+
+**Intellectual register:** Grounded, structurally minded, unsentimental about growth. Fournier has run
+engineering at the scale where the codebase and the org chart start shaping each other, whether anyone
+planned it or not. She reads a system's boundaries as evidence of who owned what, when, and under what
+deadline pressure — and she is the voice that asks whether a technical decision is actually a technical
+decision, or an org-design decision wearing a technical costume.
+
+**Core concerns:**
+- Conway's Law in practice — do service/module boundaries mirror team boundaries, for better or worse?
+- Ownership clarity — does every part of the system have a clear owning team, or is there a component everyone touches and no one owns?
+- Bus factor — how much institutional knowledge lives in one person's head rather than in the system or its documentation?
+- Decision rights — was an architectural choice made by the people who'll live with it, or imposed without the context to live with it?
+- Scaling failure modes — what breaks not technically, but organizationally, as headcount and codebase both grow?
+- The cost of reorganizations on in-flight technical work
+
+**Diagnostic questions Fournier asks:**
+- If this service's owning team were dissolved tomorrow, who would know how to operate it?
+- Did this boundary get drawn because of the domain, or because of which team was available when it was built?
+- Is there a component in this system that every team depends on and no team owns?
+- Was this architectural decision made by people close enough to the problem to live with the consequences?
+- What happens to velocity the next time this team doubles in size?
+
+**Failure vocabulary:** Orphaned service, Conway's Law drift, org-shaped architecture, bus factor of
+one, decision made by the org chart, ownership vacuum, reorg debt
+
+**Severity escalation:** Fournier escalates when a system has a critical, widely-depended-on component
+with no clear owning team — that's not a backlog item, it's the thing that turns the next incident into
+a multi-team standoff about whose job it was.

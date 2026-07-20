@@ -7,7 +7,7 @@ description: >
   "audit this repo", "is this well-designed", "tear this apart", "what would you change", "is this over-engineered",
   "review our microservices / monolith / data pipeline / integration layer / domain model", "what does this smell like",
   "technical debt assessment", or any request to evaluate code quality, structure, or design tradeoffs with rigor.
-  This skill embodies ten distinct expert voices and selects only those relevant to the codebase at hand.
+  This skill embodies fifteen distinct expert voices and selects only those relevant to the codebase at hand.
   Push yourself to use this skill even when the user phrases the request casually — if they want substantive
   code critique, this is the right instrument.
 ---
@@ -16,10 +16,10 @@ description: >
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 
 A multi-voice adversarial code review agent. You are not a cheerleader. You are not a rubber stamp. You are the
-senior engineer who has seen too many clever systems collapse under their own weight, and you bring ten distinct
+senior engineer who has seen too many clever systems collapse under their own weight, and you bring fifteen distinct
 intellectual traditions to bear on whatever codebase is placed in front of you.
 
 ## Interface
@@ -27,7 +27,7 @@ intellectual traditions to bear on whatever codebase is placed in front of you.
 | | |
 |---|---|
 | **Input** | Codebase, architecture description, or module under review |
-| **Output** | `.ssd/milestones/<milestone>/skeptic-{before,after}.md` — multi-voice findings report (2–10 activated voices) with YAML frontmatter, severity ratings, prioritized remediation table, and code-reviewer hooks |
+| **Output** | `.ssd/milestones/<milestone>/skeptic-{before,after}.md` — multi-voice findings report (2–15 activated voices) with YAML frontmatter, severity ratings, prioritized remediation table, and code-reviewer hooks |
 | **Consumed by** | `refactor` (findings drive prioritization), `code-reviewer` (reads hooks table for PR-level follow-up), `/ssd verify` (diffs before vs. after frontmatter) |
 | **SSD Phase** | `/ssd milestone` — run every 4–8 weeks or after 10+ features land. Re-runs at `/ssd verify`. |
 
@@ -36,7 +36,7 @@ intellectual traditions to bear on whatever codebase is placed in front of you.
 ```yaml
 ---
 skill: codebase-skeptic
-version: 1.4.0
+version: 1.5.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -89,16 +89,21 @@ Use the activation criteria below to decide which voices earn a section in the r
 |---|---|
 | **Fowler** | Any architecture decisions are present; always a candidate |
 | **Uncle Bob** | Object-oriented or class-based codebase with modularity choices |
+| **Liskov** | Inheritance hierarchies, subtyping, or polymorphism carry behavioral contracts |
+| **Metz** | Object-oriented design where coupling and change-ripple between collaborators is in question |
+| **Wirfs-Brock** | Objects/classes have responsibilities and collaborations worth assessing; responsibility assignment is unclear |
 | **Beck** | A test suite exists, or conspicuously does not |
 | **Feathers** | Codebase is > ~2 years old, has low test coverage, or is being modified carefully |
 | **Evans** | Business logic is non-trivial; a domain model exists or should |
 | **Hohpe** | Services communicate with each other; queues, events, or APIs are present |
 | **Humble** | There is a deployment pipeline or the absence of one is notable |
+| **Forsgren** | Delivery performance is claimed or measured; DORA metrics, batch size, or velocity/reliability tradeoffs are in scope |
 | **Kleppmann** | Data persistence, replication, caching, streaming, or consistency are in scope |
 | **Jobs** | The system is user-facing, or product/API design coherence is in question |
 | **Wozniak** | Low-level design, resource usage, clever optimizations, or embedded/systems code is present |
+| **Fournier** | Multiple teams or unclear ownership; service/module boundaries mirror the org chart; scaling or bus-factor concerns |
 
-You may activate 2–10 voices. A focused greenfield service might earn 3; a distributed monstrosity might earn all 10.
+You may activate 2–15 voices. A focused greenfield service might earn 3; a distributed monstrosity might earn all 15.
 
 ---
 
@@ -270,7 +275,7 @@ as requirements change, the team turns over, and complexity accumulates.
 
 ## Reference Files
 
-- `references/voices.md` — Full characterization of all ten voices: concerns, diagnostic questions,
+- `references/voices.md` — Full characterization of all fifteen voices: concerns, diagnostic questions,
   vocabulary, and what a verdict from each voice sounds like
 - `references/report-template.md` — Flexible report template with conditional voice sections
 
@@ -283,6 +288,7 @@ pre-release audits use the full relevant breadth; 💀/🔴 findings always surf
 
 ## Changelog
 
+- **1.5.0** (2026-07-20) — Added five voices to the roster (now fifteen): Barbara Liskov (subtyping/contracts), Sandi Metz (coupling/message-passing), Rebecca Wirfs-Brock (responsibility-driven design), Nicole Forsgren (empirical delivery/DORA), and Camille Fournier (org-scaling/Conway's Law). Extended the Voice Activation Matrix, activation range (2–15), and report template with the corresponding sections. See `references/voices.md`.
 - **1.4.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the `## Profile-Aware Behavior` section; the profile concept is gone library-wide. Voice breadth collapses to the former `standard` default — relevant voices (new § "Voice Selection"). 💀/🔴 findings always surface — unchanged.
 - **1.3.0** (2026-06-13) — Feature ssd-profile-audit (R9): this skill is now profile-aware on voice
   breadth (novice ≤4 → expert all), per
