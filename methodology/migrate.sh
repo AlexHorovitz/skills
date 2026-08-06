@@ -117,6 +117,11 @@ detect() {
     dev-profile-keys)       grep -qE '^[[:space:]]*developer_profile:' "$ROOT/.ssd/project.yml" 2>/dev/null ;;
     parallel-features-keys) grep -qE '^[[:space:]]*branch_pattern:'    "$ROOT/.ssd/project.yml" 2>/dev/null ;;
     selective-gitignore)    grep -qE '^[[:space:]]*gitignore_mode:'    "$ROOT/.ssd/project.yml" 2>/dev/null ;;
+    # ADR-0015 gate readiness. A *commented* placeholder (`# test_command:`) is intentionally NOT a
+    # match — it does not define the input, so the convention stays PENDING until a real key exists.
+    gate-inputs-present)    grep -qE '^[[:space:]]*test_command:' "$ROOT/.ssd/project.yml" 2>/dev/null \
+                            || grep -qE '^[[:space:]]*test_command:' "$ROOT/.ssd/gate.yml" 2>/dev/null ;;
+    committed-gate-yml)     [[ -f "$ROOT/.ssd/gate.yml" ]] && grep -qF '!.ssd/gate.yml' "$ROOT/.gitignore" 2>/dev/null ;;
     *) return 1 ;;
   esac
 }
@@ -241,6 +246,60 @@ apply_selective_gitignore() {     # ADR-0008 — gitignore_mode key + selective 
 EOF
 }
 
+# Create .ssd/gate.yml with its header if absent (ADR-0015). No-op when it already exists.
+ensure_gate_yml_header() {
+  local gate="$1"
+  [[ -f "$gate" ]] && return 0
+  cat > "$gate" <<'EOF'
+# .ssd/gate.yml — committed gate inputs (ADR-0015). Portable across clones and CI runners.
+# Machine-specific state stays in .ssd/project.yml (gitignored). gate-rules.sh reads project.yml
+# first (local override), then this file (the committed floor).
+EOF
+}
+
+apply_gate_inputs_present() {     # ADR-0015 — detect the test command; write it to committed gate.yml.
+  local gate="$ROOT/.ssd/gate.yml" pj="$ROOT/.ssd/project.yml"
+  # Idempotent: a real (non-comment) test_command in either file means the convention is present.
+  grep -qE '^[[:space:]]*test_command:' "$pj" 2>/dev/null && return 0
+  grep -qE '^[[:space:]]*test_command:' "$gate" 2>/dev/null && return 0
+  # Detect most-specific-first: a project's own declared entry point wins over a language default.
+  local cmd=""
+  if   [[ -f "$ROOT/Makefile" ]]     && grep -qE '^test:'          "$ROOT/Makefile";     then cmd="make test"
+  elif [[ -f "$ROOT/package.json" ]] && grep -qE '"test"[[:space:]]*:' "$ROOT/package.json"; then cmd="npm test"
+  elif [[ -f "$ROOT/pyproject.toml" || -f "$ROOT/pytest.ini" || -d "$ROOT/tests" ]];       then cmd="pytest"
+  elif [[ -f "$ROOT/go.mod" ]];      then cmd="go test ./..."
+  elif [[ -f "$ROOT/Cargo.toml" ]];  then cmd="cargo test"
+  elif [[ -f "$ROOT/Package.swift" ]]; then cmd="swift test"
+  fi
+  ensure_gate_yml_header "$gate"
+  if [[ -n "$cmd" ]]; then
+    printf 'test_command: %s\n' "$cmd" >> "$gate"
+  else
+    # No framework detected → commented placeholder (degrades to a gate SKIP, no regression). Guarded
+    # so a re-run does not stack duplicate placeholder lines.
+    grep -qE '^#[[:space:]]*test_command:' "$gate" 2>/dev/null \
+      || printf '# test_command: <cmd>   # no test framework detected; set once tests exist (ADR-0015)\n' >> "$gate"
+  fi
+}
+
+apply_committed_gate_yml() {      # ADR-0015 — create gate.yml + the !.ssd/gate.yml gitignore exception.
+  local gate="$ROOT/.ssd/gate.yml" pj="$ROOT/.ssd/project.yml" gi="$ROOT/.gitignore"
+  ensure_gate_yml_header "$gate"
+  # Carry any gate inputs already set (uncommented) in project.yml into gate.yml if not already there.
+  local k
+  for k in test_command feature_flag_marker; do
+    if grep -qE "^[[:space:]]*$k:" "$pj" 2>/dev/null && ! grep -qE "^[[:space:]]*$k:" "$gate" 2>/dev/null; then
+      grep -E "^[[:space:]]*$k:" "$pj" | head -1 | sed 's/^[[:space:]]*//' >> "$gate"
+    fi
+  done
+  # Add the gitignore exception if the selective block lacks it. Anchor it right after `.ssd/*`.
+  if [[ -f "$gi" ]] && ! grep -qF '!.ssd/gate.yml' "$gi"; then
+    backup_gi
+    awk '{ print } /^\.ssd\/\*[[:space:]]*$/ && !done { print "!.ssd/gate.yml"; done=1 }' "$gi" > "$gi.tmp" && mv "$gi.tmp" "$gi"
+    grep -qF '!.ssd/gate.yml' "$gi" || printf '!.ssd/gate.yml\n' >> "$gi"   # fallback if no .ssd/* anchor
+  fi
+}
+
 # Dispatch. Return 0 = apply ran (caller re-detects to confirm); 9 = DEFER (delegated to ssd-init);
 # other = ERROR (no apply path / mutation failed).
 apply_dispatch() {
@@ -249,6 +308,8 @@ apply_dispatch() {
     dev-profile-keys)       apply_dev_profile_keys ;;
     parallel-features-keys) apply_parallel_features_keys ;;
     selective-gitignore)    apply_selective_gitignore ;;
+    gate-inputs-present)    apply_gate_inputs_present ;;
+    committed-gate-yml)     apply_committed_gate_yml ;;
     *)                      return 1 ;;   # unknown mechanical id
   esac
 }

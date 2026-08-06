@@ -42,6 +42,7 @@ RULES_FILTER=""   # comma-separated list of rule names; empty = run all
 MODE="branch"     # branch (default, diff vs $BASE...HEAD) | staged (diff vs --cached)
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PROJECT_YML="$PROJECT_ROOT/.ssd/project.yml"
+GATE_YML="$PROJECT_ROOT/.ssd/gate.yml"        # ADR-0015: committed, portable gate inputs
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -112,6 +113,19 @@ yaml_get() {
       exit
     }
   ' "$file"
+}
+
+gate_input() {
+  # ADR-0015 fallback chain for gate inputs (test_command, feature_flag_marker). Reads
+  # .ssd/project.yml FIRST so a developer can override locally, then the committed .ssd/gate.yml
+  # so the configuration travels to every clone and CI runner (fixes P2: gate config that could
+  # not leave one workstation). Returns the first non-empty value, or "" if neither file defines
+  # the key. `origin` (second output line via a caller-set var) is intentionally not returned here —
+  # callers that need to attribute the source read the two files directly.
+  local key="$1" val
+  val=$(yaml_get "$PROJECT_YML" "$key")
+  [[ -n "$val" ]] && { echo "$val"; return; }
+  yaml_get "$GATE_YML" "$key"
 }
 
 # Read a YAML list value into stdout, one item per line. Handles the simple two-space
@@ -263,9 +277,9 @@ rule_wip_commits() {
 # ----- rule: tests-pass ------------------------------------------------------
 rule_tests_pass() {
   local cmd
-  cmd=$(yaml_get "$PROJECT_YML" "test_command")
+  cmd=$(gate_input "test_command")
   if [[ -z "$cmd" ]]; then
-    emit "SKIP" "tests-pass" "no test_command in $PROJECT_YML"
+    emit "SKIP" "tests-pass" "no test_command in .ssd/project.yml or .ssd/gate.yml"
     return
   fi
   local out exit_code
@@ -283,9 +297,9 @@ rule_tests_pass() {
 # ----- rule: feature-flag-present --------------------------------------------
 rule_feature_flag_present() {
   local marker
-  marker=$(yaml_get "$PROJECT_YML" "feature_flag_marker")
+  marker=$(gate_input "feature_flag_marker")
   if [[ -z "$marker" ]]; then
-    emit "SKIP" "feature-flag-present" "no feature_flag_marker in $PROJECT_YML"
+    emit "SKIP" "feature-flag-present" "no feature_flag_marker in .ssd/project.yml or .ssd/gate.yml"
     return
   fi
   local files
