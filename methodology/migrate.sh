@@ -263,10 +263,14 @@ apply_gate_inputs_present() {     # ADR-0015 — detect the test command; write 
   grep -qE '^[[:space:]]*test_command:' "$pj" 2>/dev/null && return 0
   grep -qE '^[[:space:]]*test_command:' "$gate" 2>/dev/null && return 0
   # Detect most-specific-first: a project's own declared entry point wins over a language default.
+  # The pytest branch requires a real Python marker (pyproject.toml / pytest.ini / setup.py) — NOT a
+  # bare tests/ dir, which Rust (integration tests in tests/ beside Cargo.toml), Go, and JS projects
+  # also have. Honoring the ADR-0015 "tests/ + a pytest dependency" qualifier; a bare tests/ dir would
+  # misdetect a Rust repo as pytest and write a false-red test_command (round-1 review MAJOR-1).
   local cmd=""
   if   [[ -f "$ROOT/Makefile" ]]     && grep -qE '^test:'          "$ROOT/Makefile";     then cmd="make test"
   elif [[ -f "$ROOT/package.json" ]] && grep -qE '"test"[[:space:]]*:' "$ROOT/package.json"; then cmd="npm test"
-  elif [[ -f "$ROOT/pyproject.toml" || -f "$ROOT/pytest.ini" || -d "$ROOT/tests" ]];       then cmd="pytest"
+  elif [[ -f "$ROOT/pyproject.toml" || -f "$ROOT/pytest.ini" || -f "$ROOT/setup.py" ]];    then cmd="pytest"
   elif [[ -f "$ROOT/go.mod" ]];      then cmd="go test ./..."
   elif [[ -f "$ROOT/Cargo.toml" ]];  then cmd="cargo test"
   elif [[ -f "$ROOT/Package.swift" ]]; then cmd="swift test"

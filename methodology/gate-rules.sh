@@ -120,8 +120,7 @@ gate_input() {
   # .ssd/project.yml FIRST so a developer can override locally, then the committed .ssd/gate.yml
   # so the configuration travels to every clone and CI runner (fixes P2: gate config that could
   # not leave one workstation). Returns the first non-empty value, or "" if neither file defines
-  # the key. `origin` (second output line via a caller-set var) is intentionally not returned here —
-  # callers that need to attribute the source read the two files directly.
+  # the key.
   local key="$1" val
   val=$(yaml_get "$PROJECT_YML" "$key")
   [[ -n "$val" ]] && { echo "$val"; return; }
