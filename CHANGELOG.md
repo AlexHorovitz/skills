@@ -6,6 +6,35 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.5.0] — 2026-08-06
+
+### `ssd-init` gate readiness — iteration A (ADR-0015)
+
+`ssd-init` now leaves the gate **functional, not merely present.** Before this change a freshly
+initialized project's `/ssd gate` SKIPped `tests-pass` and `feature-flag-present` in *every* project
+(P1: `ssd-init` never wrote their inputs), and because those inputs lived only in gitignored
+`project.yml` the configuration could not travel to a second clone or a CI runner (P2). Iter A closes
+both.
+
+- **`ssd-init` Step 6.5 (new)** — detects the project's `test_command` most-specific-first
+  (`Makefile` `test:` → `npm test` → `pytest` → `go test ./...` → `cargo test` → `swift test`; prompt
+  on genuine ambiguity, commented placeholder when nothing is detected) and writes it to a **committed
+  `.ssd/gate.yml`**. The `project.yml` template gains commented `test_command` / `feature_flag_marker`
+  local-override stubs.
+- **`.ssd/gate.yml`** — the one committed `.ssd/*` config file, carrying only portable gate inputs
+  (`!.ssd/gate.yml` added to `methodology/selective.gitignore`, the single source `ssd-init` and
+  `migrate.sh` consume). Machine state stays in gitignored `project.yml`.
+- **`gate-rules.sh` fallback chain** — new `gate_input()` reads `.ssd/project.yml` first (local
+  override), then `.ssd/gate.yml` (the committed floor); `tests-pass` and `feature-flag-present` use it.
+- **Migrations** — `gate-inputs-present` and `committed-gate-yml` (mechanical, ADR-0015) let
+  `/ssd upgrade --apply` retrofit projects initialized before this change, with executable
+  `detect()`/`apply_*()` in `migrate.sh`.
+
+Iters B (library-root resolution + hook fix), C (Step 9 gate-readiness reporting), and D (workflow-rule
+docs + CI validator vendoring) remain pending. Skills touched: `ssd-init` → 1.11.0.
+
+---
+
 ## [2.4.0] — 2026-06-14
 
 ### GitHub issue state tracking — iteration B (ADR-0014)

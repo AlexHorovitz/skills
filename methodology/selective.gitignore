@@ -5,6 +5,9 @@
 # the selective pattern. `methodology/migrate.sh` (apply_selective_gitignore) appends its contents
 # verbatim; `ssd-init/SKILL.md` Step 5 points here instead of re-listing the block. Edit only here.
 .ssd/*
+# Committed gate inputs (ADR-0015): portable test_command / feature_flag_marker so the gate
+# configuration travels to every clone and CI runner. Machine state stays in .ssd/project.yml.
+!.ssd/gate.yml
 !.ssd/features/
 !.ssd/milestones/
 !.ssd/features/**/

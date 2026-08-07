@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.10.0
+**Version:** 1.11.0
 
 ## Purpose
 
@@ -352,6 +352,12 @@ ssd:
   gitignored_state: []           # additional patterns the no-leaky-state gate rule denies;
                                  # additive only — projects cannot shrink the baseline.
 
+  # Gate inputs (ADR-0015). The portable values live in the COMMITTED .ssd/gate.yml so the gate
+  # travels to every clone and CI runner. Uncomment either key HERE only to override locally —
+  # gate-rules.sh reads project.yml first, then gate.yml.
+  # test_command: <cmd>          # local override of gate.yml's test_command
+  # feature_flag_marker: <regex> # local override of gate.yml's feature_flag_marker
+
 integrations:                    # optional; filled in as features are added
   - type: jira
     enabled: false
@@ -380,6 +386,61 @@ hints, not enforcement — a team that uses `feature/{slug}` branches sets `bran
 accordingly. See [ADR-0007](../docs/decisions/ADR-0007-parallel-features.md) and `ssd/SKILL.md`
 § "Workstream Lifecycle Commands." Concurrent workstreams are supported out of the box;
 single-feature flow remains the default and requires no awareness of these keys.
+
+#### Step 6.5 — Detect the test command + write `.ssd/gate.yml` (ADR-0015)
+
+Two `/ssd gate` rules — `tests-pass` and `feature-flag-present` — read their inputs (`test_command`,
+`feature_flag_marker`) from configuration. Before ADR-0015 `ssd-init` wrote neither, so both rules
+SKIPped in **every** project SSD ever initialized (root cause P1), and because those inputs lived only
+in gitignored `project.yml` they could not travel to a second clone or a CI runner (root cause P2).
+This step fixes both by **detecting** the test command and writing it to a **committed** file,
+`.ssd/gate.yml`.
+
+> `.ssd/gate.yml` is the *only* committed `.ssd/*` config file (the `!.ssd/gate.yml` exception is in
+> `methodology/selective.gitignore`, the single source Step 5 consumes). It holds **only** portable
+> gate inputs — never machine-local state, which stays in gitignored `project.yml`. See
+> [ADR-0015](../docs/decisions/ADR-0015-ssd-init-gate-readiness.md) and
+> [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md).
+
+**Detect `test_command`.** Inspect the repo most-specific-first — a project's own declared entry point
+(a `Makefile` `test:` target) wins over a language default:
+
+| Signal | `test_command` |
+|---|---|
+| `Makefile` with a `test:` target | `make test` |
+| `package.json` with `scripts.test` | `npm test` |
+| `pyproject.toml` / `pytest.ini` / `tests/` + a pytest dependency | `pytest` |
+| `go.mod` | `go test ./...` |
+| `Cargo.toml` | `cargo test` |
+| `*.xcodeproj` / `Package.swift` | `xcodebuild test …` / `swift test` |
+
+If **more than one** top-of-table signal is present (a genuinely polyglot repo), **prompt** the user
+to pick — never guess silently. If **nothing** is detected, write the key **commented out** with a
+one-line explanation: `gate-rules.sh`'s reader skips comment lines, so a commented placeholder
+degrades to today's SKIP (no regression) while making the missing piece visible in the file the user
+will actually open. Record an undetected/ambiguous test command in the init log at **MAJOR** (per the
+Step 9 Gate Readiness bucketing added in a later iteration) so it is not silently inert.
+
+**`feature_flag_marker`** cannot be detected before a flag mechanism exists. Write it when a known
+library is present — `unleash`, `launchdarkly`, `growthbook` (their documented call markers) —
+otherwise leave it commented and tie the follow-up to the flag-system BLOCKER Step 9 already reports;
+whoever establishes the flag mechanism sets the marker.
+
+**Write `.ssd/gate.yml`** (do not overwrite if it exists — read it and surface drift, per the
+idempotency contract):
+
+```yaml
+# .ssd/gate.yml — committed gate inputs (ADR-0015). Portable across clones and CI runners.
+# Machine-specific state stays in .ssd/project.yml (gitignored). gate-rules.sh reads project.yml
+# first (local override), then this file (the committed floor).
+test_command: <detected-or-commented>
+# feature_flag_marker: <regex>   # set once a flag mechanism exists (see Step 9 flag BLOCKER)
+```
+
+The non-interactive equivalent for an already-initialized project is `/ssd upgrade --apply`, which
+runs the `gate-inputs-present` and `committed-gate-yml` migrations (`methodology/migrate.sh`) using
+this same detection — every project initialized before ADR-0015 has two inert gate rules until it
+runs them.
 
 ### Step 7 — Initialize `.ssd/current.yml` (v2) + `.ssd/current.notes.yml`
 
@@ -514,7 +575,7 @@ Record what was done and what was found. This is the primary output artifact of 
 ```markdown
 ---
 skill: ssd-init
-version: 1.10.0
+version: 1.11.0
 produced_at: <ISO-8601>
 project: <name>
 ---
@@ -541,6 +602,7 @@ project: <name>
 - `docs/architecture/` — <created|already-existed>
 - `.ssd/README.md` — <created|already-existed>
 - `.ssd/project.yml` — <created|already-existed>
+- `.ssd/gate.yml` — <created|already-existed> (committed gate inputs, ADR-0015)
 - `.ssd/current.yml` — <created-v2|already-existed-v2|migrated-from-v1|legacy-v1-deferred>
 - `.ssd/current.notes.yml` — <created|already-existed|skipped-legacy-v1>
 
@@ -627,6 +689,7 @@ Before declaring `ssd-init` complete:
 - [ ] `.ssd/` directory exists with all required subdirectories
 - [ ] `.ssd/README.md` present
 - [ ] `.ssd/project.yml` present and accurately reflects detected shape
+- [ ] `.ssd/gate.yml` present with a detected (or explicitly commented) `test_command` (ADR-0015)
 - [ ] `.ssd/current.yml` present (v2 schema, or v1 with deferred migration)
 - [ ] `.ssd/current.notes.yml` present (or absent only if v1 migration was deferred)
 - [ ] `.gitignore` contains `.ssd/` (if git repo)
@@ -672,6 +735,17 @@ Running `ls .ssd/features/<slug>/` reveals the full phase chain for a feature in
 
 ## Changelog
 
+- **1.11.0** (2026-08-06) — Gate readiness, iter A (ADR-0015, `ssd-init-gate-readiness`): new **Step 6.5**
+  detects the project's `test_command` (Makefile `test:` → npm → pytest → go → cargo → swift,
+  most-specific-first; prompt on ambiguity, commented placeholder at MAJOR when undetected) and writes
+  it to a **committed `.ssd/gate.yml`** so the `tests-pass` / `feature-flag-present` gate rules stop
+  SKIPping by default (P1) and the configuration travels to every clone and CI runner (P2). The
+  `project.yml` template gains commented `test_command` / `feature_flag_marker` **local-override** stubs;
+  `.ssd/gate.yml` is added to the init-log Directory Setup and the Quality Checklist. Companion changes:
+  `!.ssd/gate.yml` in `methodology/selective.gitignore`; a `gate_input()` project.yml→gate.yml fallback
+  chain in `gate-rules.sh`; and `gate-inputs-present` + `committed-gate-yml` mechanical migrations in
+  `migrations.yml` / `migrate.sh` so `/ssd upgrade --apply` retrofits existing projects. Iters B–D
+  (library-root resolution, gate-readiness reporting, CI vendoring) still pending.
 - **1.10.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the `developer_profile`
   and `teaching_mode` keys from the `project.yml` template (the profile concept is gone library-wide);
   Step 5 (gitignore migration) and Step 5.5 (pre-commit hook offer) no longer branch on profile — they

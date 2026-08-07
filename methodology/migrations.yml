@@ -105,3 +105,21 @@ migrations:
     title: "integrations.github.issue_tracking / auto_close toggles in project.yml"
     detect: null
     guidance: "SSD can mirror workstream state to GitHub issues (ADR=epic, workstream=feature issue, ssd:phase/* labels), one-way and opt-in. To enable, add `issue_tracking: on` (and optionally `auto_close: true`) under the `- type: github` entry in .ssd/project.yml integrations. Absent ≡ off — zero network, no behavior change — so this is guided, not mechanical: there is nothing to migrate unless you want the feature. See ADR-0014 and the README 'GitHub issue tracking' section."
+
+  - id: gate-inputs-present
+    introduced_in: "2.5.0"
+    applies_to: project
+    kind: mechanical
+    adr: ADR-0015
+    title: "test_command written to committed .ssd/gate.yml so the tests-pass gate rule can run"
+    detect: "project.yml or gate.yml defines a test_command key (executable probe: detect() in migrate.sh greps `^[[:space:]]*test_command:` in either file)"
+    apply: "detect the test command most-specific-first (Makefile test: > package.json scripts.test > pytest > go test ./... > cargo test > swift test); write `test_command: <cmd>` into .ssd/gate.yml, or a commented placeholder if nothing is detected. Idempotent: skips when a test_command is already present."
+
+  - id: committed-gate-yml
+    introduced_in: "2.5.0"
+    applies_to: project
+    kind: mechanical
+    adr: ADR-0015
+    title: "committed .ssd/gate.yml + the !.ssd/gate.yml selective-gitignore exception"
+    detect: ".ssd/gate.yml exists AND the project's .gitignore carries the `!.ssd/gate.yml` exception (executable probe: detect() in migrate.sh)"
+    apply: "create .ssd/gate.yml (carrying any test_command / feature_flag_marker already set in project.yml, else a commented template) and append the `!.ssd/gate.yml` exception to .gitignore if the selective block lacks it. Idempotent on both the file and the exception line."
