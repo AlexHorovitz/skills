@@ -84,9 +84,9 @@ stays a first-class escape hatch — every phase is still directly invokable. Th
 | Type | Skills | When you invoke directly |
 |---|---|---|
 | Bootstrap | `ssd-init` | Once, at project start (or when `.ssd/` has drifted) |
-| Orchestrator | `.ssd` | Always — start here after init |
+| Orchestrator | `/ssd` | Always — start here after init |
 | Domain | `architect`, `coder`, `systems-designer`, `refactor` | When working outside the SSD workflow |
-| Review | `code-reviewer`, `codebase-skeptic`, `software-standards` | On-demand or via SSD |
+| Review | `code-reviewer`, `codebase-skeptic`, `software-standards`, `feynman` | On-demand or via SSD |
 | Reference | `methodology` | When you want to understand SSD doctrine |
 
 ---
@@ -137,7 +137,8 @@ more than one feature at once:
 | `/systems-designer` | Production readiness: reliability, observability, deployment safety |
 | `/coder` | Implementation from spec (Python, TypeScript, Swift, Ruby, Java, C#, PHP, Go, Rust, C/C++, Obj-C) |
 | `/code-reviewer` | PR gate: BLOCKER/MAJOR findings block merge |
-| `/codebase-skeptic` | Deep architectural critique through 10 expert lenses |
+| `/codebase-skeptic` | Deep architectural critique through fifteen expert lenses |
+| `/feynman` | Epistemic audit: builds a claim ledger and grades what the project believes about itself against evidence |
 | `/software-standards` | Adversarial comparative audit |
 | `/refactor` | Post-ship targeted improvement |
 | `/methodology` | SSD methodology reference + `/methodology score` self-adherence metric |
@@ -172,6 +173,7 @@ Or call a sub-skill directly when working outside the SSD workflow:
 /coder
 /code-reviewer
 /codebase-skeptic
+/feynman
 ```
 
 ---

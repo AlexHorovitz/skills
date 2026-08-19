@@ -1,0 +1,10 @@
+# .ssd/gate.yml — committed gate inputs (ADR-0015). Portable across clones and CI runners.
+# Machine-specific state stays in .ssd/project.yml (gitignored). gate-rules.sh reads project.yml
+# first (local override), then this file (the committed floor).
+test_command: bash scripts/parity-test.sh
+
+# feature_flag_marker is intentionally unset. This repo ships markdown skills and bash/python
+# enforcement — it has no runtime feature-flag system to grep for, so `feature-flag-present` SKIPs
+# by design rather than by omission. Documented here so the SKIP is a recorded decision and not a
+# silent gap (Feynman audit 2026-08-19, C2).
+# feature_flag_marker: <marker>

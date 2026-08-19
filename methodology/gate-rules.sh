@@ -403,10 +403,16 @@ rule_frontmatter_valid() {
     exit_code=$?
   fi
   if [[ $exit_code -eq 0 ]]; then
-    local count
+    # Report validated AND unvalidated. The validator already emits a SKIP line per artifact with no
+    # matching schema; discarding that count made "N artifact(s) validated" read as full coverage when
+    # briefs / deploy notes / skeptic reports have no schema at all (Feynman audit 2026-08-19, C4).
+    local count skipped detail
     count=$(echo "$out" | grep -c '^PASS ' || true)
+    skipped=$(echo "$out" | grep -c '^SKIP ' || true)
     if [[ "$count" -gt 0 ]]; then
-      emit "PASS" "frontmatter-valid" "$count artifact(s) validated against schemas"
+      detail="$count artifact(s) validated against schemas"
+      [[ "$skipped" -gt 0 ]] && detail="$detail; $skipped unvalidated (no matching schema)"
+      emit "PASS" "frontmatter-valid" "$detail"
     else
       emit "SKIP" "frontmatter-valid" "no SSD artifacts in scope"
     fi
@@ -507,10 +513,16 @@ rule_skill_version_sync() {
   out=$(python3 "$validator" --check-skill-examples "$PROJECT_ROOT" 2>&1)
   exit_code=$?
   if [[ $exit_code -eq 0 ]]; then
-    local count
+    # Same reasoning as frontmatter-valid: a skill with no example block is EXEMPT from the version
+    # check, and the summary must say so. ssd/SKILL.md — the orchestrator — is one of them
+    # (Feynman audit 2026-08-19, C5).
+    local count skipped detail
     count=$(echo "$out" | grep -c '^PASS ' || true)
+    skipped=$(echo "$out" | grep -c '^SKIP ' || true)
     if [[ "$count" -gt 0 ]]; then
-      emit "PASS" "skill-version-sync" "$count skill example(s) match banner"
+      detail="$count skill example(s) match banner"
+      [[ "$skipped" -gt 0 ]] && detail="$detail; $skipped exempt (no example block)"
+      emit "PASS" "skill-version-sync" "$detail"
     else
       emit "SKIP" "skill-version-sync" "no SKILL.md example blocks to check"
     fi
@@ -645,10 +657,23 @@ should_run migration-manifest-current && rule_migration_manifest_current
 should_run issue-sync-current && rule_issue_sync_current
 
 # ----- emit results ----------------------------------------------------------
+# A gate that exits zero because most of its checks never ran is not a passing gate — it is an
+# unrun one. Count the statuses so the summary states coverage instead of implying it
+# (Feynman audit 2026-08-19, C9).
+PASS_N=0; SKIP_N=0
+for line in "${RESULTS[@]}"; do
+  case "$line" in
+    PASS*) PASS_N=$((PASS_N + 1)) ;;
+    SKIP*) SKIP_N=$((SKIP_N + 1)) ;;
+  esac
+done
+
 if [[ $JSON -eq 1 ]]; then
   echo "{"
   echo "  \"base\": \"$BASE\","
   echo "  \"fail_count\": $FAIL_COUNT,"
+  echo "  \"pass_count\": $PASS_N,"
+  echo "  \"skip_count\": $SKIP_N,"
   echo "  \"results\": ["
   json_idx=0
   json_last=$((${#RESULTS[@]} - 1))
@@ -669,6 +694,9 @@ else
   for line in "${RESULTS[@]}"; do
     echo "$line"
   done
+  # Name the skips. A SKIP is a check that did NOT run, not a check that passed.
+  printf 'GATE %d pass · %d skip · %d fail — a skip is a check that did not run\n' \
+    "$PASS_N" "$SKIP_N" "$FAIL_COUNT"
 fi
 
 if [[ $FAIL_COUNT -gt 0 ]]; then
