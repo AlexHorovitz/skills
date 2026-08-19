@@ -2,20 +2,26 @@
 
 # SSD working directory — selective commit (ADR-0008, v1.18.0+).
 # Block everything under .ssd/ by default, then allow the durable artifact tree.
-# Machine state (current.yml, project.yml, init-log, archive, audits) stays local;
-# briefs / architect specs / coder-status / code-review / deploy notes get committed.
-# A solo developer who prefers the legacy v1.3.0–v1.17.x blanket behavior can set
-# project.yml.ssd.gitignore_mode: blanket and replace the block below with a bare `.ssd/`.
-
+#
+# CANONICAL SINGLE SOURCE (ADR-0013 extraction, v1.23.0). This file is the one authoritative copy of
+# the selective pattern. `methodology/migrate.sh` (apply_selective_gitignore) appends its contents
+# verbatim; `ssd-init/SKILL.md` Step 5 points here instead of re-listing the block. Edit only here.
 .ssd/*
-
-# Re-include the directories whose contents are partially tracked.
+# Committed gate inputs (ADR-0015): portable test_command / feature_flag_marker so the gate
+# configuration travels to every clone and CI runner. Machine state stays in .ssd/project.yml.
+!.ssd/gate.yml
 !.ssd/features/
 !.ssd/milestones/
 
-# Inside features/, allow the durable artifact files. The negation needs each parent
-# dir to be re-included first per gitignore semantics.
+# `.ssd/*` matches DEPTH-1 children only. Without the two deny lines below, re-including features/
+# and milestones/ would make EVERYTHING beneath them committable and the allow-list would be
+# decorative — a stray secrets.env under a feature dir would sail through. Deny at every depth
+# first, then re-include the directories, then the specific artifact filenames.
+.ssd/features/**
+.ssd/milestones/**
 !.ssd/features/**/
+!.ssd/milestones/**/
+
 !.ssd/features/**/00-brief.md
 !.ssd/features/**/01-architect.md
 !.ssd/features/**/02-systems-designer.md
@@ -27,21 +33,23 @@
 !.ssd/features/**/iterations/**/code-review/round-*.md
 !.ssd/features/**/iterations/**/deploy.md
 
-# Block machine-managed state even when nested inside features/.
-.ssd/features/**/iterations/**/deferred.yml
-.ssd/features/**/current.yml.bak
-
-# Inside milestones/, allow durable design records; block snapshot machinery.
-!.ssd/milestones/**/
+# Milestones: durable records committed; snapshot machinery local.
 !.ssd/milestones/**/skeptic-before.md
 !.ssd/milestones/**/skeptic-after.md
 !.ssd/milestones/**/refactor-plan.md
 !.ssd/milestones/**/refactor-prs.md
 !.ssd/milestones/**/verification.md
+!.ssd/milestones/**/review-*.md
+!.ssd/milestones/**/feynman.md
+
+# Machine-managed state even when nested inside the allowed trees. These deny lines come AFTER the
+# negations above so they win (last matching pattern wins).
+.ssd/features/**/iterations/**/deferred.yml
+.ssd/features/**/current.yml.bak
 .ssd/milestones/**/sha-before
 .ssd/milestones/**/metrics-before.yml
 
-# Audits stay gitignored entirely — often sensitive (vendor names, internal opinions).
+# Audits stay gitignored — often sensitive (vendor names, internal opinions).
 .ssd/audits/
 
 # Personal notes

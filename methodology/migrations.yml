@@ -123,3 +123,12 @@ migrations:
     title: "committed .ssd/gate.yml + the !.ssd/gate.yml selective-gitignore exception"
     detect: ".ssd/gate.yml exists AND the project's .gitignore carries the `!.ssd/gate.yml` exception (executable probe: detect() in migrate.sh)"
     apply: "create .ssd/gate.yml (carrying any test_command / feature_flag_marker already set in project.yml, else a commented template) and append the `!.ssd/gate.yml` exception to .gitignore if the selective block lacks it. Idempotent on both the file and the exception line."
+
+  - id: strict-selective-gitignore
+    introduced_in: "2.6.0"
+    applies_to: project
+    kind: mechanical
+    adr: ADR-0008
+    title: "selective .gitignore allow-list made load-bearing (deep deny) + review-*.md / feynman.md negations"
+    detect: "the project's .gitignore carries the `.ssd/features/**` deep-deny line (executable probe: detect() in migrate.sh)"
+    apply: "insert `.ssd/features/**` + `.ssd/milestones/**` denies and the `!.ssd/features/**/` + `!.ssd/milestones/**/` directory re-includes after the `!.ssd/milestones/` line, then add the `!.ssd/milestones/**/review-*.md` and `!.ssd/milestones/**/feynman.md` negations. Without the deep deny, `.ssd/*` matches depth-1 only and every file under features/ and milestones/ is committable regardless of the allow-list. Idempotent on both passes; only upgrades a project that already carries the selective block."

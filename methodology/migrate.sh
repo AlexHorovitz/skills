@@ -122,6 +122,10 @@ detect() {
     gate-inputs-present)    grep -qE '^[[:space:]]*test_command:' "$ROOT/.ssd/project.yml" 2>/dev/null \
                             || grep -qE '^[[:space:]]*test_command:' "$ROOT/.ssd/gate.yml" 2>/dev/null ;;
     committed-gate-yml)     [[ -f "$ROOT/.ssd/gate.yml" ]] && grep -qF '!.ssd/gate.yml' "$ROOT/.gitignore" 2>/dev/null ;;
+    # The allow-list below `.ssd/*` is inert without a DEEP deny: `.ssd/*` matches depth-1 children
+    # only, so once features/ and milestones/ are re-included every file beneath them is committable
+    # regardless of the `!` lines. The `.ssd/features/**` deny line is the sentinel for the fixed form.
+    strict-selective-gitignore) grep -qxF '.ssd/features/**' "$ROOT/.gitignore" 2>/dev/null ;;
     *) return 1 ;;
   esac
 }
@@ -304,6 +308,44 @@ apply_committed_gate_yml() {      # ADR-0015 — create gate.yml + the !.ssd/gat
   fi
 }
 
+apply_strict_selective_gitignore() {   # Feynman audit C12/C14 — make the allow-list load-bearing.
+  local gi="$ROOT/.gitignore"
+  [[ -f "$gi" ]] || return 1
+  # Only upgrade a project that already carries the selective block; a project without it is the
+  # `selective-gitignore` migration's job, and that one appends the canonical (already-strict) file.
+  grep -qF '!.ssd/features/**/01-architect.md' "$gi" || return 1
+  grep -qxF '.ssd/features/**' "$gi" && return 0            # idempotent — already strict
+  backup_gi
+  # Pass A: the deep deny + directory re-includes, immediately after the `!.ssd/milestones/` line so
+  # they precede every file negation (last matching pattern wins).
+  awk '
+    { print }
+    /^![[:space:]]*\.ssd\/milestones\/$/ && !done {
+      print ".ssd/features/**"
+      print ".ssd/milestones/**"
+      print "!.ssd/features/**/"
+      print "!.ssd/milestones/**/"
+      done = 1
+    }
+  ' "$gi" > "$gi.tmp" && mv "$gi.tmp" "$gi"
+  # Pass B: negations for artifact paths skills already declare but the allow-list never listed —
+  # they were only ever committable because the list was inert (code-reviewer/SKILL.md § Interface
+  # milestone output; feynman/SKILL.md § Interface).
+  if ! grep -qF '!.ssd/milestones/**/review-*.md' "$gi"; then
+    awk '
+      { print }
+      /^![[:space:]]*\.ssd\/milestones\/\*\*\/verification\.md$/ && !done {
+        print "!.ssd/milestones/**/review-*.md"
+        print "!.ssd/milestones/**/feynman.md"
+        done = 1
+      }
+    ' "$gi" > "$gi.tmp" && mv "$gi.tmp" "$gi"
+    # Fallback when the block predates verification.md.
+    grep -qF '!.ssd/milestones/**/review-*.md' "$gi" \
+      || printf '!.ssd/milestones/**/review-*.md\n!.ssd/milestones/**/feynman.md\n' >> "$gi"
+  fi
+}
+
 # Dispatch. Return 0 = apply ran (caller re-detects to confirm); 9 = DEFER (delegated to ssd-init);
 # other = ERROR (no apply path / mutation failed).
 apply_dispatch() {
@@ -314,6 +356,7 @@ apply_dispatch() {
     selective-gitignore)    apply_selective_gitignore ;;
     gate-inputs-present)    apply_gate_inputs_present ;;
     committed-gate-yml)     apply_committed_gate_yml ;;
+    strict-selective-gitignore) apply_strict_selective_gitignore ;;
     *)                      return 1 ;;   # unknown mechanical id
   esac
 }

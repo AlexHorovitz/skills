@@ -594,6 +594,56 @@ test_fixture_migrate_apply_gitignore_idempotent() {
   fixture_teardown "$tdir"
 }
 
+# Fixture 28: strict-selective-gitignore — the allow-list must actually BLOCK. Before this migration
+# `.ssd/*` matched depth-1 only, so every file under features/ and milestones/ was committable no
+# matter what the `!` lines said (Feynman audit 2026-08-19, C12/C14). Negative assertions are the
+# point here: a stray secrets.env must be ignored, and the declared artifact paths must not be.
+test_fixture_strict_selective_gitignore() {
+  echo "fixture: strict-selective-gitignore"
+  local tdir
+  tdir=$(fixture_setup "strict-gi")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'ssd:\n  version: "2.5.0"\n  gitignore_mode: selective\n' > .ssd/project.yml
+  # The PRE-migration (inert) block, verbatim in shape: depth-1 deny + per-file allow-list.
+  cat > .gitignore <<'GIEOF'
+.ssd/*
+!.ssd/gate.yml
+!.ssd/features/
+!.ssd/milestones/
+!.ssd/features/**/
+!.ssd/features/**/00-brief.md
+!.ssd/features/**/01-architect.md
+!.ssd/features/**/iterations/**/coder-status.md
+!.ssd/milestones/**/
+!.ssd/milestones/**/skeptic-before.md
+!.ssd/milestones/**/verification.md
+GIEOF
+  # Precondition: the hole is real before we migrate.
+  _assert "strict-selective-gitignore" "PRE: stray file is committable (the bug)" \
+    "$(git check-ignore -q .ssd/features/foo/secrets.env && echo 1 || echo 0)"
+
+  bash "$MIGRATE_SCRIPT" --from 2.5.0 --manifest "$MANIFEST" --apply >/dev/null 2>&1
+
+  _assert "strict-selective-gitignore" "POST: stray secrets.env is BLOCKED" \
+    "$(git check-ignore -q .ssd/features/foo/secrets.env && echo 0 || echo 1)"
+  _assert "strict-selective-gitignore" "POST: stray file under milestones/ is BLOCKED" \
+    "$(git check-ignore -q .ssd/milestones/m/anything.txt && echo 0 || echo 1)"
+  _assert "strict-selective-gitignore" "POST: 00-brief.md still committable" \
+    "$(git check-ignore -q .ssd/features/foo/00-brief.md && echo 1 || echo 0)"
+  _assert "strict-selective-gitignore" "POST: nested iterations coder-status.md still committable" \
+    "$(git check-ignore -q .ssd/features/foo/iterations/a/coder-status.md && echo 1 || echo 0)"
+  _assert "strict-selective-gitignore" "POST: code-reviewer milestone review-*.md committable (C14)" \
+    "$(git check-ignore -q .ssd/milestones/m/review-r1.md && echo 1 || echo 0)"
+  _assert "strict-selective-gitignore" "POST: gate.yml still committable" \
+    "$(git check-ignore -q .ssd/gate.yml && echo 1 || echo 0)"
+  # Idempotency: re-running must not stack a second deny line.
+  bash "$MIGRATE_SCRIPT" --from 2.5.0 --manifest "$MANIFEST" --apply >/dev/null 2>&1
+  _assert "strict-selective-gitignore" "idempotent (deep-deny line appears exactly once)" \
+    "$([[ "$(grep -cxF '.ssd/features/**' .gitignore)" -eq 1 ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
 # Fixture 18: migrate.sh --adopt — guided adoption decouples re-surfacing from the version gate (iter C).
 test_fixture_migrate_guided_adoption() {
   echo "fixture: migrate-guided-adoption"
@@ -823,6 +873,7 @@ test_fixture_close_epic_all_closed() {
 }
 
 # Fixture 26: issue-sync-current gate rule SKIPs cleanly when gh is absent (CI without gh stays green).
+test_fixture_strict_selective_gitignore
 test_fixture_issue_sync_current_skip_no_gh() {
   echo "fixture: issue-sync-current-skip-no-gh"
   local tdir; tdir=$(fixture_setup "issuesync-nogh")

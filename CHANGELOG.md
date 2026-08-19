@@ -6,6 +6,53 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.6.0] — 2026-08-19
+
+### Feynman audit remediation — the gate names its skips, and the allow-list actually blocks
+
+A `/feynman` epistemic audit of this repo (`.ssd/milestones/2026-08-19-feynman-audit/feynman.md`)
+graded 15 claims the library makes about itself and found four contradicted, three misleading, and one
+piece of pure theater. This release closes the ones that were fixable mechanically. New skill
+**`feynman`** (1.0.0) — claim ledger, six-grade scale, cargo-cult ritual inventory, and a mandatory
+lean-over-backwards self-audit.
+
+- **The library now runs its own gate (C1/C2/C3).** v2.5.0 shipped "the gate is functional, not merely
+  present" and never applied it here: no `.ssd/gate.yml`, and the repo's own `.gitignore` never got the
+  `!.ssd/gate.yml` negation that went into `methodology/selective.gitignore`. Both fixed, plus a
+  `.ssd/project.yml` (the orchestrator refuses to run without one, and the repo had none). `/ssd gate`
+  goes from **4 pass / 5 skip** to **5 pass / 4 skip**, with `tests-pass` running
+  `bash scripts/parity-test.sh` for real. The remaining `feature-flag-present` SKIP is now a *recorded
+  decision* in `gate.yml` — this repo has no runtime flag system — rather than a silent gap.
+- **The gate names its skips (C4/C5/C9).** `frontmatter-valid` reported "51 artifact(s) validated" while
+  34 artifacts had no matching schema at all; `skill-version-sync` reported "9 skill example(s) match"
+  while 2 skills — including `ssd/SKILL.md`, the orchestrator — were structurally exempt. Both rules now
+  report the unvalidated/exempt count, and every run ends with
+  `GATE N pass · N skip · N fail — a skip is a check that did not run`. `--json` gains `pass_count` /
+  `skip_count`.
+- **The selective `.gitignore` allow-list is now load-bearing (C12/C14).** `.ssd/*` matches depth-1
+  children only, so once `!.ssd/features/` re-included the directory, **every** file beneath it was
+  committable and the 12-line allow-list constrained nothing — a stray `secrets.env` under a feature dir
+  sailed through, and `no-leaky-state`'s fixed baseline would not catch it. Added `.ssd/features/**` /
+  `.ssd/milestones/**` deep denies plus directory re-includes. This also surfaced that
+  `code-reviewer`'s declared milestone output `review-<pr>.md` was **never in the allow-list** — three
+  such artifacts are tracked in this repo only because the list was inert. `!.ssd/milestones/**/review-*.md`
+  and `!.ssd/milestones/**/feynman.md` added.
+- **New `strict-selective-gitignore` migration (ADR-0008)** so existing projects actually receive the
+  fix. `apply_selective_gitignore`'s idempotency sentinel (`!.ssd/features/**/01-architect.md`) is
+  present in the *old* inert block, so re-running it would have skipped silently and left every
+  downstream project holed. Verified end-to-end against a pre-change project: `secrets.env` goes
+  committable → blocked, all declared artifact paths stay committable, idempotent on re-run.
+- **`README.md`** — `/codebase-skeptic` said "10 expert lenses"; it has been fifteen since v1.5.0
+  (2026-07-20). Corrected, `/feynman` registered in both tables, `.ssd` → `/ssd` typo in the taxonomy.
+- **Parity harness 69 → 77 assertions** — new `strict-selective-gitignore` fixture with negative
+  assertions (a stray file *must* be blocked). Confirmed it fails when the migration is deliberately
+  broken, rather than assuming it checks anything.
+
+Not fixed here: `ssd-init` Step 6.5 remains prose executed by a model with no harness to test it — the
+most important untested path in the library, and the one place the audit could grade nothing.
+
+---
+
 ## [2.5.0] — 2026-08-06
 
 ### `ssd-init` gate readiness — iteration A (ADR-0015)

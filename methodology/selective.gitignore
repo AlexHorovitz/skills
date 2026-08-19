@@ -10,7 +10,16 @@
 !.ssd/gate.yml
 !.ssd/features/
 !.ssd/milestones/
+
+# `.ssd/*` matches DEPTH-1 children only. Without the two deny lines below, re-including features/
+# and milestones/ would make EVERYTHING beneath them committable and the allow-list would be
+# decorative — a stray secrets.env under a feature dir would sail through. Deny at every depth
+# first, then re-include the directories, then the specific artifact filenames.
+.ssd/features/**
+.ssd/milestones/**
 !.ssd/features/**/
+!.ssd/milestones/**/
+
 !.ssd/features/**/00-brief.md
 !.ssd/features/**/01-architect.md
 !.ssd/features/**/02-systems-designer.md
@@ -22,17 +31,19 @@
 !.ssd/features/**/iterations/**/code-review/round-*.md
 !.ssd/features/**/iterations/**/deploy.md
 
-# Machine-managed state even when nested inside features/.
-.ssd/features/**/iterations/**/deferred.yml
-.ssd/features/**/current.yml.bak
-
 # Milestones: durable records committed; snapshot machinery local.
-!.ssd/milestones/**/
 !.ssd/milestones/**/skeptic-before.md
 !.ssd/milestones/**/skeptic-after.md
 !.ssd/milestones/**/refactor-plan.md
 !.ssd/milestones/**/refactor-prs.md
 !.ssd/milestones/**/verification.md
+!.ssd/milestones/**/review-*.md
+!.ssd/milestones/**/feynman.md
+
+# Machine-managed state even when nested inside the allowed trees. These deny lines come AFTER the
+# negations above so they win (last matching pattern wins).
+.ssd/features/**/iterations/**/deferred.yml
+.ssd/features/**/current.yml.bak
 .ssd/milestones/**/sha-before
 .ssd/milestones/**/metrics-before.yml
 
