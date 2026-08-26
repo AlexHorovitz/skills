@@ -423,6 +423,27 @@ rule_frontmatter_valid() {
   fi
 }
 
+# Read one scalar from a file's YAML frontmatter block ONLY — between the leading `---` and the next
+# `---`. Deliberately narrower than yaml_get: a feynman report's prose and grade tables legitimately
+# contain lines that yaml_get would match in the body (a claim quoted as `contradicted: ...`), and a
+# gate rule that can be steered by report prose is not a gate rule. Returns "" if the file has no
+# frontmatter or the key is absent.
+frontmatter_get() {
+  local file="$1" key="$2"
+  [[ -f "$file" ]] || { echo ""; return; }
+  awk -v k="$key" '
+    NR == 1 { if ($0 !~ /^---[[:space:]]*$/) exit; next }
+    /^---[[:space:]]*$/ { exit }
+    $0 ~ /^[[:space:]]*#/ { next }
+    $0 ~ "^[[:space:]]*"k":[[:space:]]*" {
+      sub(/^[[:space:]]*[^:]+:[[:space:]]*/, "")
+      sub(/[[:space:]]+#.*$/, ""); sub(/[[:space:]]+$/, "")
+      gsub(/^["'"'"']|["'"'"']$/, "")
+      print; exit
+    }
+  ' "$file"
+}
+
 # ----- rule: no-leaky-state --------------------------------------------------
 # Catches gitignored-by-policy files smuggled into the diff (force-add via `git add -f`,
 # `.gitignore` edited to remove protections, new artifact types not yet in `.gitignore`).
@@ -645,6 +666,66 @@ rule_issue_sync_current() {
   fi
 }
 
+# ----- rule: feynman-clean ---------------------------------------------------
+# feynman-clean (ADR-0016): when a `/feynman` epistemic audit report is part of this change set, its
+# verdict gates. A `contradicted` or `theater` claim means the project's own account of itself failed
+# against evidence the audit produced — shipping on that is shipping on a belief that has already
+# been falsified, which is the one thing the gate exists to make loud.
+#
+# This is a FAILable rule with the standard logged `/ssd ship --force` override, exactly like
+# `wip-commits`. It is NOT hard enforcement in the ADR-0012 Pillar 5 sense — that pillar rejects
+# branch-protection walls and required merge checks, not loud gate signals.
+#
+# Diff-scoped by design, like `frontmatter-valid` and `no-leaky-state`: it reads feynman reports that
+# appear in <base>..HEAD and SKIPs when none do. `/feynman` is deliberately NOT mandatory — running
+# it every cycle is precisely the ritualization its own Phase 3 exists to catch — so "no report" is a
+# SKIP, never a FAIL. Stated limitation: an audit committed on an earlier branch is not re-read here,
+# so a PASS means "no failing audit in this change set", not "this project's beliefs are calibrated".
+rule_feynman_clean() {
+  is_git_repo || { emit "SKIP" "feynman-clean" "not a git repo"; return; }
+  local files; files=$(diff_files)
+  if [[ -z "$files" ]]; then
+    emit "SKIP" "feynman-clean" "no diff ($(diff_scope_label))"; return
+  fi
+  # `*` in a bash case pattern crosses `/`, so these three patterns also cover reports nested under
+  # iterations/ (verified, not assumed).
+  local reports=() f
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    case "$f" in
+      .ssd/features/*/feynman.md|.ssd/milestones/*/feynman.md|docs/audits/feynman-*.md)
+        [[ -f "$PROJECT_ROOT/$f" ]] && reports+=("$f") ;;
+    esac
+  done <<< "$files"
+  if [[ ${#reports[@]} -eq 0 ]]; then
+    emit "SKIP" "feynman-clean" "no feynman report in scope ($(diff_scope_label))"; return
+  fi
+  local problems="" checked=0 unreadable=0 contradicted theater posture
+  for f in "${reports[@]}"; do
+    contradicted=$(frontmatter_get "$PROJECT_ROOT/$f" "contradicted")
+    theater=$(frontmatter_get "$PROJECT_ROOT/$f" "theater")
+    posture=$(frontmatter_get "$PROJECT_ROOT/$f" "posture")
+    # A report whose counters can't be read cannot be judged. Count it and say so (v2.6.0 doctrine:
+    # a rule reports what it did NOT check) rather than letting it pass silently.
+    if [[ ! "$contradicted" =~ ^[0-9]+$ ]] || [[ ! "$theater" =~ ^[0-9]+$ ]]; then
+      unreadable=$((unreadable + 1)); continue
+    fi
+    checked=$((checked + 1))
+    if [[ "$contradicted" -gt 0 ]] || [[ "$theater" -gt 0 ]]; then
+      problems+=" $f(${contradicted} contradicted, ${theater} theater${posture:+, posture=$posture})"
+    fi
+  done
+  if [[ -n "$problems" ]]; then
+    emit "FAIL" "feynman-clean" "audit verdict stands against this change set:${problems}"
+  elif [[ "$checked" -eq 0 ]]; then
+    emit "SKIP" "feynman-clean" "${unreadable} feynman report(s) in scope but claim_counts unreadable"
+  else
+    local detail="${checked} feynman report(s): 0 contradicted, 0 theater"
+    [[ "$unreadable" -gt 0 ]] && detail="$detail; ${unreadable} unreadable (not judged)"
+    emit "PASS" "feynman-clean" "$detail"
+  fi
+}
+
 # ----- run all rules ---------------------------------------------------------
 should_run wip-commits        && rule_wip_commits
 should_run tests-pass         && rule_tests_pass
@@ -654,6 +735,7 @@ should_run frontmatter-valid  && rule_frontmatter_valid
 should_run no-leaky-state     && rule_no_leaky_state
 should_run skill-version-sync && rule_skill_version_sync
 should_run migration-manifest-current && rule_migration_manifest_current
+should_run feynman-clean      && rule_feynman_clean
 should_run issue-sync-current && rule_issue_sync_current
 
 # ----- emit results ----------------------------------------------------------

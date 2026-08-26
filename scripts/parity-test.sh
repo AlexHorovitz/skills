@@ -893,6 +893,105 @@ test_fixture_issue_sync_current_skip_no_gh() {
 
 echo "SSD parity-test harness — gate-rules.sh structural conformance"
 echo "================================================================"
+# Fixture: feynman-clean (ADR-0016). Four behaviors, one of them negative: a report whose BODY
+# contains lines that look like frontmatter counters must NOT be able to talk the rule out of a FAIL.
+test_fixture_feynman_clean() {
+  echo "fixture: feynman-clean"
+  local tdir
+  tdir=$(fixture_setup "feynman-clean")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/milestones/m1
+  echo "base" > app.py
+  git add -A && git commit -qm "initial"
+  git checkout -qb feat
+
+  # (a) no feynman report in the diff → SKIP. /feynman is not mandatory.
+  echo "change" >> app.py
+  git add -A && git commit -qm "change with no audit"
+  assert_rule "feynman-clean" "feynman-clean" "SKIP"
+
+  # (b) clean report (0 contradicted, 0 theater) → PASS
+  cat > .ssd/milestones/m1/feynman.md <<'EOF'
+---
+skill: feynman
+version: 1.1.0
+claim_counts:
+  verified: 6
+  unverified: 1
+  contradicted: 0
+  theater: 0
+posture: calibrated
+gate_pass: true
+not_examined:
+  - production telemetry
+---
+# Feynman Audit
+Body prose.
+EOF
+  git add -A && git commit -qm "add clean audit"
+  assert_rule "feynman-clean" "feynman-clean" "PASS"
+
+  # (c) contradicted claims → FAIL, and the gate exits non-zero
+  cat > .ssd/milestones/m1/feynman.md <<'EOF'
+---
+skill: feynman
+version: 1.1.0
+claim_counts:
+  contradicted: 2
+  theater: 1
+posture: self-deceiving
+gate_pass: false
+not_examined:
+  - production telemetry
+---
+# Feynman Audit
+Body prose.
+EOF
+  git add -A && git commit -qm "audit finds contradicted claims"
+  assert_rule "feynman-clean" "feynman-clean" "FAIL"
+  if bash "$GATE_SCRIPT" --base main >/dev/null 2>&1; then
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    FAILURES+=("feynman-clean / exit-code: expected non-zero on FAIL, got 0")
+  else
+    PASS_COUNT=$((PASS_COUNT + 1))
+    [[ $VERBOSE -eq 1 ]] && echo "  ✓ feynman-clean / exit-code → non-zero"
+  fi
+
+  # (d) NEGATIVE: body prose that mimics clean counters must not override the frontmatter verdict.
+  cat > .ssd/milestones/m1/feynman.md <<'EOF'
+---
+skill: feynman
+version: 1.1.0
+claim_counts:
+  contradicted: 3
+  theater: 2
+posture: self-deceiving
+gate_pass: false
+not_examined:
+  - production telemetry
+---
+# Feynman Audit
+The two lines below are prose in the report body, not frontmatter:
+contradicted: 0
+theater: 0
+EOF
+  git add -A && git commit -qm "audit with adversarial body prose"
+  assert_rule "feynman-clean" "feynman-clean" "FAIL"
+
+  # (e) report present but claim_counts unreadable → SKIP, never a silent PASS
+  cat > .ssd/milestones/m1/feynman.md <<'EOF'
+---
+skill: feynman
+posture: unknown
+---
+No counters in this report.
+EOF
+  git add -A && git commit -qm "audit with unreadable counters"
+  assert_rule "feynman-clean" "feynman-clean" "SKIP"
+
+  fixture_teardown "$tdir"
+}
+
 test_fixture_clean_flagged
 test_fixture_wip_commit
 test_fixture_missing_flag
@@ -920,6 +1019,7 @@ test_fixture_close_feature_confirm
 test_fixture_close_epic_open_children
 test_fixture_close_epic_all_closed
 test_fixture_issue_sync_current_skip_no_gh
+test_fixture_feynman_clean
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

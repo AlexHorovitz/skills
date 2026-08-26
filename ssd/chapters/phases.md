@@ -142,8 +142,20 @@ Run every 4–8 weeks or after 10+ features land. Always runs *after* shipping, 
 - Record git SHA → `.ssd/milestones/<milestone>/sha-before`
 - Save current coverage / metrics → `.ssd/milestones/<milestone>/metrics-before.yml`
 
+**Step 0.5: Epistemic audit — propose `/feynman`** (ADR-0016). Offer it; do not run it unasked. Say
+what it does in one line ("grades what this project believes about itself against evidence") and why
+here ("a milestone acts on the *account* of the codebase — Step 1 audits the code, this audits the
+account"). Then:
+- **Accepted** → output `.ssd/milestones/<milestone>/feynman.md`. Its 🔴 contradicted claims become
+  declared scope for Step 1, so the skeptic reviews the structures the false beliefs were resting on.
+- **Declined** → record the decision in the milestone record. A skipped audit is a choice, not an
+  absence, and the next reader should be able to tell which it was.
+
+Never auto-run this step. An audit on every cycle becomes the ritual its own Phase 3 exists to catch —
+which would make the skill fail its own inventory. Offer, record, move on.
+
 1. **Deep audit** — invoke `codebase-skeptic`
-   - Full architectural critique across ten expert voices
+   - Full architectural critique across fifteen expert voices, of which 2–15 activate per codebase
    - Output: `.ssd/milestones/<milestone>/skeptic-before.md` (with frontmatter per O2)
 
 2. **Refactor planning** — invoke `refactor`
@@ -183,6 +195,12 @@ Mandatory after milestone refactors. Before the next feature cycle begins, run v
 3. **Re-invoke `code-reviewer`** on the refactor diff with explicit `remediation_mode: true` (triggers
    Phase 1.5 + Phase 3.5).
 
+3.5. **If `/feynman` ran at Step 0.5 of the milestone, propose re-running it.** Verification's own
+   claim — "all original findings are ✅ closed" — is exactly the kind of assertion the epistemic
+   audit exists to test, and a milestone that closes findings on paper is the failure mode it was
+   built for. Compare `claim_counts` against the earlier report: contradicted going up during a
+   remediation is a louder signal than any single unclosed finding.
+
 4. **Verification passes if:**
    - All original BLOCKER / 🔴 / 💀 findings are ✅ closed
    - No 🆕 new-regression is BLOCKER severity
@@ -202,6 +220,11 @@ indistinguishable from wishful thinking.
 For adversarial evaluation: comparing approaches, legacy onboarding, vendor selection, or when you need an uncomfortable honest assessment.
 
 Invoke `software-standards`.
+
+**Also propose `/feynman`** when the uncomfortable question is internal rather than comparative.
+`software-standards` answers "how do we compare to the field?"; `feynman` answers "is our own account
+of ourselves true?" A vendor selection wants the former; "why does this keep slipping?" wants the
+latter. Both may run — they are coordination, not substitution.
 
 Output: comparative scored report with Hard Truth section.
 Use findings to inform architect redesign or refactor priorities.
@@ -238,6 +261,13 @@ existing `04-code-review.md` is permitted in lieu of a separate file. See `code-
 ### `/ssd ship` — Deploy Readiness Check
 
 Invoke `systems-designer` deploy checklist for the feature about to ship.
+
+**At the gate boundary,** `feynman-clean` (ADR-0016) FAILs if a `feynman.md` in this change set
+reports `contradicted` or `theater` claims — the project's own account of itself failed against
+evidence, and shipping on it means shipping on a belief already falsified. Surface the rule's detail
+verbatim; the override is the ordinary logged `/ssd ship --force`, never a silent pass. The rule SKIPs
+when no audit is in scope: **not running `/feynman` is not a violation**, so a SKIP or PASS here means
+"no failing audit in this change set", not "the beliefs are calibrated." Say that when you report it.
 
 Invoke `systems-designer` to produce the platform-appropriate deploy checklist. The checklist is defined and maintained by that skill — do not duplicate it here. The systems-designer skill covers web, mobile (iOS/Android), and macOS desktop deployment readiness.
 

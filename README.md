@@ -86,7 +86,7 @@ stays a first-class escape hatch — every phase is still directly invokable. Th
 | Bootstrap | `ssd-init` | Once, at project start (or when `.ssd/` has drifted) |
 | Orchestrator | `/ssd` | Always — start here after init |
 | Domain | `architect`, `coder`, `systems-designer`, `refactor` | When working outside the SSD workflow |
-| Review | `code-reviewer`, `codebase-skeptic`, `software-standards`, `feynman` | On-demand or via SSD |
+| Review | `code-reviewer`, `codebase-skeptic`, `software-standards`, `feynman` | On-demand, or proposed by SSD at the milestone / verify / audit / pre-ship points |
 | Reference | `methodology` | When you want to understand SSD doctrine |
 
 ---
@@ -138,7 +138,7 @@ more than one feature at once:
 | `/coder` | Implementation from spec (Python, TypeScript, Swift, Ruby, Java, C#, PHP, Go, Rust, C/C++, Obj-C) |
 | `/code-reviewer` | PR gate: BLOCKER/MAJOR findings block merge |
 | `/codebase-skeptic` | Deep architectural critique through fifteen expert lenses |
-| `/feynman` | Epistemic audit: builds a claim ledger and grades what the project believes about itself against evidence |
+| `/feynman` | Epistemic audit: builds a claim ledger and grades what the project believes about itself against evidence. Proposed at `/ssd milestone` Step 0.5, `verify`, `audit`, and pre-`ship`; gated by the `feynman-clean` rule ([ADR-0016](docs/decisions/ADR-0016-feynman-orchestrator-integration.md)) |
 | `/software-standards` | Adversarial comparative audit |
 | `/refactor` | Post-ship targeted improvement |
 | `/methodology` | SSD methodology reference + `/methodology score` self-adherence metric |

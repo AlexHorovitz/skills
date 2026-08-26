@@ -8,8 +8,9 @@
 | `architect` | Design: models, services, API boundaries | start, feature |
 | `systems-designer` | Production readiness: reliability, observability, deployment safety | start, feature, ship |
 | `coder` | Implementation from spec (language-adaptive) | feature |
-| `code-reviewer` | PR gate: BLOCKER/MAJOR findings block merge | feature, milestone, gate |
-| `codebase-skeptic` | Deep architectural critique (10 expert voices) | milestone |
+| `code-reviewer` | PR gate: BLOCKER/MAJOR findings block merge | feature, milestone, gate, verify |
+| `codebase-skeptic` | Deep architectural critique (15 expert voices, of which 2–15 activate per codebase) | milestone |
+| `feynman` | Epistemic audit: grades what the project *believes* about itself against evidence (claim ledger, six grades, ritual inventory). **Proposed, never auto-run** | milestone (Step 0.5), verify, audit, pre-ship |
 | `software-standards` | Adversarial comparative audit | audit |
 | `refactor` | Post-ship targeted improvement | milestone |
 | `methodology` | SSD doctrine reference + `/methodology score` self-adherence metric | reference / any phase |
@@ -20,18 +21,24 @@
 
 ## Review Tier Selection
 
-Three skills do "review" work. Never chain all three — pick the right tier:
+Four skills do "review" work. Never chain all four — pick the right tier:
 
 - **`code-reviewer`** — every PR, always, no exceptions
 - **`codebase-skeptic`** — milestone reviews and pre-release audits
 - **`software-standards`** — comparative/adversarial evaluation only
+- **`feynman`** — before a release or a status report that will be believed; after an incident that
+  "shouldn't have been possible"; when the build is green and you don't feel safe deploying
+
+The first three grade the **artifact**; the fourth grades the **belief**. A codebase can be well
+designed and thoroughly lied about, and a mediocre one can be perfectly well understood — so a clean
+pass from one tier is not evidence for another.
 
 ---
 
 ## Resolving Skill Overlap
 
 When two skills could both handle the same request, the orchestrator picks the more specific one —
-unless the skill's "When NOT to use" clause disqualifies it. There are **8 known overlap pairs**.
+unless the skill's "When NOT to use" clause disqualifies it. There are **9 known overlap pairs**.
 The first three are *substitution* pairs (one skill replaces the other for a request); the rest
 are *coordination* pairs (both skills run, but in a fixed order/role, or are selected by project
 state, never competing). Skill A / Skill B below name the two skills; the rule says how they relate.
@@ -45,6 +52,7 @@ state, never competing). Skill A / Skill B below name the two skills; the rule s
 | `architect` | `systems-designer` | Coordination. In `/ssd design`, `architect` runs first (models, APIs, ADRs); `systems-designer` runs second and is **purely additive** (failure modes, observability, deploy safety). Never substitute one for the other. `systems-designer` is N/A for markdown / docs-only projects, where `architect` runs alone. |
 | `methodology` | (all skills) | Reference-tier. `methodology` supplies doctrine + the `/methodology score` self-adherence metric; it is rarely invoked directly in a feature loop. When another skill's behavior is in question, prefer that skill; consult `methodology` only for doctrine adjudication. |
 | `codebase-skeptic` | `refactor` | Producer → consumer. In `/ssd milestone` / `/ssd verify`, `codebase-skeptic` *produces* findings (`skeptic-before.md` / `skeptic-after.md`) and `refactor` *consumes* them into a plan. Never the reverse — don't ask `refactor` to audit or `codebase-skeptic` to plan fixes. |
+| `codebase-skeptic` | `feynman` | Coordination, not substitution — they answer different questions and both may run at a milestone. `codebase-skeptic` asks "is this system well designed?"; `feynman` asks "is what we believe about it true?". Order matters when both run: `feynman` first (its 🔴 contradicted claims become structural scope for the skeptic); never the reverse. Neither substitutes for the other, and a clean pass from one says nothing about the other. |
 | `ssd-init` | `/ssd upgrade` | State-disjoint coordination ([ADR-0013](../../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md)). `ssd-init` when `.ssd/project.yml` is **absent** (first run / create). `/ssd upgrade` when it's **present and behind** (migrate to the latest conventions). Both call `methodology/migrate.sh`; neither duplicates migration logic. Never run `ssd-init` to "catch up" an initialized project — that's `/ssd upgrade`. |
 
 Each *substitution*-pair skill MUST have a "When NOT to use" section naming the other skill(s) and the priority

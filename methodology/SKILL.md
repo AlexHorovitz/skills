@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.7.0
+**Version:** 1.7.1
 
 **Canonical methodology pages**: [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html) (full doctrine), [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html) (practical implementation), [insanelygreat.com/agile2.html](https://insanelygreat.com/agile2.html) (companion manifesto). The website is the user-facing reference; this skill set is the in-repo doctrine the orchestrator enforces.
 
@@ -93,7 +93,7 @@ The script:
 - Skips rules whose preconditions don't apply (e.g., no `test_command` in `project.yml` → SKIP, not
   FAIL).
 
-Rules implemented in v1.4.0:
+Rules implemented (v1.4.0 baseline; later additions marked in the table):
 
 | Rule | Doctrine cite | What it checks |
 |---|---|---|
@@ -104,6 +104,9 @@ Rules implemented in v1.4.0:
 | `frontmatter-valid` | structured output requirement (SSD/SKILL.md § "Structured Output Requirements") | Every changed `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md` artifact has YAML frontmatter that validates against its skill's schema in `methodology/schemas/<skill>.yml`. SKIPs if Python 3 or PyYAML are missing (graceful degradation). |
 | `no-leaky-state` | [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md) | No file matching the `.ssd/` selective-commit deny-list (machine state plus project-supplied `project.yml.ssd.gitignored_state`) appears in the diff. Catches force-add and edited-gitignore bypasses. SKIPs on `gitignore_mode: blanket`. |
 | `skill-version-sync` | core.md §2 (Documentation matches implementation) | Each `<project-root>/*/SKILL.md`'s required-frontmatter example `version:` matches that file's `**Version:**` banner (via `frontmatter-validate.py --check-skill-examples`). SKIPs placeholder examples and projects with no in-repo SKILL.md example blocks. |
+| `migration-manifest-current` | [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md) | (v1.24.0+) `methodology/migrations.yml` is structurally healthy: required fields per entry, unique `id`s, ascending `introduced_in`, none newer than `VERSION`. SKIPs in every project without the manifest (i.e. everything but this repo). |
+| `issue-sync-current` | [ADR-0014](../docs/decisions/ADR-0014-github-issue-state-tracking.md) | (v2.4.0+) GitHub issue mirror has not drifted. Informational; FAILs only on hard contradiction. SKIPs by default. |
+| `feynman-clean` | [ADR-0016](../docs/decisions/ADR-0016-feynman-orchestrator-integration.md) | (v2.7.0+) Any `feynman.md` in the change set reports zero `contradicted` and zero `theater` claims. Reads frontmatter counters only. SKIPs when no audit is in scope — a PASS is not a claim that the project's beliefs are calibrated. |
 
 The script is the source of truth — `cat methodology/gate-rules.sh` answers "what does the gate
 actually check?" Direct invocation is supported for CI integration:
@@ -150,6 +153,11 @@ see existing schemas for format. Adding a new validator type (beyond `string`/`i
 ---
 
 ## Changelog
+
+- **1.7.1** (2026-08-26) — Completed the `Gate Rules — Executable` catalog: it documented seven rules
+  while the script implemented nine, and now lists all ten including `feynman-clean` (ADR-0016).
+  Corrected the "Rules implemented in v1.4.0" heading, which had come to mean "the rules that existed
+  two years of releases ago." Documentation accuracy only; no behavior change.
 
 - **1.7.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the now-obsolete `> Profile stance: invariant` note — the `developer_profile` concept no longer exists library-wide. This skill never branched on profile; no behavior change.
 - **1.6.2** (2026-06-13) — New doctrine in `core.md` § "Recording Decisions": a consequential

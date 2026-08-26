@@ -6,6 +6,58 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.7.0] — 2026-08-26
+
+### `/feynman` is now invoked by the workflow it claimed to serve (ADR-0016)
+
+v2.6.0 shipped the `feynman` skill with an `## Interface` table asserting that `ssd` consumed it, that
+it ran at four `/ssd` phases, and that its `gate_pass` "blocks ship on `contradicted` or `theater`
+claims." `grep -rn 'feynman' ssd/ methodology/gate-rules.sh` returned **nothing**. Three
+present-tense, load-bearing claims backed by no code — the defect this skill exists to find, in the
+skill itself. This release backs them, and constrains how.
+
+- **New `feynman-clean` gate rule.** Any `feynman.md` in the change set must report zero
+  `contradicted` and zero `theater` claims. Four deliberate properties: it reads the **counters, not
+  `gate_pass`** (a rule trusting the boolean could be cleared by editing one character, making the
+  report judge its own verdict); it reads **frontmatter only, never the body** (report prose
+  legitimately contains lines like `contradicted: 0` — a gate the report can argue with is not a
+  gate); it is **diff-scoped**; and **no report means SKIP, never FAIL**.
+- **Not a Pillar 5 wall.** [ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) Pillar 5's
+  reversibility contract says the gate should not block absent evidence of ungated defects reaching
+  users. No exception was taken, because none is needed: Pillar 5 rejects *branch-protection walls and
+  required merge checks*, not FAILable rules. `wip-commits` has FAILed since v1.4.0 with the same
+  logged `/ssd ship --force` override. ADR-0016 § "Alternatives rejected" records why claiming an
+  exception would have been a miscategorization with a bad precedent.
+- **Proposed, never auto-run.** The skill's own § "Frequency" warns that running it every sprint makes
+  it the eighteenth ritual nobody can trace to a decision — *"at which point Phase 3 will catch it, and
+  should."* Auto-invocation would make the skill fail its own inventory. So `/ssd milestone` gains
+  **Step 0.5**, which *offers* the audit and **records a decline** rather than passing silently (the
+  same move v2.6.0 made for the deliberately-unset `feature_flag_marker`: a reader can tell a choice
+  from a gap). `/ssd verify` re-proposes it — verification's own "all findings closed" is itself a
+  claim worth grading. `/ssd audit` offers it as the internal counterpart to `software-standards`.
+- **New `methodology/schemas/feynman.yml`.** Feynman reports were counted among `frontmatter-valid`'s
+  "unvalidated (no matching schema)" tally — the count v2.6.0 added to stop overstating coverage.
+  `not_examined` is a **required** field: structural validation cannot tell whether an audit was
+  honest, but it can refuse a report that never says what it skipped. Gate now reads
+  `52 validated; 33 unvalidated`, up from 51/34.
+- **What a PASS does not mean.** Every place the rule is documented states that PASS or SKIP means
+  "no failing audit in this change set", *not* "this project's beliefs are calibrated." Citing it as
+  the latter would be a fresh instance of the misleading-coverage defect v2.6.0 was released to fix.
+- **Three stale orchestrator claims fixed while in there.** `ssd/chapters/skills.md` and
+  `ssd/chapters/phases.md` both still said `codebase-skeptic` reviews through **ten** expert voices —
+  fifteen since v1.5.0 (2026-07-20). This is the same error the v2.6.0 Feynman audit graded 🔴 (C6) and
+  "fixed" **in `README.md` only**, leaving it live in the two files the orchestrator actually loads.
+  Also: review tiers three → four, `code-reviewer`'s missing `verify` phase, a ninth overlap pair
+  (`codebase-skeptic` / `feynman` — coordination, feynman first), and `issue-sync-current` added to
+  both enforcement catalogs, which had documented eight and seven rules while the script ran nine.
+- **Parity 77 → 83 assertions,** including a **negative** assertion (body prose mimicking clean
+  counters must not talk the rule out of a FAIL) and an exit-code assertion. Confirmed the harness
+  fails when the rule is deliberately broken — 3 assertions — rather than assuming it checks anything.
+- **Migration** `feynman-gate-rule` (guided, ADR-0016). Nothing to install; the rule SKIPs where no
+  audit exists, so a project that never runs `/feynman` is unaffected.
+- Skills touched: `feynman` → 1.1.0, `ssd` → 2.7.0 (banner re-align, three chapters),
+  `methodology` → 1.7.1 (rule catalog completed). `VERSION` → 2.7.0.
+
 ## [2.6.0] — 2026-08-19
 
 ### Feynman audit remediation — the gate names its skips, and the allow-list actually blocks

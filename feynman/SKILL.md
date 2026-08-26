@@ -20,7 +20,7 @@ description: >
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.0.0
+**Version:** 1.1.0
 
 > "The first principle is that you must not fool yourself — and you are the easiest person to fool."
 > — Richard Feynman, *Cargo Cult Science*, Caltech commencement, 1974
@@ -71,15 +71,15 @@ be perfectly well understood. These are different audits and they fail in differ
 |---|---|
 | **Input** | Repository, plus its surrounding state of affairs: CI config and history, test suite, dashboards, alerts, `.ssd/` artifacts, ADRs, ticket/issue tracker, recent status reports, and the user's own framing of the situation |
 | **Output** | `.ssd/milestones/<milestone>/feynman.md` (milestone scope) · `.ssd/features/<slug>/feynman.md` (feature scope) · `docs/audits/feynman-<YYYY-MM-DD>.md` (non-SSD project with a `docs/` tree) · otherwise emit inline and offer to write |
-| **Consumed by** | `codebase-skeptic` (contradicted claims become structural review scope), `refactor` (confirmed findings drive prioritization), `ssd` (`gate_pass` blocks ship on `contradicted` or `theater` claims) |
-| **SSD Phase** | `/ssd milestone`, `/ssd verify`, `/ssd audit`, pre-`/ssd ship` |
+| **Consumed by** | `codebase-skeptic` (contradicted claims become structural review scope), `refactor` (confirmed findings drive prioritization), `methodology/gate-rules.sh` (the `feynman-clean` rule — see below) |
+| **SSD Phase** | **Proposed, never auto-run**, at `/ssd milestone` (Step 0.5), `/ssd verify`, `/ssd audit`, and pre-`/ssd ship`. Declining is recorded, not silent. Invocable directly as `/feynman` at any time. |
 
 **Required output frontmatter** — every report opens with:
 
 ```yaml
 ---
 skill: feynman
-version: 1.0.0
+version: 1.1.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -104,7 +104,39 @@ read_evidence: 0         # count graded by reading only
 ```
 
 `not_examined` is machine-readable leaning-over-backwards. An empty `not_examined` is itself a finding
-against this report.
+against this report. The frontmatter is schema-validated by `methodology/schemas/feynman.yml`, so a
+report missing these fields FAILs the `frontmatter-valid` gate rule rather than passing unchecked.
+
+## How and When This Is Invoked
+
+Two paths, and the distinction matters (ADR-0016):
+
+1. **Directly — `/feynman`.** Any time. This is the everyday path.
+2. **Proposed by the orchestrator.** At `/ssd milestone` Step 0.5, in `/ssd verify`, in `/ssd audit`,
+   and at the pre-ship gate boundary, `/ssd` *offers* this audit and names why. It never runs it for
+   you, and declining is recorded in the milestone record rather than passing silently.
+
+**Why proposed and not automatic.** See § "Frequency" below: an audit that runs on every cycle
+becomes the eighteenth ritual nobody can trace to a decision, which is exactly what Phase 3 exists to
+catch. Auto-invocation would make this skill fail its own inventory. The orchestrator's job is to make
+sure you are *asked* at the moments that warrant it — not to convert the asking into a ceremony.
+
+**What gates on the result.** The `feynman-clean` gate rule reads any `feynman.md` in the change set
+and FAILs when `claim_counts.contradicted > 0` or `claim_counts.theater > 0`. Three properties worth
+knowing:
+
+- **It reads the counters, not `gate_pass`.** `gate_pass` is a convenience mirror for humans. A rule
+  that trusted it could be cleared by flipping one boolean, which would make the report the judge of
+  its own verdict.
+- **It reads frontmatter only, never the body.** Report prose and grade tables legitimately contain
+  lines that look like counters. A gate a report can argue with is not a gate.
+- **No report means SKIP, never FAIL.** Not running this audit is not itself a violation — see above.
+  A PASS therefore means "no failing audit in this change set," *not* "this project's beliefs are
+  calibrated." The rule names its own limit; so should you when you cite it.
+
+The FAIL is a **loud signal with a logged override** (`/ssd ship --force`), the same shape as
+`wip-commits`. It is not a wall in the ADR-0012 Pillar 5 sense — that pillar rejects branch-protection
+walls and required merge checks, not FAILable gate rules.
 
 ---
 
@@ -444,6 +476,13 @@ everything else is scaffolding for it.
 
 ## Changelog
 
+- **1.1.0** (2026-08-26) — Orchestrator integration ([ADR-0016](../docs/decisions/ADR-0016-feynman-orchestrator-integration.md)).
+  The Interface table previously claimed `ssd` consumed this skill's `gate_pass` and named four `/ssd`
+  phases; nothing in the orchestrator referenced this skill and no rule read the field, so both rows
+  were aspiration presented as fact. Now backed: new `feynman-clean` gate rule, new
+  `methodology/schemas/feynman.yml`, and the milestone / verify / audit / pre-ship playbooks propose
+  the audit explicitly. Invocation stays **proposed, never automatic** — auto-running it every cycle
+  is the ritualization Phase 3 exists to catch. Added § "How and When This Is Invoked".
 - **1.0.0** (2026-08-19) — Initial release. Seven-phase epistemic audit derived from Feynman's *Cargo
   Cult Science* (Caltech, 1974) and the engineering commentary at
   [insanelygreat.com/fooling-yourself.html](https://insanelygreat.com/fooling-yourself.html): claim

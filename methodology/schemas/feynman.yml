@@ -1,0 +1,30 @@
+# Frontmatter schema — feynman output (ADR-0016).
+# v1: structural validation only. It cannot check that a grade is *correct* — only that the report
+# declares the fields a reader (and the `feynman-clean` gate rule) needs in order to judge it.
+#
+# Note what is deliberately required: `not_examined`. The skill's Phase 7 makes leaning over
+# backwards mandatory, and an absent `not_examined` is the single most likely way a report quietly
+# presents a scoped audit as a complete one. Structural validation can at least insist the field
+# exists; only a reader can tell whether it is honest.
+
+skill: feynman
+applies_to:
+  - feynman.md                       # .ssd/milestones/<topic>/ and .ssd/features/<slug>/
+  - feynman-*.md                     # docs/audits/feynman-<YYYY-MM-DD>.md
+
+required:
+  skill: string
+  version: string
+  produced_at: timestamp
+  produced_by: string
+  project: string
+  scope: string
+  consumed_by: list
+  claim_counts: dict
+  rituals_audited: int
+  one_true_sentence: string
+  posture: string
+  gate_pass: bool
+  not_examined: list
+  executed_evidence: int
+  read_evidence: int

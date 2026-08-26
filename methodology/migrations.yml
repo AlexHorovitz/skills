@@ -132,3 +132,12 @@ migrations:
     title: "selective .gitignore allow-list made load-bearing (deep deny) + review-*.md / feynman.md negations"
     detect: "the project's .gitignore carries the `.ssd/features/**` deep-deny line (executable probe: detect() in migrate.sh)"
     apply: "insert `.ssd/features/**` + `.ssd/milestones/**` denies and the `!.ssd/features/**/` + `!.ssd/milestones/**/` directory re-includes after the `!.ssd/milestones/` line, then add the `!.ssd/milestones/**/review-*.md` and `!.ssd/milestones/**/feynman.md` negations. Without the deep deny, `.ssd/*` matches depth-1 only and every file under features/ and milestones/ is committable regardless of the allow-list. Idempotent on both passes; only upgrades a project that already carries the selective block."
+
+  - id: feynman-gate-rule
+    introduced_in: "2.7.0"
+    applies_to: project
+    kind: guided
+    adr: ADR-0016
+    title: "feynman-clean gate rule + /feynman proposed at milestone, verify, audit, pre-ship"
+    detect: null
+    guidance: "The gate gained a `feynman-clean` rule: any .ssd/**/feynman.md in a change set must report zero `contradicted` and zero `theater` claims, or the gate FAILs (logged `/ssd ship --force` override, as with any FAILable rule). Nothing to install — the rule ships in gate-rules.sh and SKIPs in every project with no audit in scope, so a project that never runs /feynman is unaffected. What changed for you: /ssd milestone now offers the audit at Step 0.5 (declining is recorded, not silent), and /ssd verify re-proposes it. Run /feynman before your next release to see what it says."
