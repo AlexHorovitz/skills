@@ -74,6 +74,34 @@ around the same boundary. A solo developer who prefers the legacy v1.3.0–v1.17
 behavior sets `project.yml.ssd.gitignore_mode: blanket` and replaces the selective `.gitignore`
 pattern with a bare `.ssd/` line; the `no-leaky-state` rule then SKIPs cleanly.
 
+**Private mode (v2.8.0+, [ADR-0017](../../docs/decisions/ADR-0017-private-mode.md)).** A third value,
+`gitignore_mode: private`, tracks **nothing** SSD produces — the whole of `.ssd/` plus the
+`docs/decisions/`, `docs/runbooks/`, and `docs/architecture/` trees. The three modes side by side:
+
+| Path class | `selective` (default) | `blanket` | `private` |
+|---|---|---|---|
+| `.ssd/features/**` durable artifacts | ✅ committed | ❌ | ❌ |
+| `.ssd/milestones/**` durable records | ✅ committed | ❌ | ❌ |
+| `.ssd/gate.yml` (ADR-0015 gate inputs) | ✅ committed | ✅ committed | ❌ |
+| `.ssd/` machine state | ❌ | ❌ | ❌ |
+| `docs/decisions/` ADRs | ✅ committed | ✅ committed | ❌ |
+| `docs/runbooks/`, `docs/architecture/` | ✅ committed | ✅ committed | ❌ |
+| `no-leaky-state` gate rule | enforces the split | SKIPs (nothing to protect) | **enforces the privacy boundary** |
+
+Two things to note about the last row and the `gate.yml` row:
+
+- Private mode is the mode where `no-leaky-state` is **load-bearing** rather than advisory. Under
+  `blanket` it SKIPs because nothing needs protecting; under `private` a leaked artifact is a privacy
+  failure, not commit noise.
+- Private mode **does not change artifact paths** — ADRs still go to `docs/decisions/` in every mode.
+  Only the commit posture changes. Relocating them under `.ssd/docs/` was considered and rejected;
+  twelve non-`.ssd/` files hardcode `docs/decisions/`, and ADR-0008 already settled this as "keep the
+  paths, change the gitignore."
+
+Canonical pattern sources: [`methodology/selective.gitignore`](../../methodology/selective.gitignore)
+and [`methodology/private.gitignore`](../../methodology/private.gitignore). Both are consumed verbatim
+by `ssd-init` Step 5 and `methodology/migrate.sh`; neither pattern is duplicated anywhere else.
+
 **Worktree note (v1.15.0, [ADR-0007](../../docs/decisions/ADR-0007-parallel-features.md)):** a workstream
 with a non-null `worktree:` field has its *working tree* (source files, in-progress edits) at the
 recorded sibling path — but the authoritative `.ssd/` directory remains at the main repo checkout.

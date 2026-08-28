@@ -1,0 +1,19 @@
+# SSD private mode (ADR-0017, v2.8.0+). NOTHING SSD produces is tracked by git.
+#
+# CANONICAL SINGLE SOURCE. `ssd-init/SKILL.md` Step 5 and `methodology/migrate.sh`
+# (apply_private_mode) append this file's contents verbatim. Edit only here.
+#
+# Deliberately contains NO `!` negation — not even `!.ssd/gate.yml` (ADR-0015's committed gate
+# inputs cannot exist under this mode; see ADR-0017 § "What we give up"). Selective mode needs a
+# precise allow-list because it commits a subset; private mode commits nothing, so there is no
+# allow-list to get wrong.
+#
+# The sentinel line below is load-bearing: `ssd-init` Step 5.5 runs BEFORE Step 6 writes
+# project.yml, so at that point in the init flow the mode can only be read off .gitignore. No
+# functional line here is distinctive enough to serve (a bare `.ssd/` is indistinguishable from
+# blanket mode), hence a comment sentinel. Detection order must be private -> selective -> blanket.
+# ssd:gitignore-mode=private
+.ssd/
+docs/decisions/
+docs/runbooks/
+docs/architecture/

@@ -20,6 +20,7 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 - [`ssd-upgrade`](.ssd/features/ssd-upgrade/01-architect.md) — `/ssd upgrade`: detect SSD convention drift and migrate a project forward idempotently (4 iterations, v1.21–v1.24; [ADR-0013](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md)).
 - [`ssd-skill-chapter-split`](.ssd/features/ssd-skill-chapter-split/00-brief.md) — split the `ssd/SKILL.md` monolith into a thin spine + on-demand chapters (v1.25; the [ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) 2.0 prerequisite P1).
 - [`ssd-2.0-cuts`](.ssd/features/ssd-2.0-cuts/01-architect.md) — **SSD 2.0**, the subtractive milestone ([ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md), greenlit via [`ssd-2.0-greenlight`](.ssd/features/ssd-2.0-greenlight/00-brief.md)). Three iterations: (A) remove the `developer_profile`/`teaching_mode` concept library-wide — BREAKING, v2.0.0; (B) collapse to **one surface, progressively disclosed** — v2.1.0; (C) the `/ssd upgrade` deprecation path via the `obsoleted_in` manifest field — v2.2.0.
+- [`ssd-private-mode`](.ssd/features/ssd-private-mode/01-architect.md) — `gitignore_mode: private`: run SSD with **no paper trail in git** ([ADR-0017](docs/decisions/ADR-0017-private-mode.md)). Nothing SSD produces is tracked — `.ssd/` plus the `docs/decisions/`, `docs/runbooks/`, `docs/architecture/` trees — while every rail step and gate rule still runs. Iteration A ships the mode (v2.8.0); iteration B adds the `/ssd upgrade` retrofit. Opt-in at `ssd-init --private`; absent ⇒ byte-identical behavior. See [Private mode](#private-mode-optional) below.
 - [`github-issue-tracking`](.ssd/features/github-issue-tracking/01-architect.md) — opt-in, one-way mirror of workstream state to GitHub issues (ADR=epic, workstream=feature issue, `ssd:phase/*` labels; [ADR-0014](docs/decisions/ADR-0014-github-issue-state-tracking.md)). Two iterations: (A) the additive mirror — `ensure-epic`/`ensure-feature`/`set-phase` + auto-sync on phase advance, v2.3.0; (B) the close lifecycle (`close-feature`/`close-epic` behind `auto_close`) + the informational `issue-sync-current` gate rule, v2.4.0. Default-off — zero behavior change until a project opts in. See [GitHub Issue Tracking](#github-issue-tracking-optional) below.
 
 ## Methodology
@@ -99,6 +100,9 @@ Run once per project (idempotent; safe to re-run). Creates `.ssd/` (gitignored w
 `.ssd/project.yml` (detected stack/framework/platform), `.ssd/current.yml` (active workstreams),
 `docs/decisions/` / `docs/runbooks/` / `docs/architecture/` (committed decision records), and reports
 SSD prerequisite status (CI/CD, tests, flags, deploy).
+
+Flags: `--keep-blanket-gitignore` (legacy all-gitignored `.ssd/`) · `--private` (track nothing SSD
+produces — see [Private mode](#private-mode-optional)).
 
 ### `/ssd` — The Meta-Skill
 
@@ -209,6 +213,61 @@ integrations:
 Requires the `gh` CLI, authenticated. With the toggle off or `gh` unavailable, the mirror is a silent
 no-op (best-effort — a sync failure never blocks SSD work). The mechanism is
 [`methodology/issue-sync.sh`](methodology/issue-sync.sh).
+
+Incompatible with [Private mode](#private-mode-optional) — mirroring workstream state to a public
+tracker contradicts it outright, so `issue-sync.sh preflight` refuses (`exit 4`) under
+`gitignore_mode: private`.
+
+---
+
+## Private mode (optional)
+
+*v2.8.0+ · [ADR-0017](docs/decisions/ADR-0017-private-mode.md)*
+
+SSD can run with **no paper trail in git**. For client work, a shared repo where SSD is your personal
+practice rather than a team standard, an OSS contribution, or simply a project whose working notes are
+nobody else's business.
+
+```bash
+/ssd-init --private
+```
+
+Sets `project.yml.ssd.gitignore_mode: private` and writes
+[`methodology/private.gitignore`](methodology/private.gitignore), which tracks **nothing** SSD produces:
+
+| | |
+|---|---|
+| Gitignored | all of `.ssd/` (including `.ssd/gate.yml`), `docs/decisions/`, `docs/runbooks/`, `docs/architecture/` |
+| Also suppressed | `add-` branch prefix (branches become plain `{slug}`), GitHub issue tracking (forced off), the `CLAUDE.md` SSD section |
+| **Kept** | the `🛠️ Crafted with SSD` commit/PR footer |
+
+**Every rail step and every gate rule still runs.** Privacy is a *storage and visibility* posture, never
+a reduction in rigor — `no-leaky-state` in fact becomes *more* load-bearing here than in any other mode,
+since it is what enforces the boundary.
+
+### What "private" does and does not mean
+
+- **Untracked, not encrypted.** Artifacts sit in plaintext on disk.
+- **Not anonymous.** The attribution footer is deliberately kept — anyone reading commit trailers can
+  still tell SSD was used. That is intended; privacy here means no SSD *mechanics or documentation* in
+  the tree. (A separate `--no-attribution` knob would be its own decision.)
+- **Cannot un-publish history.** Switching an existing project stops *future* tracking;
+  `git rm --cached` does not rewrite what is already pushed.
+
+### Trade-offs, stated plainly
+
+- **Gate config does not travel.** No committed `.ssd/gate.yml` can exist, so `test_command` and
+  `feature_flag_marker` live in gitignored `project.yml` and do not reach a second clone or a CI
+  runner. This knowingly reopens [ADR-0015](docs/decisions/ADR-0015-ssd-init-gate-readiness.md)'s root
+  cause P2 — whose cost is proportional to your number of collaborators, and private mode's premise is
+  that there are none. See the ADR-0015 addendum.
+- **`adr-delta` and `feynman-clean` use a weaker probe.** ADRs are untracked, so they cannot appear in
+  a diff; both rules fall back to inspecting the working tree and say so in their output. Without that
+  fallback `adr-delta` would deadlock against `no-leaky-state` and make the gate unpassable.
+
+`selective` (the default) and `blanket` projects are unaffected — every change sits behind a
+`private` branch. The three modes are compared in
+[`ssd/chapters/artifacts.md`](ssd/chapters/artifacts.md).
 
 ---
 

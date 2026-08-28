@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.7.1
+**Version:** 1.8.0
 
 **Canonical methodology pages**: [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html) (full doctrine), [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html) (practical implementation), [insanelygreat.com/agile2.html](https://insanelygreat.com/agile2.html) (companion manifesto). The website is the user-facing reference; this skill set is the in-repo doctrine the orchestrator enforces.
 
@@ -42,8 +42,10 @@ This skill is organized into three focused files. Load the relevant file based o
 | `adoption.md` | Getting started checklist, Common objections, Org adoption, Comparisons to Agile/CD/TBD, Resources | User is onboarding a team, handling pushback, or comparing SSD to other methods |
 | `gate-rules.sh` | Executable bash routine implementing the methodology gate rules; invoked by `/ssd gate` | Automated — not loaded in conversation. See [ADR-0005](../docs/decisions/ADR-0005-gate-execution-model.md). |
 | `migrate.sh` + `migrations.yml` | Declarative convention-drift detector / migrator; powers `/ssd upgrade` | Automated — invoked by `/ssd upgrade`. See [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md). |
-| `issue-sync.sh` | One-way GitHub issue mirror (ensure-epic/ensure-feature/set-phase/close-*); invoked by the orchestrator on phase advance when `integrations.github.issue_tracking: on` | Automated — opt-in, best-effort. See [ADR-0014](../docs/decisions/ADR-0014-github-issue-state-tracking.md). |
+| `issue-sync.sh` | One-way GitHub issue mirror (ensure-epic/ensure-feature/set-phase/close-*); invoked by the orchestrator on phase advance when `integrations.github.issue_tracking: on` | Automated — opt-in, best-effort. Refuses (`exit 4`) under `gitignore_mode: private`. See [ADR-0014](../docs/decisions/ADR-0014-github-issue-state-tracking.md), [ADR-0017](../docs/decisions/ADR-0017-private-mode.md). |
 | `frontmatter-validate.py` | Python validator for SSD artifact YAML frontmatter; invoked by the `frontmatter-valid` gate rule | Automated — runs against `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md`. |
+| `selective.gitignore` | **Canonical single source** for the `gitignore_mode: selective` pattern (durable artifacts committed, machine state local) | Consumed verbatim by `ssd-init` Step 5 and `migrate.sh` (`apply_selective_gitignore`). Never duplicate it. See [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md). |
+| `private.gitignore` | **Canonical single source** for the `gitignore_mode: private` pattern (nothing SSD produces is tracked) | Consumed verbatim by `ssd-init` Step 5 and `migrate.sh` (`apply_private_mode`, iter B). Carries the `# ssd:gitignore-mode=private` sentinel Step 5.5 detects on. See [ADR-0017](../docs/decisions/ADR-0017-private-mode.md). |
 | `schemas/<skill>.yml` | Per-skill schema describing required frontmatter fields and types | Read by `frontmatter-validate.py`. One file per consuming skill. |
 
 **Default**: Load `core.md`. It covers the stable doctrine that answers most questions.

@@ -17,6 +17,7 @@
 #
 # Subcommands (ADR-0014):
 #   preflight                              gh present + authed + repo resolvable? exit 3 if not.
+#                                          Refuses with exit 4 under gitignore_mode: private (ADR-0017).
 #   ensure-epic    <ADR-NNNN> <title>      find-or-create the epic; echo its number.
 #   ensure-feature <slug> <phase> <epic#>  find-or-create the feature issue linked to <epic#>; echo number.
 #                                          For an iterated workstream, the caller passes the iteration-
@@ -119,12 +120,28 @@ emit() {
     printf '{"action":"%s","issue":%s,"state":"%s","detail":"%s"}\n' \
       "$action" "${issue:-null}" "$state" "$detail"
   else
-    printf 'OK %s :: issue=%s state=%s %s\n' "$action" "${issue:-–}" "$state" "$detail" >&2
+    # A refusal must not announce itself as "OK" — a misleading-green status line is the exact
+    # failure class SSD's gate work exists to eliminate (ADR-0015 Context). Only `refused` changes
+    # prefix; every other state keeps "OK" so existing callers and fixtures are unaffected.
+    local prefix="OK"
+    [[ "$state" == "refused" ]] && prefix="REFUSED"
+    printf '%s %s :: issue=%s state=%s %s\n' "$prefix" "$action" "${issue:-–}" "$state" "$detail" >&2
   fi
 }
 
 # gh present + authenticated + a repo resolvable from cwd. Any miss → exit 3 (caller no-ops).
+# Private mode refuses outright → exit 4 (see below).
 do_preflight() {
+  # Private mode (ADR-0017) refuses BEFORE any gh call — the check is local, free, and mirroring
+  # workstream state to a public tracker is the loudest possible violation of the mode's promise.
+  # Checking config before touching the network is also the iter-B MINOR-1 ordering lesson.
+  #
+  # This duplicates ssd-init's init-time refusal on purpose: project.yml is hand-editable, so
+  # init-time validation alone would be a single point of failure. Defense in depth.
+  if [[ "$(yaml_scalar "$PROJECT_YML" gitignore_mode)" == "private" ]]; then
+    emit preflight "" refused "private-mode — issue tracking is incompatible with gitignore_mode: private (ADR-0017); set issue_tracking: off or leave private mode"
+    exit 4
+  fi
   if ! command -v gh >/dev/null 2>&1; then
     echo "issue-sync: gh not found on PATH — sync skipped (best-effort)." >&2; exit 3
   fi
