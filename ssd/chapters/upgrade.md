@@ -18,6 +18,35 @@ conventions and — from iteration B — migrates it forward. It reads the decla
    - `PENDING <id>` — a mechanical convention not yet adopted (detect probe found it absent),
    - `SKIP-present <id>` — already adopted (idempotent; nothing to do),
    - `GUIDED <id>` — a *practice* (e.g. the decision-record doctrine) to adopt by hand.
+
+   **Elective entries are not listed here at all** (v2.9.0+, [ADR-0013 addendum](../../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md)).
+   An entry marked `elective: true` in the manifest is **not drift** — it is a choice only some
+   projects should make. It is excluded from the report, never `PENDING`, never applied by
+   `--apply`, and **never a participant in recorded-version advancement** (a swept-but-unapplied
+   entry pins the recorded version below itself, so a leaked elective entry would freeze every
+   project's version and report permanent, unclosable drift). It runs only when named:
+
+   ```
+   /ssd upgrade --apply <id>          # lowers to: migrate.sh --elect <id>
+   /ssd upgrade --apply <id> --confirm
+   ```
+
+   **`--elect` is a dry-run by default.** Without `--confirm` it mutates nothing: it enumerates what
+   would change, prints it, and exits **10** (needs-confirm). This inverts the engine's normal
+   behavior on purpose — an elective migration is the only thing here that can remove something from
+   git, and iteration A of this very command shipped read-only for exactly that reason.
+
+   The only elective entry today is **`private-mode`**
+   ([ADR-0017](../../docs/decisions/ADR-0017-private-mode.md)): the retrofit that moves an existing
+   project into `gitignore_mode: private`. Its dry-run lists **every** tracked path under `.ssd/` and
+   the three SSD `docs/` trees, flags any file it cannot confirm SSD produced, and states that
+   `git rm --cached` does **not** rewrite published history. See
+   [Private mode](../../README.md#private-mode-optional).
+
+   Two independent mechanisms keep an elective entry out of the sweep: the report loop skips it before
+   any bookkeeping, **and** elective ids are absent from the swept `apply_dispatch`/`detect` tables
+   entirely. Removing either alone is not enough to make `--apply` destructive; both are asserted by
+   the parity suite.
 4. Surfaces the report. **Iter A writes nothing** — it is a pure dry-run, so the corruption risk of
    a bad migration cannot fire (ADR-0013 Risk R1).
 

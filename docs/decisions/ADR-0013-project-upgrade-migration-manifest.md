@@ -172,6 +172,67 @@ contract ("first-run housekeeping") clean.
 - `ssd-init` is refactored to call the shared engine — a behavior-preserving extraction that must be
   covered by the parity-test harness.
 
+## Addendum (2026-08-28) — the `elective` field: entries that are deliberately not drift
+
+Added by `ssd-private-mode` iteration B ([ADR-0017](ADR-0017-private-mode.md), library v2.9.0).
+
+**The premise this addendum qualifies.** This ADR defines the manifest as answering *"what conventions
+has this project drifted past?"* — every entry is drift to be closed — with exactly two kinds:
+`mechanical` (auto-appliable) and `guided` (adopted by hand). That premise holds for all twelve
+entries written under it.
+
+**Where it breaks.** `gitignore_mode: private` is a **choice, not a convention**. A project that has
+not adopted it has not drifted. Expressing it as either existing kind is actively harmful:
+
+- **`mechanical`** — `/ssd upgrade --apply` on *any* project would `git rm --cached` its committed
+  ADRs, briefs, and reviews. A team repo swept into privacy because someone ran a routine upgrade.
+- **`guided`** — re-surfaces on every run until adopted (this ADR's own R3 behavior), so every project
+  is nagged *"adopt private mode"* forever, and `--adopt` would record adopting a practice the project
+  is not following.
+
+There is a second-order harm on the `mechanical` route: version advancement stops at the first
+outstanding entry, so **every non-private project would be frozen below it**, reporting permanent,
+unclosable drift.
+
+**Decision.** A new **orthogonal** entry field:
+
+```yaml
+elective: true      # absent ⇒ false ⇒ swept, exactly as before
+```
+
+An entry with `elective: true` is **excluded from the default sweep**: never listed in the report,
+never `PENDING`, never applied by `--apply`, and never a participant in recorded-version advancement.
+It is applied only when named explicitly (`--elect <id>`, surfaced as
+`/ssd upgrade --apply <id>`).
+
+**Orthogonal to `kind`, deliberately not a third `kind` value.** `kind` answers *how* an entry is
+adopted; `elective` answers *whether every project should adopt it at all*. Collapsing them into
+`kind: elective` would destroy the information the elect path needs — `apply_dispatch` would no longer
+know the entry is mechanically appliable and would have to assume it. The 2×2 is fully meaningful:
+
+| | swept | elective |
+|---|---|---|
+| `mechanical` | `selective-gitignore` | `private-mode` |
+| `guided` | `decision-record-doctrine` | a future practice only some projects should adopt |
+
+A third `kind` value cannot express the fourth cell.
+
+**Compatibility.** Additive and absent-is-false, so all twelve existing entries are unaffected — the
+same shape as `obsoleted_in` (v2.2.0). `read_manifest` gains an 8th column appended after
+`obsoleted_in`; both consumers must list it (the standing warning on that function applies).
+`schema_version: 1` is unchanged, and `migration-manifest-current` needs no change because it does not
+validate the `kind` vocabulary.
+
+**What this concedes.** The manifest is no longer purely a drift ledger; it now carries two kinds of
+entry with different default behavior, and a reader must check `elective` before assuming an entry
+represents drift. That is a real loss of conceptual uniformity, accepted because the alternative is a
+migration engine that can convert a team's repository to a privacy posture nobody asked for.
+
+**Revisit when:** a third *behavioral* axis appears (something neither swept nor elective). At that
+point per-entry boolean fields stop scaling and the manifest wants an explicit `selection:` enum.
+
+---
+
 ## Alternatives rejected
 
 - **`ssd-init --upgrade` mode.** Undiscoverable (a flag on a "first-run" command), and muddies

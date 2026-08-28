@@ -34,6 +34,18 @@ iteration on an existing or new feature rather than a wholly new feature — see
    `add-<slug>-<iter>`, e.g., `add-parallel-features-c`). The convention is advisory; the
    orchestrator does not enforce it on subsequent state writes.
 
+   **Under `gitignore_mode: private`** ([ADR-0017](../../docs/decisions/ADR-0017-private-mode.md))
+   the pattern defaults to `{slug}` instead of `add-{slug}`, so branches read `auth-flow` rather than
+   `add-auth-flow` — the `add-` prefix is an SSD fingerprint on every branch name a collaborator sees.
+   `ssd-init --private` writes this default, and `/ssd upgrade --apply private-mode` rewrites an
+   existing `branch_pattern` key to it. Nothing else about branch resolution changes: the pattern is
+   still read from the same key, still advisory, and a project that prefers a different scheme sets
+   `branch_pattern` explicitly in either mode.
+
+   Branch names of workstreams created **before** the switch are not rewritten — `current.yml.active[].branch`
+   records what git actually has, and renaming a live branch is not something a mode change should do
+   behind the user's back.
+
 3. **Determine feature layout.**
    - **No `#<iter>` in slug, feature doesn't exist yet:** flat layout. Will create
      `.ssd/features/<slug>/`.

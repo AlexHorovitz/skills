@@ -748,18 +748,43 @@ rule_migration_manifest_current() {
 parse_active_workstreams() {
   local file="$1"
   [[ -f "$file" ]] || return 0
+  # INDENT-AWARE. The previous version treated EVERY `- ` line as a new workstream boundary, but
+  # `rail_deviations`, `adrs_authored` and `touches` are all documented v2 schema LIST fields — so a
+  # single realistic workstream fragmented into ~18 records, the record carrying `issue:` ended up with
+  # an empty slug, and rule_issue_sync_current's `[[ -n "$slug" ]]` guard skipped it. The rule then
+  # reported "issue binding(s) present but gh lookups all failed" having made ZERO gh calls, and could
+  # never PASS for any workstream with a nested list — i.e. essentially every real one, since v2.4.0.
+  #
+  # Fix: the FIRST list item under `active:` defines the workstream indent; only `- ` at that exact
+  # indent starts a new workstream, and scalar fields are read only at the field indent (boundary + 2).
+  # Deriving the indent instead of hardcoding two spaces keeps this working if the emitter's style ever
+  # changes, and reading fields only at their own depth means a same-named key nested deeper (say a
+  # future `phase:` inside a list item) cannot overwrite the workstream's own.
   awk '
     function flush() { if (have) printf "%s|%s|%s\n", slug, phase, issue; have=0; slug=""; phase=""; issue="" }
-    /^[^[:space:]#]/ { flush(); section = ($0 ~ /^active:/) ? "active" : "other"; next }
+    function scalar(line, key) { sub(".*" key ":[[:space:]]*", "", line); sub(/[[:space:]]*#.*/, "", line); return line }
+    /^[^[:space:]#]/ { flush(); section = ($0 ~ /^active:/) ? "active" : "other"; bnd_set=0; next }
     section != "active" { next }
+    { match($0, /^[[:space:]]*/); ind = RLENGTH }
     /^[[:space:]]*-[[:space:]]/ {
+      if (!bnd_set) { bnd = ind; bnd_set = 1 }
+      if (ind != bnd) next                      # a nested list item, not a new workstream
       flush(); have=1
-      if ($0 ~ /slug:/) { s=$0; sub(/.*slug:[[:space:]]*/,"",s); sub(/[[:space:]]*#.*/,"",s); slug=s }
+      if ($0 ~ /slug:/) slug = scalar($0, "slug")
       next
     }
-    /^[[:space:]]+slug:/  { s=$0; sub(/.*slug:[[:space:]]*/,"",s);  sub(/[[:space:]]*#.*/,"",s); slug=s;  next }
-    /^[[:space:]]+phase:/ { s=$0; sub(/.*phase:[[:space:]]*/,"",s); sub(/[[:space:]]*#.*/,"",s); phase=s; next }
-    /^[[:space:]]+issue:/ { s=$0; sub(/.*issue:[[:space:]]*/,"",s); sub(/[[:space:]]*#.*/,"",s); issue=s; next }
+    # Fields are accepted at ANY depth INSIDE the current workstream (ind > bnd), not only at bnd+2.
+    # A stricter `ind == bnd + 2` was tried and REGRESSED tolerance the previous parser had: a file
+    # using non-canonical field indent (fields at bnd+4 under a bnd list item) lost phase and issue,
+    # which degrades the rule to "no binding" — honest, but a needless narrowing. The boundary rule
+    # (ind == bnd) is what fixes the fragmentation; the field rule does not need to be strict too.
+    # Safe against the documented schema: the only keys nested deeper inside a workstream are the
+    # rail_deviations item fields (step/reason/ts) plus bare-string list items, none of which collide
+    # with slug/phase/issue.
+    !have || ind <= bnd { next }
+    /^[[:space:]]+slug:/  { slug  = scalar($0, "slug");  next }
+    /^[[:space:]]+phase:/ { phase = scalar($0, "phase"); next }
+    /^[[:space:]]+issue:/ { issue = scalar($0, "issue"); next }
     END { flush() }
   ' "$file"
 }

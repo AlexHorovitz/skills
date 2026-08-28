@@ -992,7 +992,550 @@ EOF
   fixture_teardown "$tdir"
 }
 
+# ---------- recorded-defect fixes ------------------------------------------
+
+# parse_active_workstreams fragmented ANY workstream carrying a nested list. `rail_deviations`,
+# `adrs_authored` and `touches` are all documented v2 schema LIST fields, and the parser treated every
+# `- ` line as a new workstream boundary — so one workstream became ~18 records, the record holding
+# `issue:` had an empty slug, the rule's `[[ -n $slug ]]` guard skipped it, and issue-sync-current
+# emitted "gh lookups all failed" having made ZERO gh calls. It could never PASS for a real workstream
+# and had almost certainly never passed since shipping in v2.4.0.
+#
+# The fixture that let this through built a FLAT current.yml (slug/phase/issue, nothing nested) — a
+# shape no real workstream has. This one is built from the realistic schema, which is the whole point.
+test_fixture_parse_active_workstreams_nested_lists() {
+  echo "fixture: parse-active-workstreams-nested-lists"
+  local tdir out
+  tdir=$(fixture_setup "parse-nested")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd methodology
+  printf 'integrations:\n  - type: github\n    issue_tracking: on\n' > .ssd/project.yml
+  # A REALISTIC active entry: nested rail_deviations, adrs_authored and touches, with issue: LAST —
+  # exactly the ordering that made the binding unreachable.
+  cat > .ssd/current.yml <<'EOF'
+schema_version: 2
+
+active:
+  - slug: demo-feature
+    phase: code
+    iteration: null
+    started: 2026-08-28T00:00:00Z
+    rail_deviations:
+      - step: systems-designer
+        reason: "no runtime"
+        ts: 2026-08-28T00:00:00Z
+    blockers: []
+    adrs_authored:
+      - ADR-0099 (something)
+      - ADR-0098 (something else)
+    branch: add-demo-feature
+    worktree: null
+    touches:
+      - methodology/a.sh
+      - methodology/b.sh
+      - scripts/c.sh
+    epic: 100
+    issue: 101
+
+archived: []
+EOF
+  echo base > a.txt && git add -A && git commit -qm base
+
+  # gh MUST be available for the bug to manifest — with gh absent the rule SKIPs at the gh check
+  # before the loop ever runs, so the buggy and fixed code look identical. Mock gh, and give issue 101
+  # a label that MATCHES the local phase, so a correctly-parsed workstream PASSES.
+  local bindir; bindir=$(setup_mock_gh "$tdir")
+  printf '101|OPEN|ssd:feature,ssd:phase/code|body\n' > "$tdir/issues.txt"
+  local out
+  out=$(MOCK_GH_ISSUES="$tdir/issues.txt" PATH="$bindir:$PATH" \
+        bash "$GATE_SCRIPT" --base main --rules issue-sync-current 2>&1)
+
+  _assert "parse-active-workstreams-nested-lists" "the issue binding survives the nested lists → rule PASSES" \
+    "$(echo "$out" | grep -qE '^PASS issue-sync-current' && echo 0 || echo 1)"
+  _assert "parse-active-workstreams-nested-lists" "does NOT claim 'gh lookups all failed'" \
+    "$(echo "$out" | grep -q 'gh lookups all failed' && echo 1 || echo 0)"
+  _assert "parse-active-workstreams-nested-lists" "reports exactly ONE binding, not a fragmented count" \
+    "$(echo "$out" | grep -qE '1 issue binding\(s\)' && echo 0 || echo 1)"
+
+  # And real drift must still be detected — a fix that made the rule always PASS would be worse.
+  printf '101|OPEN|ssd:feature,ssd:phase/deploy|body\n' > "$tdir/issues.txt"
+  out=$(MOCK_GH_ISSUES="$tdir/issues.txt" PATH="$bindir:$PATH" \
+        bash "$GATE_SCRIPT" --base main --rules issue-sync-current 2>&1)
+  _assert "parse-active-workstreams-nested-lists" "label/phase drift still FAILs (rule kept its teeth)" \
+    "$(echo "$out" | grep -qE '^FAIL issue-sync-current' && echo 0 || echo 1)"
+  _assert "parse-active-workstreams-nested-lists" "drift message names the slug (not an empty string)" \
+    "$(echo "$out" | grep -q 'demo-feature' && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Q2 (recorded at iteration A's ship). `committed-gate-yml` and `strict-selective-gitignore` reported
+#   ERROR :: apply ran but convention still absent — inspect manually     (engine exit 3)
+# when their precondition was genuinely absent — a project with NO .gitignore at all, so there is no
+# file to append the `!.ssd/gate.yml` negation to and no selective block to harden. That is the same
+# misleading-signal class as QUESTION-1: "cannot apply" reported as "tried and failed", telling a user
+# their upgrade engine is broken when the project state is simply not ready.
+#
+# v2.8.0 already introduced the vocabulary for this (NOOP, return 8). These two just never used it.
+test_fixture_apply_noop_on_absent_precondition() {
+  echo "fixture: apply-noop-on-absent-precondition"
+  local tdir out rc
+  tdir=$(fixture_setup "noop-precond")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  # Recorded at 2.4.0 with the marker key present but NO .gitignore — so selective-gitignore
+  # (introduced 1.18.0) is outside the window and never establishes the pattern.
+  printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  printf 'test:\n\t@echo ok\n' > Makefile
+  echo base > a.txt && git add -A && git commit -qm base
+
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.4.0 --to 2.9.0 --manifest "$MANIFEST" --apply 2>&1); rc=$?
+
+  _assert "apply-noop-on-absent-precondition" "committed-gate-yml reports NOOP, not ERROR" \
+    "$(echo "$out" | grep -qE '^NOOP committed-gate-yml' && echo 0 || echo 1)"
+  _assert "apply-noop-on-absent-precondition" "strict-selective-gitignore reports NOOP, not ERROR" \
+    "$(echo "$out" | grep -qE '^NOOP strict-selective-gitignore' && echo 0 || echo 1)"
+  _assert "apply-noop-on-absent-precondition" "no ERROR line anywhere in the report" \
+    "$(echo "$out" | grep -qE '^ERROR ' && echo 1 || echo 0)"
+  _assert "apply-noop-on-absent-precondition" "--apply exits 0 (not 3 = engine error)" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  # The NOOP must name the missing precondition specifically — a generic "precondition absent" would
+  # not tell the user what to do next.
+  _assert "apply-noop-on-absent-precondition" "NOOP detail names the missing .gitignore precondition" \
+    "$(echo "$out" | grep -qE 'NOOP (committed-gate-yml|strict-selective-gitignore).*\.gitignore' && echo 0 || echo 1)"
+
+  # CONTROL: with the selective pattern present, both must still APPLY. A "fix" that made them
+  # unconditionally NOOP would be worse than the bug.
+  cat "$REPO_ROOT/methodology/selective.gitignore" > .gitignore
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.4.0 --to 2.9.0 --manifest "$MANIFEST" --apply 2>&1)
+  _assert "apply-noop-on-absent-precondition" "control: with the pattern present, committed-gate-yml APPLIES" \
+    "$(echo "$out" | grep -qE '^(APPLIED|SKIP-present) committed-gate-yml' && echo 0 || echo 1)"
+  _assert "apply-noop-on-absent-precondition" "control: strict-selective-gitignore APPLIES" \
+    "$(echo "$out" | grep -qE '^(APPLIED|SKIP-present) strict-selective-gitignore' && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# The fragmentation fix must not narrow the field tolerance the previous parser had. A file using
+# non-canonical field indent (fields deeper than boundary+2) must still yield its binding — an
+# `ind == bnd + 2` field rule was tried first and silently lost phase/issue on such a file.
+test_fixture_parse_active_workstreams_indent_tolerance() {
+  echo "fixture: parse-active-workstreams-indent-tolerance"
+  local tdir out bindir
+  tdir=$(fixture_setup "parse-indent")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'integrations:
+  - type: github
+    issue_tracking: on
+' > .ssd/project.yml
+  # Fields at boundary+4, plus a nested list — non-canonical but valid YAML.
+  cat > .ssd/current.yml <<'EOF'
+schema_version: 2
+
+active:
+  - slug: odd-indent
+      phase: code
+      touches:
+        - a.sh
+      issue: 77
+
+archived: []
+EOF
+  echo base > a.txt && git add -A && git commit -qm base
+  bindir=$(setup_mock_gh "$tdir")
+  printf '77|OPEN|ssd:feature,ssd:phase/code|body
+' > "$tdir/issues.txt"
+  out=$(MOCK_GH_ISSUES="$tdir/issues.txt" PATH="$bindir:$PATH" \
+        bash "$GATE_SCRIPT" --base main --rules issue-sync-current 2>&1)
+  _assert "parse-active-workstreams-indent-tolerance" "non-canonical field indent still yields the binding" \
+    "$(echo "$out" | grep -qE '^PASS issue-sync-current' && echo 0 || echo 1)"
+  _assert "parse-active-workstreams-indent-tolerance" "not degraded to 'no active workstream has an issue binding'" \
+    "$(echo "$out" | grep -q 'no active workstream has an issue binding' && echo 1 || echo 0)"
+  fixture_teardown "$tdir"
+}
+
 # ---------- private mode (ADR-0017) ----------------------------------------
+
+# ---- iteration B: the elective retrofit (ADR-0013 addendum, ADR-0017 amendment) ----
+
+# An elective entry is NOT drift. It must be invisible to the default sweep: absent from the report,
+# and never a participant in recorded-version advancement (a swept-but-unapplied entry PINS the
+# recorded version below itself, so a leaked elective entry would freeze every project's version and
+# report permanent unclosable drift).
+test_fixture_elective_inert_in_default_sweep() {
+  echo "fixture: elective-inert-in-default-sweep"
+  local tdir out
+  tdir=$(fixture_setup "elective-inert")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'ssd:\n  gitignore_mode: selective\n  version: 2.8.0\n' > .ssd/project.yml
+  cat "$REPO_ROOT/methodology/selective.gitignore" > .gitignore
+  printf 'test:\n\t@echo ok\n' > Makefile
+
+  # (1) plain report over a window that INCLUDES 2.9.0 must not mention it
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.8.0 --to 2.9.0 --manifest "$MANIFEST" 2>&1)
+  _assert "elective-inert-in-default-sweep" "plain report never lists private-mode" \
+    "$(echo "$out" | grep -q 'private-mode' && echo 1 || echo 0)"
+
+  # (2) --apply must not apply it, and must not ERROR on it
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.8.0 --to 2.9.0 --manifest "$MANIFEST" --apply 2>&1)
+  _assert "elective-inert-in-default-sweep" "--apply never mentions private-mode" \
+    "$(echo "$out" | grep -q 'private-mode' && echo 1 || echo 0)"
+
+  # (3) and it must not pin the recorded version: with every OTHER convention satisfied, the bump
+  #     must reach the target. A swept private-mode would stop it at 2.8.0.
+  _assert "elective-inert-in-default-sweep" "recorded version advances to the target (not pinned)" \
+    "$(grep -qE '^[[:space:]]*version:[[:space:]]*2\.9\.0' .ssd/project.yml 2>/dev/null && echo 0 || echo 1)"
+
+  fixture_teardown "$tdir"
+}
+
+# `read_manifest` gained an 8th column (`elective`) appended after `obsoleted_in`. There are exactly
+# two consumers and both must list it; a missed one silently shifts every field.
+test_fixture_read_manifest_eight_columns() {
+  echo "fixture: read-manifest-eight-columns"
+  local total on_sep
+  total=$(grep -c 'read -r id iv ap kd ad ti ob el' "$MIGRATE_SCRIPT" || true)
+  on_sep=$(grep -c 'IFS="$MANIFEST_SEP" read -r id iv ap kd ad ti ob el' "$MIGRATE_SCRIPT" || true)
+  _assert "read-manifest-eight-columns" "at least one read_manifest consumer exists" \
+    "$([[ "$total" -ge 1 ]] && echo 0 || echo 1)"
+  # EVERY consumer must be on the shared delimiter — a consumer left on tab reads shifted fields.
+  _assert "read-manifest-eight-columns" "every consumer uses \$MANIFEST_SEP (none left on tab)" \
+    "$([[ "$total" -eq "$on_sep" ]] && echo 0 || echo 1)"
+  _assert "read-manifest-eight-columns" "no consumer remains on the 7-column read" \
+    "$(grep -qE 'read -r id iv ap kd ad ti ob;' "$MIGRATE_SCRIPT" && echo 1 || echo 0)"
+  _assert "read-manifest-eight-columns" "read_manifest emits an elective field" \
+    "$(awk '/^read_manifest\(\)/,/^}/' "$MIGRATE_SCRIPT" | grep -q 'elective' && echo 0 || echo 1)"
+}
+
+# THE BUG THIS ITERATION ALMOST SHIPPED. `read_manifest` records must survive an EMPTY MIDDLE FIELD.
+# Tab is IFS *whitespace*, so bash collapses consecutive tabs and every field after an empty one
+# shifts left. The 7-column form was safe only because its one optional field (obsoleted_in) was
+# LAST. Appending `elective` after it made every entry lacking an obsoleted_in — i.e. all of them —
+# read `elective` into the `ob` slot, so `--elect` rejected its own manifest entry as "not elective".
+#
+# Tests the OBSERVABLE SYMPTOM, not the delimiter choice or the internals: private-mode has
+# `elective: true` and no `obsoleted_in`, so if fields shift, --elect cannot see its own entry.
+test_fixture_read_manifest_empty_middle_field() {
+  echo "fixture: read-manifest-empty-middle-field"
+  local tdir out
+  tdir=$(fixture_setup "empty-field")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  echo base > a.txt && git add -A && git commit -qm base
+
+  out=$(bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" 2>&1)
+  # The exact symptom of a shifted field:
+  _assert "read-manifest-empty-middle-field" "--elect does NOT reject private-mode as non-elective" \
+    "$(echo "$out" | grep -q 'is not an elective migration' && echo 1 || echo 0)"
+  _assert "read-manifest-empty-middle-field" "--elect does NOT misread the kind" \
+    "$(echo "$out" | grep -q "only mechanical entries have an apply path" && echo 1 || echo 0)"
+  _assert "read-manifest-empty-middle-field" "--elect reaches the interlock" \
+    "$(echo "$out" | grep -q 'HISTORY IS NOT REWRITTEN' && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+test_fixture_elect_lists_every_tracked_file() {
+  echo "fixture: elect-lists-every-tracked-file"
+  local tdir out rc
+  tdir=$(fixture_setup "elect-list")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/f1 docs/decisions docs/runbooks docs/architecture
+  printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  echo "# brief"   > .ssd/features/f1/00-brief.md
+  echo "# ADR-1"   > docs/decisions/ADR-0001-a.md
+  echo "# ADR-2"   > docs/decisions/ADR-0002-b.md
+  echo "# runbook" > docs/runbooks/deploy.md
+  echo "# arch"    > docs/architecture/overview.md
+  echo "code"      > app.py
+  git add -A && git commit -qm "project with committed SSD artifacts"
+
+  out=$(bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" 2>&1); rc=$?
+  local f
+  for f in .ssd/features/f1/00-brief.md docs/decisions/ADR-0001-a.md docs/decisions/ADR-0002-b.md \
+           docs/runbooks/deploy.md docs/architecture/overview.md; do
+    _assert "elect-lists-every-tracked-file" "lists $f" \
+      "$(echo "$out" | grep -qF "$f" && echo 0 || echo 1)"
+  done
+  _assert "elect-lists-every-tracked-file" "does NOT list unrelated tracked code (app.py)" \
+    "$(echo "$out" | grep -qF 'app.py' && echo 1 || echo 0)"
+  _assert "elect-lists-every-tracked-file" "exits 10 (needs-confirm)" \
+    "$([[ $rc -eq 10 ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Dry-run means dry. A user who runs the command to SEE what it would do must not come back to a
+# modified repo — not the pattern, not the config, not the git index.
+# THE ACCEPTANCE TEST FOR ITERATION B. A default sweep must NEVER untrack anything. If `--apply`
+# on an ordinary project can remove SSD artifacts from the index, the feature is worse than not
+# shipping: a team repo would be converted to a privacy posture nobody asked for by a routine upgrade.
+test_fixture_elective_not_applied_by_sweep() {
+  echo "fixture: elective-not-applied-by-sweep"
+  local tdir before after
+  tdir=$(fixture_setup "sweep-safe")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/f1 docs/decisions
+  printf 'ssd:\n  gitignore_mode: selective\n  version: 2.8.0\n' > .ssd/project.yml
+  echo "# brief" > .ssd/features/f1/00-brief.md
+  echo "# ADR"   > docs/decisions/ADR-0001-a.md
+  echo code      > app.py
+  printf 'test:\n\t@echo ok\n' > Makefile
+  git add -A && git commit -qm "team repo with committed SSD artifacts"
+  before=$(git ls-files | sort | git hash-object --stdin)
+
+  # The most dangerous invocation: a full-window --apply on a project that never asked for privacy.
+  bash "$MIGRATE_SCRIPT" --from 2.0.0 --to 2.9.0 --manifest "$MANIFEST" --apply >/dev/null 2>&1
+  after=$(git ls-files | sort | git hash-object --stdin)
+
+  _assert "elective-not-applied-by-sweep" "--apply untracks NOTHING (index identical)" \
+    "$([[ "$before" == "$after" ]] && echo 0 || echo 1)"
+  _assert "elective-not-applied-by-sweep" "SSD artifacts still tracked after the sweep" \
+    "$(git ls-files --error-unmatch .ssd/features/f1/00-brief.md docs/decisions/ADR-0001-a.md >/dev/null 2>&1 && echo 0 || echo 1)"
+  _assert "elective-not-applied-by-sweep" "the sweep did NOT switch the project to private mode" \
+    "$(grep -qE '^[[:space:]]*gitignore_mode:[[:space:]]*private' .ssd/project.yml && echo 1 || echo 0)"
+  _assert "elective-not-applied-by-sweep" "the sweep did NOT append the private pattern" \
+    "$(grep -qxF '# ssd:gitignore-mode=private' .gitignore 2>/dev/null && echo 1 || echo 0)"
+  # SECOND LAYER, pinned so it cannot be quietly removed: elective ids must stay out of the swept
+  # dispatchers entirely. Reversion showed removing the report-loop skip ALONE does not make the
+  # sweep destructive — it is only destructive if this layer goes too. Both must hold.
+  _assert "elective-not-applied-by-sweep" "private-mode is absent from apply_dispatch (swept path)" \
+    "$(awk '/^apply_dispatch\(\)/,/^}/' "$MIGRATE_SCRIPT" | grep -qE '^\s+private-mode\)' && echo 1 || echo 0)"
+  _assert "elective-not-applied-by-sweep" "private-mode is absent from detect() (swept path)" \
+    "$(awk '/^detect\(\) \{/,/^}/' "$MIGRATE_SCRIPT" | grep -qE '^\s+private-mode\)' && echo 1 || echo 0)"
+  fixture_teardown "$tdir"
+}
+
+# The interlock must distinguish files SSD demonstrably produced from files it cannot vouch for.
+# Over-flagging is not "safe": a warning that fires on SSD's own runbooks trains the user to ignore
+# it, which destroys the signal the interlock exists to give.
+# Round-1 MAJOR-1 / MINOR-2 regression. `git ls-files` C-QUOTES any path with non-ASCII bytes:
+#   "docs/decisions/ADR-0002-h\303\251llo.md"
+# The quoted string cannot match the ADR pattern (so it misclassifies), `[[ -f ]]` is false for it (so
+# the frontmatter probe cannot run), and `git rm --cached` rejects it as a pathspec — and git validates
+# ALL pathspecs before acting, so ONE accented filename made the whole retrofit impossible.
+#
+# Every new fixture in this iteration used ASCII names, which is exactly how a total-failure bug got
+# through a red-first, reversion-verified test pass. Red-first on the cases you thought of is not
+# coverage.
+test_fixture_elect_handles_unusual_filenames() {
+  echo "fixture: elect-handles-unusual-filenames"
+  local tdir out rc
+  tdir=$(fixture_setup "elect-odd-names")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features docs/decisions
+  printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  echo x > "docs/decisions/ADR-0001-with space.md"      # spaces: unquoted by git, must keep working
+  echo y > "docs/decisions/ADR-0002-héllo.md"           # non-ASCII: git C-quotes this one
+  echo z > ".ssd/features/quote'name.md"                # apostrophe
+  git add -A && git commit -qm "artifacts with unusual names"
+
+  out=$(bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" 2>&1)
+  _assert "elect-handles-unusual-filenames" "no C-quoted/escaped path appears in the output" \
+    "$(echo "$out" | grep -qE '\\\\[0-9]{3}|^\s*!?!?\s*"' && echo 1 || echo 0)"
+  # Check the SSD-owned section POSITIVELY contains the real (unescaped) name. Grepping the UNCONFIRMED
+  # section for the real name would pass vacuously, because a C-quoted path renders as h\303\251llo.
+  _assert "elect-handles-unusual-filenames" "the non-ASCII ADR is listed under SSD-owned by its real name" \
+    "$(echo "$out" | sed -n '/SSD-owned/,/UNCONFIRMED\|HISTORY/p' | grep -qF 'ADR-0002-héllo.md' && echo 0 || echo 1)"
+
+  # The whole point: --confirm must actually complete.
+  bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" --confirm >/dev/null 2>&1; rc=$?
+  _assert "elect-handles-unusual-filenames" "--confirm succeeds (exit 0) despite unusual names" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  _assert "elect-handles-unusual-filenames" "every SSD path is untracked, including the non-ASCII one" \
+    "$(git ls-files -- .ssd docs/decisions | grep -q . && echo 1 || echo 0)"
+  _assert "elect-handles-unusual-filenames" "files remain on disk" \
+    "$([[ -f "docs/decisions/ADR-0002-héllo.md" && -f ".ssd/features/quote'name.md" ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Round-1 MAJOR-2 regression: a failed election must leave the repo UNTOUCHED, never half-migrated
+# (config recorded private while every artifact stays tracked — a state neither mode describes, and one
+# the diff-scoped no-leaky-state rule notices only when there happens to be a diff).
+#
+# Two assertions of different kinds, and the reason is worth stating: once MAJOR-1's `-z` fix landed,
+# the only failure this fixture could previously trigger (a C-quoted pathspec) stopped failing. Every
+# remaining runtime failure — a path vanishing between enumeration and rm — needs injection the harness
+# cannot do. So this pins (1) the one reachable failure path behaviorally, and (2) the ORDERING
+# invariant structurally, which is what MAJOR-2 is actually about.
+test_fixture_elect_no_partial_state_on_failure() {
+  echo "fixture: elect-no-partial-state-on-failure"
+  local tdir gi_before pj_before body dry_line cfg_line
+  tdir=$(fixture_setup "elect-atomic")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd docs/decisions
+  # No `ssd:` block → apply_private_mode_config refuses. Reachable, and it must change nothing.
+  printf 'notssd:\n  x: 1\n' > .ssd/project.yml
+  cat "$REPO_ROOT/methodology/selective.gitignore" > .gitignore
+  echo "# ADR" > docs/decisions/ADR-0001-a.md
+  git add -A && git commit -qm base
+  gi_before=$(git hash-object .gitignore)
+  pj_before=$(git hash-object .ssd/project.yml)
+
+  bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" --confirm >/dev/null 2>&1
+
+  _assert "elect-no-partial-state-on-failure" "a failed election leaves .gitignore untouched" \
+    "$([[ "$gi_before" == "$(git hash-object .gitignore)" ]] && echo 0 || echo 1)"
+  _assert "elect-no-partial-state-on-failure" "a failed election leaves project.yml untouched" \
+    "$([[ "$pj_before" == "$(git hash-object .ssd/project.yml)" ]] && echo 0 || echo 1)"
+  _assert "elect-no-partial-state-on-failure" "the ADR is still tracked (no partial untracking)" \
+    "$(git ls-files --error-unmatch docs/decisions/ADR-0001-a.md >/dev/null 2>&1 && echo 0 || echo 1)"
+
+  # ORDERING: the destructive step must be VALIDATED before anything is written. If
+  # apply_private_mode_config runs first, any rm failure yields the half-migrated state.
+  body=$(awk '/^elect_private_mode\(\)/,/^}/' "$MIGRATE_SCRIPT")
+  dry_line=$(echo "$body" | grep -n 'rm --cached --dry-run' | head -1 | cut -d: -f1)
+  cfg_line=$(echo "$body" | grep -n 'apply_private_mode_config' | head -1 | cut -d: -f1)
+  _assert "elect-no-partial-state-on-failure" "a --dry-run pre-flight exists" \
+    "$([[ -n "$dry_line" ]] && echo 0 || echo 1)"
+  _assert "elect-no-partial-state-on-failure" "the dry-run pre-flight precedes the config write" \
+    "$([[ -n "$dry_line" && -n "$cfg_line" && "$dry_line" -lt "$cfg_line" ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+test_fixture_elect_classifies_docs() {
+  echo "fixture: elect-classifies-docs"
+  local tdir out
+  tdir=$(fixture_setup "elect-classify")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd docs/decisions docs/runbooks docs/architecture
+  printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  echo "# ADR" > docs/decisions/ADR-0001-a.md
+  printf -- '---\nskill: systems-designer\nversion: 1.5.0\n---\n# runbook\n' > docs/runbooks/deploy.md
+  echo "our own doc, not SSD's" > docs/architecture/team-owned.md
+  git add -A && git commit -qm base
+
+  out=$(bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" 2>&1)
+  _assert "elect-classifies-docs" "an ADR is recognized as SSD-produced" \
+    "$(echo "$out" | grep -A20 'SSD-owned' | grep -q 'ADR-0001-a.md' && echo 0 || echo 1)"
+  _assert "elect-classifies-docs" "a runbook with SSD frontmatter is recognized (not flagged)" \
+    "$(echo "$out" | grep -q '!! docs/runbooks/deploy.md' && echo 1 || echo 0)"
+  _assert "elect-classifies-docs" "a team-owned doc IS flagged for review" \
+    "$(echo "$out" | grep -q '!! docs/architecture/team-owned.md' && echo 0 || echo 1)"
+  _assert "elect-classifies-docs" "the flag heading claims only UNCONFIRMED, not authorship" \
+    "$(echo "$out" | grep -q 'UNCONFIRMED as SSD-produced' && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# The history limitation must appear in BOTH runs. A user who only ever sees the confirmed run must
+# still be told, and a user who only dry-runs must be told too.
+test_fixture_elect_history_warning_both_runs() {
+  echo "fixture: elect-history-warning-both-runs"
+  local tdir dry conf
+  tdir=$(fixture_setup "elect-warn")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd docs/decisions
+  printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  echo "# ADR" > docs/decisions/ADR-0001-a.md
+  git add -A && git commit -qm base
+  dry=$(bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" 2>&1)
+  conf=$(bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" --confirm 2>&1)
+  _assert "elect-history-warning-both-runs" "dry-run warns that history is not rewritten" \
+    "$(echo "$dry" | grep -q 'HISTORY IS NOT REWRITTEN' && echo 0 || echo 1)"
+  _assert "elect-history-warning-both-runs" "confirmed run warns too" \
+    "$(echo "$conf" | grep -q 'HISTORY IS NOT REWRITTEN' && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# --confirm untracks, leaves files ON DISK, records the mode, and is idempotent on re-run.
+test_fixture_elect_confirm_untracks() {
+  echo "fixture: elect-confirm-untracks"
+  local tdir rc out
+  tdir=$(fixture_setup "elect-confirm")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/f1 docs/decisions
+  # `decoy:` comes FIRST and carries a same-named key — an unscoped first-match helper would edit it
+  # and leave ssd.gitignore_mode untouched.
+  printf 'decoy:\n  gitignore_mode: decoy\nssd:\n  gitignore_mode: selective\n  branch_pattern: "add-{slug}"\nintegrations:\n  - type: github\n    issue_tracking: on\n' > .ssd/project.yml
+  echo "# brief" > .ssd/features/f1/00-brief.md
+  echo "# ADR"   > docs/decisions/ADR-0001-a.md
+  echo code      > app.py
+  git add -A && git commit -qm base
+
+  bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" --confirm >/dev/null 2>&1
+  _assert "elect-confirm-untracks" "SSD paths untracked" \
+    "$(git ls-files -- .ssd docs/decisions | grep -q . && echo 1 || echo 0)"
+  _assert "elect-confirm-untracks" "unrelated code still tracked" \
+    "$(git ls-files --error-unmatch app.py >/dev/null 2>&1 && echo 0 || echo 1)"
+  _assert "elect-confirm-untracks" "files remain ON DISK (untracked, not deleted)" \
+    "$([[ -f docs/decisions/ADR-0001-a.md && -f .ssd/features/f1/00-brief.md ]] && echo 0 || echo 1)"
+  _assert "elect-confirm-untracks" "gitignore_mode recorded private" \
+    "$(grep -qE '^[[:space:]]*gitignore_mode:[[:space:]]*private' .ssd/project.yml && echo 0 || echo 1)"
+  # Round-1 MINOR-1: set_yaml_scalar is block-scoped. A decoy `gitignore_mode` under an EARLIER
+  # top-level block must be left alone, and `issue_tracking` must be found under `integrations:` even
+  # though it lives in a list item rather than directly under a top-level key.
+  _assert "elect-confirm-untracks" "a decoy key under an earlier block is NOT rewritten" \
+    "$(grep -qE '^[[:space:]]+gitignore_mode:[[:space:]]*decoy' .ssd/project.yml && echo 0 || echo 1)"
+  _assert "elect-confirm-untracks" "issue_tracking rewritten inside integrations (list-item scope)" \
+    "$(grep -qE '^[[:space:]]+issue_tracking:[[:space:]]*off' .ssd/project.yml && echo 0 || echo 1)"
+  _assert "elect-confirm-untracks" "branch_pattern rewritten to {slug}" \
+    "$(grep -qE '^[[:space:]]*branch_pattern:[[:space:]]*"\{slug\}"' .ssd/project.yml && echo 0 || echo 1)"
+  _assert "elect-confirm-untracks" "private pattern appended with sentinel" \
+    "$(grep -qxF '# ssd:gitignore-mode=private' .gitignore && echo 0 || echo 1)"
+  # Idempotent second run.
+  out=$(bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" --confirm 2>&1); rc=$?
+  _assert "elect-confirm-untracks" "re-run is a clean no-op (exit 0)" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  _assert "elect-confirm-untracks" "re-run says nothing to do" \
+    "$(echo "$out" | grep -q 'nothing to do' && echo 0 || echo 1)"
+  _assert "elect-confirm-untracks" "re-run did not duplicate the pattern block" \
+    "$([[ "$(grep -cxF '# ssd:gitignore-mode=private' .gitignore)" -eq 1 ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Validation: three distinct refusals, each exit 2.
+test_fixture_elect_validation() {
+  echo "fixture: elect-validation"
+  local tdir out rc
+  tdir=$(fixture_setup "elect-valid")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd && printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  echo base > a.txt && git add -A && git commit -qm base
+
+  out=$(bash "$MIGRATE_SCRIPT" --elect no-such-id --manifest "$MANIFEST" 2>&1); rc=$?
+  _assert "elect-validation" "unknown id → exit 2" "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  _assert "elect-validation" "unknown id message names the manifest" \
+    "$(echo "$out" | grep -q 'not a migration id in the manifest' && echo 0 || echo 1)"
+
+  out=$(bash "$MIGRATE_SCRIPT" --elect selective-gitignore --manifest "$MANIFEST" 2>&1); rc=$?
+  _assert "elect-validation" "swept (non-elective) id → exit 2" "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  _assert "elect-validation" "swept id message points at --apply" \
+    "$(echo "$out" | grep -q 'applied with --apply' && echo 0 || echo 1)"
+
+  out=$(bash "$MIGRATE_SCRIPT" --elect decision-record-doctrine --manifest "$MANIFEST" 2>&1); rc=$?
+  _assert "elect-validation" "guided id → exit 2" "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+
+  out=$(bash "$MIGRATE_SCRIPT" --elect --manifest "$MANIFEST" 2>&1); rc=$?
+  _assert "elect-validation" "--elect with no value → exit 2" "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+test_fixture_elect_dry_run_mutates_nothing() {
+  echo "fixture: elect-dry-run-mutates-nothing"
+  local tdir before_gi before_pj before_idx
+  tdir=$(fixture_setup "elect-dry")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd docs/decisions
+  printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  cat "$REPO_ROOT/methodology/selective.gitignore" > .gitignore
+  echo "# ADR" > docs/decisions/ADR-0001-a.md
+  git add -A && git commit -qm base
+
+  before_gi=$(git hash-object .gitignore)
+  before_pj=$(git hash-object .ssd/project.yml)
+  before_idx=$(git ls-files | sort | git hash-object --stdin)
+
+  bash "$MIGRATE_SCRIPT" --elect private-mode --manifest "$MANIFEST" >/dev/null 2>&1
+
+  _assert "elect-dry-run-mutates-nothing" ".gitignore unchanged" \
+    "$([[ "$before_gi" == "$(git hash-object .gitignore)" ]] && echo 0 || echo 1)"
+  _assert "elect-dry-run-mutates-nothing" "project.yml unchanged" \
+    "$([[ "$before_pj" == "$(git hash-object .ssd/project.yml)" ]] && echo 0 || echo 1)"
+  _assert "elect-dry-run-mutates-nothing" "git index unchanged (nothing untracked)" \
+    "$([[ "$before_idx" == "$(git ls-files | sort | git hash-object --stdin)" ]] && echo 0 || echo 1)"
+  _assert "elect-dry-run-mutates-nothing" "no .bak files written" \
+    "$([[ -z "$(find . -name '*.bak' 2>/dev/null)" ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
 
 # Round-1 QUESTION-1 regression. A COMMENTED test_command placeholder deliberately does not satisfy
 # detect() (it does not define the input), so an apply that writes one must NOT report success. It
@@ -1469,6 +2012,21 @@ test_fixture_close_epic_open_children
 test_fixture_close_epic_all_closed
 test_fixture_issue_sync_current_skip_no_gh
 test_fixture_feynman_clean
+test_fixture_parse_active_workstreams_nested_lists
+test_fixture_apply_noop_on_absent_precondition
+test_fixture_parse_active_workstreams_indent_tolerance
+test_fixture_elective_inert_in_default_sweep
+test_fixture_read_manifest_eight_columns
+test_fixture_read_manifest_empty_middle_field
+test_fixture_elect_lists_every_tracked_file
+test_fixture_elect_dry_run_mutates_nothing
+test_fixture_elective_not_applied_by_sweep
+test_fixture_elect_classifies_docs
+test_fixture_elect_handles_unusual_filenames
+test_fixture_elect_no_partial_state_on_failure
+test_fixture_elect_history_warning_both_runs
+test_fixture_elect_confirm_untracks
+test_fixture_elect_validation
 test_fixture_apply_noop_not_error
 test_fixture_file_mtime_portability
 test_fixture_private_honors_gitignored_state

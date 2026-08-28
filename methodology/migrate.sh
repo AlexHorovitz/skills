@@ -50,7 +50,10 @@ FROM=""
 TO=""
 JSON=0
 APPLY=0
-ADOPT=""          # id of a guided migration the user asserts they've adopted (iter C)
+ADOPT=""
+MANIFEST_SEP=$'\x1f'   # read_manifest record delimiter — see the note in read_manifest's awk
+ELECT=""            # id named by --elect; runs one elective migration and exits (never the sweep)
+CONFIRM=0           # --confirm; without it, --elect is a pure dry-run that mutates nothing          # id of a guided migration the user asserts they've adopted (iter C)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -60,6 +63,12 @@ while [[ $# -gt 0 ]]; do
     --json) JSON=1; shift ;;
     --apply) APPLY=1; shift ;;
     --adopt) ADOPT="${2:-}"; shift 2 ;;
+    --elect)
+      if [[ -z "${2:-}" || "${2:-}" == --* ]]; then
+        echo "--elect requires a migration id (e.g. --elect private-mode)" >&2; exit 2
+      fi
+      ELECT="$2"; shift 2 ;;
+    --confirm) CONFIRM=1; shift ;;
     -h|--help) sed -n '1,/^# License/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "migrate: unknown arg '$1'" >&2; exit 2 ;;
   esac
@@ -69,7 +78,16 @@ done
 if [[ -z "$TO" && -f "$SCRIPT_DIR/../VERSION" ]]; then
   TO="$(tr -d '[:space:]' < "$SCRIPT_DIR/../VERSION")"
 fi
-if [[ -z "$FROM" && -z "$ADOPT" ]]; then
+# `--confirm` only qualifies `--elect`. Accepting it silently elsewhere would let a user type
+# "--apply --confirm", read it as "yes, really apply", and get no signal that it did nothing
+# (round-1 SUGGESTION-1).
+if [[ $CONFIRM -eq 1 && -z "$ELECT" ]]; then
+  echo "migrate: --confirm only applies to --elect <id>. Did you mean: --elect private-mode --confirm?" >&2
+  exit 2
+fi
+# --adopt and --elect both act on ONE named id and exit; neither walks the version window, so
+# neither needs a recorded version.
+if [[ -z "$FROM" && -z "$ADOPT" && -z "$ELECT" ]]; then
   echo "migrate: --from <recorded-version> is required (the project's recorded ssd.version)." >&2
   exit 2
 fi
@@ -116,6 +134,9 @@ is_private_mode() {
     "$ROOT/.ssd/project.yml" 2>/dev/null
 }
 
+# NOTE: elective ids are deliberately absent here too — see the note on apply_dispatch. An elective
+# entry's detect probe lives with its elect handler (detect_private_mode), not in this table, because
+# nothing in the default sweep should be asking whether an elective convention is "present".
 detect() {
   case "$1" in
     # Probes require the YAML *key* form (`^[[:space:]]*<key>:`), so a comment ("# key: …", which
@@ -344,6 +365,14 @@ EOF
 
 apply_committed_gate_yml() {      # ADR-0015 — create gate.yml + the !.ssd/gate.yml gitignore exception.
   local gate="$ROOT/.ssd/gate.yml" pj="$ROOT/.ssd/project.yml" gi="$ROOT/.gitignore"
+  # PRECONDITION → NOOP (8), not failure (Q2). detect() requires BOTH gate.yml and the
+  # `!.ssd/gate.yml` negation; with no .gitignore there is nothing to add the negation to, so this
+  # used to create gate.yml, return success, fail detect, and surface as ERROR + exit 3. Guard FIRST
+  # so it does not even create gate.yml — a half-applied convention is worse than an honest NOOP.
+  if [[ ! -f "$gi" ]]; then
+    APPLY_NOTE="no .gitignore exists, so the !.ssd/gate.yml exception cannot be added — run the selective-gitignore migration first (a full-window --apply does this automatically)"
+    return 8
+  fi
   ensure_gate_yml_header "$gate"
   # Carry any gate inputs already set (uncommented) in project.yml into gate.yml if not already there.
   local k
@@ -362,10 +391,20 @@ apply_committed_gate_yml() {      # ADR-0015 — create gate.yml + the !.ssd/gat
 
 apply_strict_selective_gitignore() {   # Feynman audit C12/C14 — make the allow-list load-bearing.
   local gi="$ROOT/.gitignore"
-  [[ -f "$gi" ]] || return 1
+  # PRECONDITIONS → NOOP (8), not failure (Q2). These two states mean "cannot apply", not "tried and
+  # failed", and returning 1 made the engine report `ERROR :: apply ran but convention still absent`
+  # and exit 3 — telling a user their upgrade engine is broken when the project simply is not ready.
+  # Same misleading-signal class as QUESTION-1; v2.8.0 already added the NOOP vocabulary for it.
+  if [[ ! -f "$gi" ]]; then
+    APPLY_NOTE="no .gitignore exists, so there is no selective block to harden — run the selective-gitignore migration first (a full-window --apply does this automatically)"
+    return 8
+  fi
   # Only upgrade a project that already carries the selective block; a project without it is the
   # `selective-gitignore` migration's job, and that one appends the canonical (already-strict) file.
-  grep -qF '!.ssd/features/**/01-architect.md' "$gi" || return 1
+  if ! grep -qF '!.ssd/features/**/01-architect.md' "$gi"; then
+    APPLY_NOTE=".gitignore does not carry the selective block — run the selective-gitignore migration first (a full-window --apply does this automatically)"
+    return 8
+  fi
   grep -qxF '.ssd/features/**' "$gi" && return 0            # idempotent — already strict
   backup_gi
   # Pass A: the deep deny + directory re-includes, immediately after the `!.ssd/milestones/` line so
@@ -403,6 +442,220 @@ apply_strict_selective_gitignore() {   # Feynman audit C12/C14 — make the allo
 # worse than no note at all.
 APPLY_NOTE=""
 
+# Rewrite an indented `<key>:` line's scalar, in place, SCOPED to a named top-level block.
+#
+# Deliberately awk+mv rather than `sed -i`: BSD sed requires `-i ''` and GNU sed requires a bare `-i`,
+# and that exact divergence produced two defects in iteration A.
+#
+# The `block` argument is not optional decoration (round-1 MINOR-1). bump_recorded_version carries a
+# comment recording that a PRIOR REVIEW required it to be scoped to `ssd:` "so a nested version: under
+# an earlier block in a consuming project's file can't be hit by mistake." An unscoped first-match
+# helper reintroduces that class — and it matters most for `issue_tracking`, which lives under a LIST
+# ITEM inside `integrations:`, where "the first match" is only correct because today's ssd-init template
+# happens to give the key to just one entry. Add it to the jira entry, or reorder the list, and an
+# unscoped rewrite silently edits the wrong integration.
+#
+# Args: file, top-level block name (e.g. `ssd` or `integrations`), key, value.
+set_yaml_scalar() {
+  local f="$1" block="$2" key="$3" val="$4"
+  awk -v b="$block" -v k="$key" -v v="$val" '
+    $0 ~ "^"b":" { inblock=1; print; next }
+    /^[^[:space:]#]/ { inblock=0 }                       # any new top-level key ends the block
+    inblock && !done && $0 ~ "^[[:space:]]+"k":" {
+      match($0, /^[[:space:]]+/); indent = substr($0, 1, RLENGTH)
+      print indent k ": " v; done=1; next
+    }
+    { print }
+  ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+}
+
+# ----- elective migrations (ADR-0013 addendum, ADR-0017 amendment) -----------
+# The four SSD path roots a private project must not track. Kept in one place so the enumerator, the
+# verifier, and the docs cannot disagree about scope.
+SSD_TRACKED_ROOTS=(".ssd" "docs/decisions" "docs/runbooks" "docs/architecture")
+
+# Every path git currently TRACKS under the SSD roots, **NUL-delimited**. Empty when there are none.
+# `git ls-files` lists tracked files only (no --others), which is exactly the set `git rm --cached`
+# would act on.
+#
+# `-z` IS LOAD-BEARING, not hygiene. Without it `git ls-files` C-QUOTES any path containing non-ASCII
+# bytes — `"docs/decisions/ADR-0002-h\303\251llo.md"` — and that string then (a) cannot match the ADR
+# naming pattern, so a real ADR is misreported as UNCONFIRMED, (b) fails `[[ -f ]]`, so the frontmatter
+# probe silently cannot run, and (c) is rejected by `git rm --cached` as a pathspec. Because git
+# validates ALL pathspecs before acting, ONE accented filename made the entire retrofit impossible.
+# (Round-1 MAJOR-1, reproduced.) Callers must read with `read -r -d ''`.
+tracked_ssd_paths() {
+  git -C "$ROOT" ls-files -z -- "${SSD_TRACKED_ROOTS[@]}" 2>/dev/null | sort -z
+}
+
+# True iff a path can be POSITIVELY identified as SSD-produced. Three signals, in order of strength:
+#
+#   1. `.ssd/**`                  — unambiguous; SSD owns the whole tree.
+#   2. `docs/decisions/ADR-*.md`  — the ADR naming convention (architect/SKILL.md § ADR).
+#   3. SSD frontmatter            — a `skill:` key inside the leading `---` block, per
+#                                   ssd/chapters/state.md § Structured Output Requirements.
+#
+# Signal 3 matters for runbooks and architecture docs, whose filenames are feature-named and therefore
+# indistinguishable from any other doc. Without it, SSD's OWN runbooks got flagged as "not created by
+# SSD" — and a warning that fires on the tool's own output trains the user to ignore it, which
+# destroys exactly the signal this interlock exists to give.
+#
+# Anything not matched is reported as UNCONFIRMED, not as "not SSD's": this function cannot prove
+# authorship, and the heading must not claim more than the probe supports.
+is_ssd_owned_path() {
+  local pth="$1"
+  case "$pth" in
+    .ssd/*)                   return 0 ;;
+    docs/decisions/ADR-*.md)  return 0 ;;
+  esac
+  # Frontmatter probe: `skill:` within the first few lines of a leading `---` block.
+  if [[ -f "$ROOT/$pth" ]] && head -1 "$ROOT/$pth" 2>/dev/null | grep -qx -- '---'; then
+    awk 'NR>1 && /^---[[:space:]]*$/ {exit 1} NR>1 && /^skill:[[:space:]]*[^[:space:]]/ {found=1; exit 0} NR>12 {exit 1} END {exit found?0:1}' \
+      "$ROOT/$pth" 2>/dev/null && return 0
+  fi
+  return 1
+}
+
+# Probe: is the project already on private mode? Both halves must hold — the recorded mode AND the
+# pattern — so a half-applied project is correctly reported as NOT yet private and can be finished.
+detect_private_mode() {
+  grep -qE '^[[:space:]]*gitignore_mode:[[:space:]]*private([[:space:]]|#|$)' \
+    "$ROOT/.ssd/project.yml" 2>/dev/null || return 1
+  grep -qxF '# ssd:gitignore-mode=private' "$ROOT/.gitignore" 2>/dev/null || return 1
+  return 0
+}
+
+# Non-destructive half: write the pattern + record the config. Mirrors apply_selective_gitignore's
+# four hard-won ordering rules (bail-before-mutating, pattern first / marker key LAST, comments on
+# their own line, sentinel-guarded append).
+apply_private_mode_config() {
+  local pj="$ROOT/.ssd/project.yml" gi="$ROOT/.gitignore"
+  [[ -f "$pj" ]] || return 1
+  grep -qE '^ssd:' "$pj" || return 1
+  [[ -f "$SCRIPT_DIR/private.gitignore" ]] || return 1   # broken install → fail loud, never partial
+  if ! grep -qxF '# ssd:gitignore-mode=private' "$gi" 2>/dev/null; then
+    backup_gi
+    printf '\n' >> "$gi"
+    cat "$SCRIPT_DIR/private.gitignore" >> "$gi"
+  fi
+  backup_pj
+  if grep -qE '^[[:space:]]*gitignore_mode:' "$pj"; then
+    set_yaml_scalar "$pj" ssd gitignore_mode private
+  else
+    insert_under_ssd "$pj" <<'EOF'
+  # gitignore_mode set by /ssd upgrade --apply private-mode (ADR-0017).
+  gitignore_mode: private
+EOF
+  fi
+  # Both are best-effort: absent keys are left absent rather than invented, because ssd-init owns the
+  # template and a key this script did not find is one the project chose not to carry.
+  grep -qE '^[[:space:]]*branch_pattern:' "$pj" && set_yaml_scalar "$pj" ssd branch_pattern '"{slug}"'
+  # issue_tracking must be off — mirroring workstream state to a public tracker contradicts the mode
+  # outright (issue-sync.sh preflight also refuses at runtime, since project.yml is hand-editable).
+  grep -qE '^[[:space:]]*issue_tracking:' "$pj" && set_yaml_scalar "$pj" integrations issue_tracking off
+  return 0
+}
+
+# THE ITEMIZED-CONSENT INTERLOCK (architect spec iter B §4.3).
+#
+# Dry-run BY DEFAULT: enumerate, print the COMPLETE list, warn about history, exit 10. `--confirm`
+# acts. This inverts the engine's normal behavior deliberately — it is the only operation in this
+# script that can remove anything from git. ADR-0013 iteration A shipped read-only "so the corruption
+# risk of a bad migration cannot fire"; this operation is strictly more dangerous.
+#
+# Never itemize-and-proceed in one invocation: the list and the action are two separate runs, so the
+# user has read the list before the second one exists.
+elect_private_mode() {
+  local owned=() review=() pth
+  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "migrate: --elect private-mode needs a git repository (nothing to untrack otherwise)." >&2
+    return 2
+  fi
+  if detect_private_mode && [[ -z "$(tracked_ssd_paths | tr -d '\0')" ]]; then
+    echo "ELECTED private-mode :: already private and no SSD path is tracked; nothing to do."
+    return 0
+  fi
+  # One enumeration, held as an array. NUL-delimited so any filename survives (see tracked_ssd_paths).
+  local all=()
+  while IFS= read -r -d '' pth; do
+    [[ -z "$pth" ]] && continue
+    all+=("$pth")
+    if is_ssd_owned_path "$pth"; then owned+=("$pth"); else review+=("$pth"); fi
+  done < <(tracked_ssd_paths)
+
+  echo "ELECT private-mode :: ${#owned[@]} SSD-owned + ${#review[@]} needing review would be untracked"
+  echo
+  if [[ ${#owned[@]} -gt 0 ]]; then
+    echo "SSD-owned artifacts to be untracked (${#owned[@]}):"
+    printf '  %s\n' "${owned[@]}"          # COMPLETE list — never truncated, never summarized
+    echo
+  fi
+  if [[ ${#review[@]} -gt 0 ]]; then
+    echo "!! UNCONFIRMED as SSD-produced — review before confirming (${#review[@]}):"
+    printf '  !! %s\n' "${review[@]}"
+    echo "   These live under the SSD docs roots but carry no SSD naming convention or frontmatter,"
+    echo "   so this migration cannot tell whether SSD created them or your team did."
+    echo "   Untracking a file your team owns is not what this migration is for."
+    echo
+  fi
+  echo "HISTORY IS NOT REWRITTEN. \`git rm --cached\` stops FUTURE tracking only. Anything already"
+  echo "committed and pushed stays in this repository's history and on every existing clone. Electing"
+  echo "private mode makes future commits private; it does not make this project private retroactively."
+  echo "Files are removed from the index, NOT from disk."
+  echo
+  if [[ $CONFIRM -ne 1 ]]; then
+    echo "Nothing has been changed. Re-run with --confirm to apply:"
+    echo "  /ssd upgrade --apply private-mode --confirm"
+    return 10
+  fi
+
+  # PRE-FLIGHT THE DESTRUCTIVE STEP BEFORE MUTATING ANYTHING (round-1 MAJOR-2). The untrack is the only
+  # thing here that can fail, and it used to run LAST — after the config writes — so any failure left a
+  # half-migrated repo: `gitignore_mode: private` recorded while every artifact stayed tracked, a state
+  # neither mode describes. That state is only *conditionally* visible, because the no-leaky-state rule
+  # is diff-scoped and SKIPs when there is no diff. `git rm --dry-run` validates every pathspec and
+  # touches nothing, so a problem now aborts with the repo untouched — which is what a user expects
+  # from a failed migration. Deliberately independent of MAJOR-1's fix: this guards EVERY failure
+  # cause, not just the quoting one.
+  if [[ ${#all[@]} -gt 0 ]]; then
+    git -C "$ROOT" rm --cached --dry-run --quiet -- "${all[@]}" >/dev/null 2>&1 || {
+      echo "migrate: cannot untrack the enumerated paths (git rm --dry-run refused them)." >&2
+      echo "         NOTHING has been changed. Inspect the paths listed above and retry." >&2
+      return 3
+    }
+  fi
+  apply_private_mode_config || {
+    echo "migrate: could not write the private-mode configuration (project.yml missing an ssd: block, or methodology/private.gitignore absent)." >&2
+    echo "         NOTHING has been changed." >&2
+    return 3
+  }
+  if [[ ${#all[@]} -gt 0 ]]; then
+    git -C "$ROOT" rm --cached --quiet -- "${all[@]}" || {
+      echo "migrate: git rm --cached failed AFTER the dry-run passed; configuration was written but" >&2
+      echo "         paths remain tracked. Inspect manually — this should not happen." >&2
+      return 3
+    }
+  fi
+  # Re-verify rather than assume (architect spec §4.3 step 6).
+  local remaining=()
+  while IFS= read -r -d '' pth; do [[ -n "$pth" ]] && remaining+=("$pth"); done < <(tracked_ssd_paths)
+  if [[ ${#remaining[@]} -gt 0 ]]; then
+    echo "migrate: paths still tracked after untracking — inspect manually:" >&2
+    printf '  %s\n' "${remaining[@]}" >&2
+    return 3
+  fi
+  echo "ELECTED private-mode :: ${#owned[@]} + ${#review[@]} path(s) untracked; files remain on disk."
+  echo "Commit the result to make it durable. History is unchanged."
+  return 0
+}
+
+elect_dispatch() {
+  case "$1" in
+    private-mode) elect_private_mode ;;
+    *)            echo "migrate: no elect handler for '$1'." >&2; return 2 ;;
+  esac
+}
+
 # Dispatch. Return codes:
 #   0     apply ran — caller re-detects to confirm the convention is now present
 #   8     NOOP — nothing to apply because a precondition is genuinely absent (e.g. the project has no
@@ -416,6 +669,12 @@ APPLY_NOTE=""
 # framework made `/ssd upgrade --apply` report a broken engine (round-1 QUESTION-1). Code 9 was
 # documented here but handled by NEITHER side — a dead contract that would have silently become an
 # ERROR for the first apply fn to use it. Both are now live in the report loop.
+# NOTE: elective ids are DELIBERATELY ABSENT from this dispatcher (and from detect()). They are
+# reachable only through elect_dispatch. This is the SECOND, independent layer of the guarantee that a
+# default sweep can never apply one: even if the `el == "true"` skip in the report loop were removed,
+# `--apply private-mode` would find no handler here and could not untrack anything. Verified by
+# reversion — removing the skip alone does not make the sweep destructive; removing BOTH does.
+# Registering an elective id here would silently defeat that. Don't.
 apply_dispatch() {
   case "$1" in
     current-yml-v2)         apply_current_yml_v2 ;;
@@ -450,16 +709,24 @@ bump_recorded_version() {
 # carries). NOTE: obsoleted_in is the LAST field — every `read -r ... ob` consumer must list it, or the
 # 7th column folds into the 6th (title) var.
 read_manifest() {
-  awk '
+  awk -v SEP="$MANIFEST_SEP" '
     function val(line){ sub(/^[^:]*:[[:space:]]*/, "", line); gsub(/^"|"$/, "", line); return line }
-    /^  - id:/             { if (id != "") print id"\t"iv"\t"ap"\t"kd"\t"ad"\t"ti"\t"ob; id=val($0); iv=ap=kd=ad=ti=ob="" ; next }
+    # US (\x1f), NOT tab. Tab is IFS *whitespace*, so bash collapses consecutive tabs into a single
+    # delimiter and an EMPTY MIDDLE FIELD silently shifts everything after it. The 7-column form
+    # survived only because the one optional field (obsoleted_in) was LAST, where a trailing empty
+    # field is harmless. Appending `elective` after it made every entry without an obsoleted_in — i.e.
+    # all of them — read `elective` into the `ob` slot. A non-whitespace IFS delimiter preserves empty
+    # fields (verified empirically, not assumed).
+    function rec(){ return id SEP iv SEP ap SEP kd SEP ad SEP ti SEP ob SEP el }
+    /^  - id:/             { if (id != "") print rec(); id=val($0); iv=ap=kd=ad=ti=ob=el="" ; next }
     /^    introduced_in:/  { iv=val($0); next }
     /^    obsoleted_in:/   { ob=val($0); next }
     /^    applies_to:/     { ap=val($0); next }
     /^    kind:/           { kd=val($0); next }
+    /^    elective:/       { el=val($0); next }
     /^    adr:/            { ad=val($0); next }
     /^    title:/          { ti=val($0); next }
-    END                    { if (id != "") print id"\t"iv"\t"ap"\t"kd"\t"ad"\t"ti"\t"ob }
+    END                    { if (id != "") print rec() }
   ' "$MANIFEST"
 }
 
@@ -491,7 +758,7 @@ EOF
 # version gate — once adopted, the entry is "satisfied" and the recorded version can advance past it.
 if [[ -n "$ADOPT" ]]; then
   guided_ok=0
-  while IFS=$'\t' read -r id iv ap kd ad ti ob; do
+  while IFS="$MANIFEST_SEP" read -r id iv ap kd ad ti ob el; do
     [[ "$id" == "$ADOPT" && "$kd" == "guided" ]] && guided_ok=1
   done < <(read_manifest)
   if [[ $guided_ok -ne 1 ]]; then
@@ -514,6 +781,25 @@ if [[ -n "$ADOPT" ]]; then
   exit 0
 fi
 
+# --elect <id>: run ONE elective migration and exit. Placed here — before the report loop, mirroring
+# --adopt — so the elect path and the default sweep can never interleave.
+if [[ -n "$ELECT" ]]; then
+  el_found=0; el_kind=""; el_elective=""
+  while IFS="$MANIFEST_SEP" read -r id iv ap kd ad ti ob el; do
+    if [[ "$id" == "$ELECT" ]]; then el_found=1; el_kind="$kd"; el_elective="$el"; fi
+  done < <(read_manifest)
+  if [[ $el_found -ne 1 ]]; then
+    echo "migrate: --elect '$ELECT' is not a migration id in the manifest." >&2; exit 2
+  fi
+  if [[ "$el_elective" != "true" ]]; then
+    echo "migrate: --elect '$ELECT' is not an elective migration. Swept conventions are applied with --apply." >&2; exit 2
+  fi
+  if [[ "$el_kind" != "mechanical" ]]; then
+    echo "migrate: --elect '$ELECT' is kind '$el_kind'; only mechanical entries have an apply path." >&2; exit 2
+  fi
+  elect_dispatch "$ELECT"; exit $?
+fi
+
 emitted=0
 engine_error=0
 advancing=1            # while 1, the recorded version may advance across adopted entries
@@ -521,7 +807,7 @@ cand_version="$FROM"   # highest contiguous adopted introduced_in (>= FROM)
 applied_log=""         # accumulated init-log body
 [[ $JSON -eq 1 ]] && printf '{\n  "from": "%s", "to": "%s", "apply": %s,\n  "migrations": [\n' "$FROM" "$TO" "$([[ $APPLY -eq 1 ]] && echo true || echo false)"
 
-while IFS=$'\t' read -r id iv ap kd ad ti ob; do
+while IFS="$MANIFEST_SEP" read -r id iv ap kd ad ti ob el; do
   [[ -z "$id" ]] && continue
   [[ "$ap" != "project" ]] && continue            # skip library-scoped entries
   ver_gt "$iv" "$FROM" || continue                # only conventions newer than recorded
@@ -530,6 +816,14 @@ while IFS=$'\t' read -r id iv ap kd ad ti ob; do
   # convention no longer exists in the destination world, so it must never be (re-)applied. A staged
   # upgrade to a pre-removal --to still sees it. (ssd-2.0-cuts iter C; ADR-0012/0013 obsoleted_in.)
   if [[ -n "$ob" && -n "$TO" ]] && ! ver_gt "$ob" "$TO"; then continue; fi
+  # An ELECTIVE entry is not drift — it is a choice only some projects should make (ADR-0013
+  # addendum). Skipping HERE, before the satisfied/advancing bookkeeping below, makes it inert in
+  # every default behavior at once: the report emit, the JSON emit, recorded-version advancement, and
+  # the init-log append ALL live further down this same loop. It is reachable only via --elect.
+  #
+  # The placement is the whole guarantee. Moved below `satisfied=0`, an unapplied elective entry
+  # would pin the recorded version for every project that never wanted it.
+  if [[ "$el" == "true" ]]; then continue; fi
 
   satisfied=0
   if [[ "$kd" == "guided" ]]; then

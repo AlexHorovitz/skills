@@ -6,6 +6,176 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.9.0] — 2026-08-28
+
+### The private-mode retrofit — and a new manifest concept: entries that are *not* drift (ADR-0017 iter B)
+
+v2.8.0 shipped greenfield private mode and deliberately **no retrofit**: it never ran
+`git rm --cached`, so the one destructive operation in the whole feature was quarantined behind its own
+review cycle. This is that cycle.
+
+**A decision from iteration A had to be corrected.** Iteration A recorded that the retrofit would be
+*"a `/ssd upgrade` migration entry (`private-mode`, mechanical)."* Implemented literally that is
+**actively harmful**, because `migrations.yml` exists to answer *"what has this project drifted past?"* —
+every entry is drift to be closed:
+
+- **`mechanical`** → `/ssd upgrade --apply` on **any** project would `git rm --cached` its committed
+  ADRs, briefs, and reviews. A team repo swept into privacy because someone ran a routine upgrade.
+- **`guided`** → re-surfaces every run until adopted, nagging every project forever about a posture
+  most should never take.
+
+There is a second-order harm on the mechanical route: version advancement stops at the first
+outstanding entry, so **every non-private project would be frozen below it**, reporting permanent,
+unclosable drift.
+
+**Private mode is a choice, not a convention. The manifest had no vocabulary for that.**
+
+- **New `elective: true` manifest field** ([ADR-0013 addendum](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md)).
+  An elective entry is excluded from the default sweep: never listed, never `PENDING`, never applied by
+  `--apply`, never a participant in recorded-version advancement. Absent ⇒ false, so all twelve
+  pre-existing entries are unaffected. **Orthogonal to `kind`, deliberately not a third `kind` value** —
+  `kind` answers *how* an entry is adopted, `elective` answers *whether every project should adopt it*.
+  Collapsing them would have destroyed the information the elect path needs (that the entry is
+  mechanically appliable), and the 2×2 is fully meaningful in all four cells.
+- **New `--elect <id>` / `--confirm`**, surfaced as `/ssd upgrade --apply private-mode`. A pre-loop
+  short-circuit mirroring `--adopt`, so the elect path and the sweep can never interleave.
+- **Dry-run by default.** `--elect` mutates *nothing* and exits **10** (needs-confirm); `--confirm`
+  acts. This inverts the engine's normal behavior deliberately: it is the only operation in
+  `migrate.sh` that can remove anything from git, and ADR-0013 iteration A shipped read-only for
+  exactly that reason.
+- **The itemized-consent interlock.** Enumerates every tracked path under `.ssd/` and the three SSD
+  `docs/` trees, prints the **complete** list (never truncated), and separates files SSD demonstrably
+  produced from files it **cannot confirm** — by ADR naming *and* by SSD frontmatter, so SSD's own
+  runbooks are recognized rather than flagged. A warning that fires on the tool's own output trains
+  the user to ignore it. The heading claims only "UNCONFIRMED", never authorship the probe cannot
+  establish.
+- **Two independent layers** keep an elective entry out of the sweep: the report loop skips it before
+  any bookkeeping, **and** elective ids are absent from the swept `apply_dispatch`/`detect` tables.
+  Reversion testing showed removing either alone is *not* enough to make `--apply` destructive; both
+  are now asserted.
+
+### A field-shifting bug this release almost shipped
+
+Appending `elective` to `read_manifest`'s record broke every entry that lacked an `obsoleted_in` —
+which is all of them. **Tab is IFS *whitespace*, so bash collapses consecutive tabs** and every field
+after an empty one shifts left. The 7-column form was safe only because its one optional field was
+**last**, where a trailing empty field is harmless. The symptom: `--elect private-mode` rejected its own
+manifest entry as *"not an elective migration."* The record delimiter is now `\x1f` (unit separator),
+which is not IFS whitespace and therefore preserves empty fields — verified empirically, and pinned by
+a fixture that tests the observable symptom rather than the delimiter choice.
+
+### Two MAJORs the review caught, both in the destructive path
+
+Found by feeding the interlock a filename the fixtures never tried, and both fixed and verified by
+reversion.
+
+- **`git ls-files` C-quotes unusual paths.** Any path with non-ASCII bytes comes back as
+  `"docs/decisions/ADR-0002-h\303\251llo.md"` — quoted and octal-escaped. That string cannot match the
+  ADR naming pattern (so a real ADR was misreported as UNCONFIRMED), fails `[[ -f ]]` (so the
+  frontmatter probe silently could not run), and is rejected by `git rm --cached` as a pathspec. Because
+  git validates **all** pathspecs before acting, **one accented filename made the entire retrofit
+  impossible.** Enumeration is now NUL-delimited (`ls-files -z`, `sort -z`, `read -r -d ''`).
+- **The config was written before the destructive step was validated.** Any `rm` failure left a
+  half-migrated repo — `gitignore_mode: private` recorded while every artifact stayed tracked, a state
+  neither mode describes. The mitigation was weaker than assumed: `no-leaky-state` is diff-scoped, so it
+  **SKIPs** when there is no diff and the state is then invisible. The untrack is now pre-flighted with
+  `git rm --cached --dry-run` before anything is written, so a failure aborts with the repo untouched —
+  deliberately independent of the quoting fix, so it guards causes nobody has thought of.
+
+Also closed: `set_yaml_scalar` was unscoped, reintroducing a class `bump_recorded_version` had already
+been hardened against by a prior review — it now takes a block argument, which matters most for
+`issue_tracking`, whose list-item scope made "first match" correct only by accident of the current
+template. And `--confirm` outside `--elect` is now a usage error rather than a silent no-op.
+
+**How it got through:** ten fixtures, several genuinely red, every guard reversion-verified — and all of
+them using ASCII filenames. Red-first on the cases you thought of is not coverage; the defect was in an
+input class the tests never produced.
+
+### Also
+
+- `branch_pattern` defaults to `{slug}` under private mode and the retrofit rewrites an existing key;
+  branches of workstreams created *before* the switch are not renamed.
+- A portable `set_yaml_scalar` helper (awk + mv, **not** `sed -i` — BSD needs `-i ''` and GNU needs a
+  bare `-i`, the same divergence that produced two defects in v2.8.0).
+- ADR-0017 amendment recording the elective correction and, explicitly, what the retrofit **cannot**
+  undo: history is not rewritten, files are untracked not deleted, and there is no inverse migration.
+
+### Also in this release: two recorded engine defects fixed
+
+Two defects recorded during the `ssd-private-mode` epic and deliberately left out of its PRs under
+hard rule 4 ("refactor only after shipping — separate PRs, never mixed with feature work"). Neither is
+part of private mode; both are pre-existing engine faults that the epic's dogfooding exposed.
+
+### `issue-sync-current` could never pass, and blamed `gh` for calls it never made
+
+`parse_active_workstreams` treated **every** `- ` line under `active:` as a new workstream boundary.
+But `rail_deviations`, `adrs_authored` and `touches` are all documented v2 schema **list** fields, so a
+single realistic workstream fragmented into ~18 records:
+
+```
+[ssd-private-mode|deploy|]    <- slug + phase, no issue
+[||] × 16                      <- one per nested list item
+[||39]                         <- the issue, with NO slug
+```
+
+The record carrying `issue:` had an empty slug, so the rule's own `[[ -n "$slug" ]]` guard skipped it,
+`checked` stayed 0, and it emitted **`SKIP … issue binding(s) present but gh lookups all failed`** —
+having made **zero** `gh` calls. A misleading detail string on top of a rule that had, almost
+certainly, never passed on a real workstream since shipping in v2.4.0.
+
+The parser is now **indent-aware**: the first list item under `active:` defines the workstream indent,
+only `- ` at that exact indent starts a new workstream, and scalar fields are read only at the field
+indent. The indent is derived rather than hardcoded, so a change in emitter style cannot break it, and
+reading fields only at their own depth means a same-named key nested deeper cannot overwrite the
+workstream's own.
+
+On this repository the rule now reports `PASS issue-sync-current :: 1 issue binding(s) open and
+phase-label in sync` — its first pass on a real workstream.
+
+**Why it survived so long:** the fixture that covered it built a *flat* `current.yml`
+(`slug`/`phase`/`issue`, nothing nested) — a shape no real workstream has. The new fixture is built
+from the realistic schema and drives the rule through a mocked `gh`, so it exercises the loop rather
+than stopping at the availability check. It also asserts the rule **keeps its teeth**: label/phase
+drift must still FAIL, since a "fix" that made the rule always pass would be worse than the bug.
+
+### `committed-gate-yml` / `strict-selective-gitignore` reported ERROR for an unmet precondition
+
+On a project with no `.gitignore` at all, both appliers returned failure, so the engine emitted
+`ERROR :: apply ran but convention still absent` and **exit 3** — telling a user their upgrade engine
+was broken when the project state simply was not ready. The same misleading-signal class v2.9.0 fixed
+for `gate-inputs-present`, in two appliers that never adopted the `NOOP` vocabulary it introduced.
+
+Both now return `NOOP` (8) with a note naming the missing precondition **and the remedy**:
+
+```
+NOOP committed-gate-yml :: … no .gitignore exists, so the !.ssd/gate.yml exception cannot be
+                           added — run the selective-gitignore migration first
+```
+
+`committed-gate-yml` guards **before** creating `gate.yml`, so it no longer leaves a half-applied
+convention behind. Both fixtures carry a control arm asserting that with the selective pattern present
+the migrations still apply — a fix that made them unconditionally NOOP would be worse than the bug.
+
+**A declarative alternative was considered and rejected on evidence.** Adding a `requires: <id>` field
+to the manifest, checked generically by the engine, reads as the better design. It does not work here:
+`selective-gitignore`'s detect probe tests the `gitignore_mode` **marker key in `project.yml`**, not the
+`.gitignore` **pattern** — and in the exact failing scenario the marker is present while the pattern is
+absent. A `requires` guard would have reported "precondition satisfied" and the apply would still have
+ERRORed, adding a second false signal on top of the first. Only the applier knows its own real
+precondition.
+
+### Release tags backfilled
+
+The 2.x tag line skipped **v2.0.0, v2.5.0, v2.6.0 and v2.7.0** — one more than previously recorded;
+v2.0.0 (the BREAKING SSD 2.0 release) was also missing. Each is now tagged on the commit where
+`VERSION` became that value, cross-checked against its `CHANGELOG` entry and confirmed to be an
+ancestor of `main`. The 2.x line is contiguous v2.0.0 → v2.8.0, and v2.9.0 tags this release.
+
+Parity: **128 → 202 assertions** (+74) across both private-mode iterations and the two engine fixes.
+Projects that never elect private mode are byte-identical to v2.8.0.
+
+---
+
 ## [2.8.0] — 2026-08-28
 
 ### `gitignore_mode: private` — SSD with no paper trail in git (ADR-0017, iteration A)
