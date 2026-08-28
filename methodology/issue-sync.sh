@@ -299,6 +299,17 @@ do_close_feature() {
 # so #27 never matches #270). Return 2 if the `gh issue list` itself fails (caller treats as unknown,
 # NOT as "no open children" — closing an epic on a failed lookup is the dangerous false negative).
 # MINOR-2 (iter B): child membership is THIS label query, not the epic task list.
+#
+# MARKDOWN EMPHASIS IS STRIPPED BEFORE MATCHING, and that is load-bearing. The body writer above emits
+# `**Epic:** #N` (bold), while this reader matched the literal `Epic: #N` — so the colon was followed by
+# `**`, not a space, the pattern never matched ANY body, find_open_children returned nothing for every
+# epic, and do_close_epic concluded "all children closed" WITH CHILDREN OPEN. The one guard ADR-0014's
+# D1 split provides against a premature epic close was failing OPEN. Its fixture passed because it
+# hand-wrote a plain `Epic: #27` body the writer never produces.
+#
+# Normalising instead of widening the pattern keeps the #27-vs-#270 boundary intact (verified) and
+# survives further formatting changes to the body. A mirror assertion in the parity suite now checks
+# that this reader and the writer above still agree.
 find_open_children() {
   local epic="$1" raw rc
   raw="$(gh issue list --label ssd:feature --state open --limit 1000 \
@@ -306,7 +317,8 @@ find_open_children() {
   rc=$?
   [[ $rc -ne 0 ]] && return 2
   printf '%s\n' "$raw" | awk -F'\t' -v e="$epic" '
-    $2 ~ ("Epic: #" e "([^0-9]|$)") { print $1 }'
+    { body = $2; gsub(/[*_]/, "", body) }
+    body ~ ("Epic: #" e "([^0-9]|$)") { print $1 }'
 }
 
 do_close_epic() {
