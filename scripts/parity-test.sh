@@ -852,12 +852,33 @@ test_fixture_close_feature_confirm() {
 # Fixture 24: close-epic refuses while a child ssd:feature issue is still OPEN → exit 0, state=skipped.
 test_fixture_close_epic_open_children() {
   echo "fixture: close-epic-open-children"
-  local issues; issues=$'27|OPEN|ssd:epic|[ADR-0014] x\n28|OPEN|ssd:feature,ssd:phase/code|x: Epic: #27'
+  # The child body MUST be the format ensure_feature actually writes — `**Epic:** #N`, with markdown
+  # emphasis. The original fixture used a hand-written `x: Epic: #27` (plain), a shape the writer never
+  # produces, so it passed while the real guard was inert: find_open_children matched nothing for ANY
+  # epic and do_close_epic concluded "all children closed" with children open. That is the guard
+  # ADR-0014's D1 split exists to provide, silently failing OPEN.
+  #
+  # Third instance of one mechanism in this workstream: a fixture that fabricates input the system does
+  # not generate (cf. the flat current.yml, and the ASCII-only filenames).
+  local issues; issues=$'27|OPEN|ssd:epic|[ADR-0014] x\n28|OPEN|ssd:feature,ssd:phase/code|<!-- ssd:begin --> **Workstream:** x · **Phase:** code · **Epic:** #27 <!-- ssd:end -->'
   local out; out=$(run_issue_sync "$issues" true close-epic 27)   # auto_close ON, yet must still skip
   _assert "close-epic-open-children" "open child → exit 0 (not an error)" \
     "$([[ "$out" == *"exit=0"* ]] && echo 0 || echo 1)"
   _assert "close-epic-open-children" "state=skipped (open child blocks close even with auto_close)" \
     "$([[ "$out" == *"state=skipped"* ]] && echo 0 || echo 1)"
+  _assert "close-epic-open-children" "the open child is named in the detail" \
+    "$([[ "$out" == *"28"* ]] && echo 0 || echo 1)"
+
+  # MIRROR ASSERTION — the real defence. The body WRITER and the child READER live in the same file and
+  # drifted apart; assert they still agree, so a future formatting change to the body cannot silently
+  # disable the guard again.
+  local writer reader
+  writer=$(grep -c 'Epic:\*\* #%s' "$ISSUE_SYNC_SCRIPT" || true)
+  reader=$(awk '/^find_open_children\(\)/,/^}/' "$ISSUE_SYNC_SCRIPT" | grep -c 'gsub(/\[\*_\]/' || true)
+  _assert "close-epic-open-children" "writer emits markdown-emphasised Epic ref" \
+    "$([[ "$writer" -ge 1 ]] && echo 0 || echo 1)"
+  _assert "close-epic-open-children" "reader normalises emphasis before matching (writer/reader agree)" \
+    "$([[ "$reader" -ge 1 ]] && echo 0 || echo 1)"
 }
 
 # Fixture 25: close-epic with all children closed + auto_close on → closes (exit 0, state=closed).
