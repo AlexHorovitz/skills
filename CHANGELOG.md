@@ -6,81 +6,6 @@ Format: `[version] — date — description`
 
 ---
 
-## [2.9.1] — 2026-08-28
-
-Two defects recorded during the `ssd-private-mode` epic and deliberately left out of its PRs under
-hard rule 4 ("refactor only after shipping — separate PRs, never mixed with feature work"). Neither is
-part of private mode; both are pre-existing engine faults that the epic's dogfooding exposed.
-
-### `issue-sync-current` could never pass, and blamed `gh` for calls it never made
-
-`parse_active_workstreams` treated **every** `- ` line under `active:` as a new workstream boundary.
-But `rail_deviations`, `adrs_authored` and `touches` are all documented v2 schema **list** fields, so a
-single realistic workstream fragmented into ~18 records:
-
-```
-[ssd-private-mode|deploy|]    <- slug + phase, no issue
-[||] × 16                      <- one per nested list item
-[||39]                         <- the issue, with NO slug
-```
-
-The record carrying `issue:` had an empty slug, so the rule's own `[[ -n "$slug" ]]` guard skipped it,
-`checked` stayed 0, and it emitted **`SKIP … issue binding(s) present but gh lookups all failed`** —
-having made **zero** `gh` calls. A misleading detail string on top of a rule that had, almost
-certainly, never passed on a real workstream since shipping in v2.4.0.
-
-The parser is now **indent-aware**: the first list item under `active:` defines the workstream indent,
-only `- ` at that exact indent starts a new workstream, and scalar fields are read only at the field
-indent. The indent is derived rather than hardcoded, so a change in emitter style cannot break it, and
-reading fields only at their own depth means a same-named key nested deeper cannot overwrite the
-workstream's own.
-
-On this repository the rule now reports `PASS issue-sync-current :: 1 issue binding(s) open and
-phase-label in sync` — its first pass on a real workstream.
-
-**Why it survived so long:** the fixture that covered it built a *flat* `current.yml`
-(`slug`/`phase`/`issue`, nothing nested) — a shape no real workstream has. The new fixture is built
-from the realistic schema and drives the rule through a mocked `gh`, so it exercises the loop rather
-than stopping at the availability check. It also asserts the rule **keeps its teeth**: label/phase
-drift must still FAIL, since a "fix" that made the rule always pass would be worse than the bug.
-
-### `committed-gate-yml` / `strict-selective-gitignore` reported ERROR for an unmet precondition
-
-On a project with no `.gitignore` at all, both appliers returned failure, so the engine emitted
-`ERROR :: apply ran but convention still absent` and **exit 3** — telling a user their upgrade engine
-was broken when the project state simply was not ready. The same misleading-signal class v2.9.0 fixed
-for `gate-inputs-present`, in two appliers that never adopted the `NOOP` vocabulary it introduced.
-
-Both now return `NOOP` (8) with a note naming the missing precondition **and the remedy**:
-
-```
-NOOP committed-gate-yml :: … no .gitignore exists, so the !.ssd/gate.yml exception cannot be
-                           added — run the selective-gitignore migration first
-```
-
-`committed-gate-yml` guards **before** creating `gate.yml`, so it no longer leaves a half-applied
-convention behind. Both fixtures carry a control arm asserting that with the selective pattern present
-the migrations still apply — a fix that made them unconditionally NOOP would be worse than the bug.
-
-**A declarative alternative was considered and rejected on evidence.** Adding a `requires: <id>` field
-to the manifest, checked generically by the engine, reads as the better design. It does not work here:
-`selective-gitignore`'s detect probe tests the `gitignore_mode` **marker key in `project.yml`**, not the
-`.gitignore` **pattern** — and in the exact failing scenario the marker is present while the pattern is
-absent. A `requires` guard would have reported "precondition satisfied" and the apply would still have
-ERRORed, adding a second false signal on top of the first. Only the applier knows its own real
-precondition.
-
-### Release tags backfilled
-
-The 2.x tag line skipped **v2.0.0, v2.5.0, v2.6.0 and v2.7.0** — one more than previously recorded;
-v2.0.0 (the BREAKING SSD 2.0 release) was also missing. Each is now tagged on the commit where
-`VERSION` became that value, cross-checked against its `CHANGELOG` entry and confirmed to be an
-ancestor of `main`. The 2.x line is contiguous v2.0.0 → v2.8.0.
-
-Parity: **188 → 202 assertions** (+14).
-
----
-
 ## [2.9.0] — 2026-08-28
 
 ### The private-mode retrofit — and a new manifest concept: entries that are *not* drift (ADR-0017 iter B)
@@ -175,8 +100,79 @@ input class the tests never produced.
 - ADR-0017 amendment recording the elective correction and, explicitly, what the retrofit **cannot**
   undo: history is not rewritten, files are untracked not deleted, and there is no inverse migration.
 
-Parity: **128 → 188 assertions** (+60). Projects that never elect private mode are byte-identical to
-v2.8.0.
+### Also in this release: two recorded engine defects fixed
+
+Two defects recorded during the `ssd-private-mode` epic and deliberately left out of its PRs under
+hard rule 4 ("refactor only after shipping — separate PRs, never mixed with feature work"). Neither is
+part of private mode; both are pre-existing engine faults that the epic's dogfooding exposed.
+
+### `issue-sync-current` could never pass, and blamed `gh` for calls it never made
+
+`parse_active_workstreams` treated **every** `- ` line under `active:` as a new workstream boundary.
+But `rail_deviations`, `adrs_authored` and `touches` are all documented v2 schema **list** fields, so a
+single realistic workstream fragmented into ~18 records:
+
+```
+[ssd-private-mode|deploy|]    <- slug + phase, no issue
+[||] × 16                      <- one per nested list item
+[||39]                         <- the issue, with NO slug
+```
+
+The record carrying `issue:` had an empty slug, so the rule's own `[[ -n "$slug" ]]` guard skipped it,
+`checked` stayed 0, and it emitted **`SKIP … issue binding(s) present but gh lookups all failed`** —
+having made **zero** `gh` calls. A misleading detail string on top of a rule that had, almost
+certainly, never passed on a real workstream since shipping in v2.4.0.
+
+The parser is now **indent-aware**: the first list item under `active:` defines the workstream indent,
+only `- ` at that exact indent starts a new workstream, and scalar fields are read only at the field
+indent. The indent is derived rather than hardcoded, so a change in emitter style cannot break it, and
+reading fields only at their own depth means a same-named key nested deeper cannot overwrite the
+workstream's own.
+
+On this repository the rule now reports `PASS issue-sync-current :: 1 issue binding(s) open and
+phase-label in sync` — its first pass on a real workstream.
+
+**Why it survived so long:** the fixture that covered it built a *flat* `current.yml`
+(`slug`/`phase`/`issue`, nothing nested) — a shape no real workstream has. The new fixture is built
+from the realistic schema and drives the rule through a mocked `gh`, so it exercises the loop rather
+than stopping at the availability check. It also asserts the rule **keeps its teeth**: label/phase
+drift must still FAIL, since a "fix" that made the rule always pass would be worse than the bug.
+
+### `committed-gate-yml` / `strict-selective-gitignore` reported ERROR for an unmet precondition
+
+On a project with no `.gitignore` at all, both appliers returned failure, so the engine emitted
+`ERROR :: apply ran but convention still absent` and **exit 3** — telling a user their upgrade engine
+was broken when the project state simply was not ready. The same misleading-signal class v2.9.0 fixed
+for `gate-inputs-present`, in two appliers that never adopted the `NOOP` vocabulary it introduced.
+
+Both now return `NOOP` (8) with a note naming the missing precondition **and the remedy**:
+
+```
+NOOP committed-gate-yml :: … no .gitignore exists, so the !.ssd/gate.yml exception cannot be
+                           added — run the selective-gitignore migration first
+```
+
+`committed-gate-yml` guards **before** creating `gate.yml`, so it no longer leaves a half-applied
+convention behind. Both fixtures carry a control arm asserting that with the selective pattern present
+the migrations still apply — a fix that made them unconditionally NOOP would be worse than the bug.
+
+**A declarative alternative was considered and rejected on evidence.** Adding a `requires: <id>` field
+to the manifest, checked generically by the engine, reads as the better design. It does not work here:
+`selective-gitignore`'s detect probe tests the `gitignore_mode` **marker key in `project.yml`**, not the
+`.gitignore` **pattern** — and in the exact failing scenario the marker is present while the pattern is
+absent. A `requires` guard would have reported "precondition satisfied" and the apply would still have
+ERRORed, adding a second false signal on top of the first. Only the applier knows its own real
+precondition.
+
+### Release tags backfilled
+
+The 2.x tag line skipped **v2.0.0, v2.5.0, v2.6.0 and v2.7.0** — one more than previously recorded;
+v2.0.0 (the BREAKING SSD 2.0 release) was also missing. Each is now tagged on the commit where
+`VERSION` became that value, cross-checked against its `CHANGELOG` entry and confirmed to be an
+ancestor of `main`. The 2.x line is contiguous v2.0.0 → v2.8.0, and v2.9.0 tags this release.
+
+Parity: **128 → 202 assertions** (+74) across both private-mode iterations and the two engine fixes.
+Projects that never elect private mode are byte-identical to v2.8.0.
 
 ---
 
