@@ -109,6 +109,13 @@ ver_gt() {
 
 # Per-id idempotency probe (the dispatch table the architect spec calls for). Return 0 if the
 # convention is ALREADY present in the project at $ROOT. Unknown id → 1 (treat as absent → PENDING).
+# True iff the project has opted into private mode (ADR-0017). Read from project.yml, the single
+# authoritative source; two migration entries below are N/A under it.
+is_private_mode() {
+  grep -qE '^[[:space:]]*gitignore_mode:[[:space:]]*private([[:space:]]|#|$)' \
+    "$ROOT/.ssd/project.yml" 2>/dev/null
+}
+
 detect() {
   case "$1" in
     # Probes require the YAML *key* form (`^[[:space:]]*<key>:`), so a comment ("# key: …", which
@@ -121,11 +128,20 @@ detect() {
     # match — it does not define the input, so the convention stays PENDING until a real key exists.
     gate-inputs-present)    grep -qE '^[[:space:]]*test_command:' "$ROOT/.ssd/project.yml" 2>/dev/null \
                             || grep -qE '^[[:space:]]*test_command:' "$ROOT/.ssd/gate.yml" 2>/dev/null ;;
-    committed-gate-yml)     [[ -f "$ROOT/.ssd/gate.yml" ]] && grep -qF '!.ssd/gate.yml' "$ROOT/.gitignore" 2>/dev/null ;;
+    # Private mode (ADR-0017) has no committed .ssd/gate.yml and no `!` negations at all, so this
+    # convention does not exist in that destination world. Report it satisfied rather than letting
+    # the project show PERMANENT, unfixable drift — and, worse, letting `--apply` re-add the
+    # `!.ssd/gate.yml` negation, which would actively break privacy. Same shape as an obsoleted_in
+    # entry, but conditioned on project mode rather than on library version.
+    committed-gate-yml)     is_private_mode && return 0
+                            [[ -f "$ROOT/.ssd/gate.yml" ]] && grep -qF '!.ssd/gate.yml' "$ROOT/.gitignore" 2>/dev/null ;;
     # The allow-list below `.ssd/*` is inert without a DEEP deny: `.ssd/*` matches depth-1 children
     # only, so once features/ and milestones/ are re-included every file beneath them is committable
     # regardless of the `!` lines. The `.ssd/features/**` deny line is the sentinel for the fixed form.
-    strict-selective-gitignore) grep -qxF '.ssd/features/**' "$ROOT/.gitignore" 2>/dev/null ;;
+    # Also N/A under private mode: the deep-deny hardening exists to make SELECTIVE mode's
+    # allow-list load-bearing. Private mode has no allow-list to harden (ADR-0017).
+    strict-selective-gitignore) is_private_mode && return 0
+                            grep -qxF '.ssd/features/**' "$ROOT/.gitignore" 2>/dev/null ;;
     *) return 1 ;;
   esac
 }
@@ -279,6 +295,38 @@ apply_gate_inputs_present() {     # ADR-0015 — detect the test command; write 
   elif [[ -f "$ROOT/Cargo.toml" ]];  then cmd="cargo test"
   elif [[ -f "$ROOT/Package.swift" ]]; then cmd="swift test"
   fi
+  # Private mode (ADR-0017) has no committed .ssd/gate.yml, so the input goes into project.yml — the
+  # same destination `ssd-init` uses under private mode. Writing to gate.yml here instead would leave
+  # the two writers disagreeing about where a private project's gate config lives, and would create a
+  # gate.yml the ADR says does not exist in this mode.
+  if is_private_mode; then
+    # Guard matching both sibling appliers (apply_selective_gitignore, apply_committed_gate_yml):
+    # insert_under_ssd's awk only inserts after a line matching /^ssd:/, so with no `ssd:` block the
+    # insert silently no-ops and this function would still return 0. The caller's
+    # `apply_dispatch && detect` then reports a vague ERROR instead of an actionable failure.
+    # (Review round-1 MINOR-2.)
+    grep -qE '^ssd:' "$pj" || return 1
+    if [[ -n "$cmd" ]]; then
+      backup_pj
+      insert_under_ssd "$pj" <<EOF
+  # test_command added by /ssd upgrade --apply (ADR-0015; private mode → project.yml, ADR-0017).
+  test_command: $cmd
+EOF
+    else
+      grep -qE '^[[:space:]]*#[[:space:]]*test_command:' "$pj" 2>/dev/null || {
+        backup_pj
+        insert_under_ssd "$pj" <<'EOF'
+  # test_command: <cmd>   # no test framework detected; set once tests exist (ADR-0015)
+EOF
+      }
+      # NOOP, not success: a COMMENTED placeholder deliberately does not satisfy detect() (it does
+      # not define the input), so returning 0 here would make the caller report ERROR. See the
+      # apply_dispatch return-code contract.
+      APPLY_NOTE="no test framework detected; commented placeholder written to .ssd/project.yml (private mode) — set test_command by hand once tests exist"
+      return 8
+    fi
+    return 0
+  fi
   ensure_gate_yml_header "$gate"
   if [[ -n "$cmd" ]]; then
     printf 'test_command: %s\n' "$cmd" >> "$gate"
@@ -287,6 +335,10 @@ apply_gate_inputs_present() {     # ADR-0015 — detect the test command; write 
     # so a re-run does not stack duplicate placeholder lines.
     grep -qE '^#[[:space:]]*test_command:' "$gate" 2>/dev/null \
       || printf '# test_command: <cmd>   # no test framework detected; set once tests exist (ADR-0015)\n' >> "$gate"
+    # NOOP, not success — same reasoning as the private-mode branch above. Returning 0 made
+    # `/ssd upgrade --apply` exit 3 (engine error) on every project without a test framework.
+    APPLY_NOTE="no test framework detected; commented placeholder written to .ssd/gate.yml — set test_command by hand once tests exist"
+    return 8
   fi
 }
 
@@ -346,8 +398,24 @@ apply_strict_selective_gitignore() {   # Feynman audit C12/C14 — make the allo
   fi
 }
 
-# Dispatch. Return 0 = apply ran (caller re-detects to confirm); 9 = DEFER (delegated to ssd-init);
-# other = ERROR (no apply path / mutation failed).
+# Explanation for a NOOP/DEFER outcome, set by an apply fn and consumed by the report loop. The loop
+# CLEARS it at the top of every iteration — a stale note attached to the wrong migration id would be
+# worse than no note at all.
+APPLY_NOTE=""
+
+# Dispatch. Return codes:
+#   0     apply ran — caller re-detects to confirm the convention is now present
+#   8     NOOP — nothing to apply because a precondition is genuinely absent (e.g. the project has no
+#         test framework, so there is no test_command to write). NOT an engine failure: the convention
+#         stays PENDING and the recorded version correctly does not advance past it. Set APPLY_NOTE.
+#   9     DEFER — the migration is delegated elsewhere (e.g. to ssd-init). Set APPLY_NOTE.
+#   other ERROR — no apply path, or the mutation failed.
+#
+# Codes 8 and 9 exist so "cannot apply" is distinguishable from "tried and failed". Before this,
+# every non-zero return collapsed into ERROR + `engine_error=1` + `exit 3`, so a project with no test
+# framework made `/ssd upgrade --apply` report a broken engine (round-1 QUESTION-1). Code 9 was
+# documented here but handled by NEITHER side — a dead contract that would have silently become an
+# ERROR for the first apply fn to use it. Both are now live in the report loop.
 apply_dispatch() {
   case "$1" in
     current-yml-v2)         apply_current_yml_v2 ;;
@@ -474,7 +542,16 @@ while IFS=$'\t' read -r id iv ap kd ad ti ob; do
   elif detect "$id"; then
     status="SKIP-present"; detail="already adopted"; satisfied=1
   elif [[ $APPLY -eq 1 ]]; then
-    if apply_dispatch "$id" && detect "$id"; then
+    APPLY_NOTE=""                                   # never carry a note across ids
+    apply_dispatch "$id"; ap_rc=$?
+    if [[ $ap_rc -eq 8 ]]; then
+      # Precondition absent — the convention cannot be applied here and that is not an error.
+      # satisfied stays 0, so the recorded version stops below this entry and the next --apply
+      # re-offers it once the precondition exists.
+      status="NOOP"; detail="$ti — ${APPLY_NOTE:-precondition absent; nothing to apply}"
+    elif [[ $ap_rc -eq 9 ]]; then
+      status="DEFER"; detail="$ti — ${APPLY_NOTE:-delegated; run the named tool to complete}"
+    elif [[ $ap_rc -eq 0 ]] && detect "$id"; then
       status="APPLIED"; detail="$ti (applied; backup written)"; satisfied=1
       applied_log="${applied_log}- APPLIED ${id} (v${iv}, ${ad})"$'\n'
     else

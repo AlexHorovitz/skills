@@ -28,8 +28,27 @@ conventions and — from iteration B — migrates it forward. It reads the decla
 1. Backs up every file it will mutate (`<file>.bak`) — the ADR-0013 R1 (corruption) guard.
 2. Runs the per-`id` apply function (non-destructive merges only: add keys / rewrite-with-backup;
    never delete), then **re-runs `detect`** to confirm the convention is now present. Statuses:
-   `APPLIED` (was absent, now present), `SKIP-present` (idempotent no-op), `ERROR` (apply ran but
-   `detect` still absent; engine exits 3).
+   - `APPLIED` — was absent, now present.
+   - `SKIP-present` — idempotent no-op.
+   - `NOOP` — **cannot** be applied because a precondition is genuinely absent (e.g. the project has
+     no test framework, so there is no `test_command` to write). The convention stays outstanding and
+     the recorded version does **not** advance past it, so a later `--apply` re-offers it once the
+     precondition exists. Reports the missing precondition and the manual fix. **Not** an engine
+     error — exit stays 0.
+   - `DEFER` — the migration is delegated elsewhere (e.g. to `ssd-init`); same non-advancing
+     semantics as `NOOP`.
+   - `ERROR` — apply ran but `detect` still reports absent; engine exits 3.
+
+   > **`NOOP` vs `ERROR` (v2.8.0, round-1 QUESTION-1).** These used to be one status. An apply that
+   > wrote a *commented* `test_command` placeholder returned success, but a commented key
+   > deliberately does not satisfy `detect` — so the engine reported
+   > `ERROR :: apply ran but convention still absent` and **exited 3 on every project that simply had
+   > no test framework yet**, i.e. announced a broken upgrade engine for an ordinary, blameless project
+   > state. "Cannot apply" and "tried and failed" are now distinct, which is the same
+   > can't-run-vs-didn't-apply distinction [ADR-0015](../../docs/decisions/ADR-0015-ssd-init-gate-readiness.md)
+   > drew for gate rules. (`DEFER` had been documented in `apply_dispatch`'s contract but handled by
+   > neither side — a dead code path that would have become a spurious `ERROR` for the first apply
+   > function to use it. Both are now live.)
 3. After a successful pass, bumps `.ssd/project.yml.ssd.version` to the **highest contiguous
    adopted version** and appends a dated entry to `.ssd/init-log.md`.
 

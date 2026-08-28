@@ -301,6 +301,60 @@ project initialized before this change has two inert gate rules and an unrecorde
 7. `/ssd upgrade` on a pre-change project detects and applies `gate-inputs-present`,
    `committed-gate-yml`, and `library-root-recorded` idempotently.
 
+## Addendum (2026-08-28) — `gitignore_mode: private` knowingly reopens root cause P2
+
+Added by the `ssd-private-mode` workstream ([ADR-0017](ADR-0017-private-mode.md), library v2.8.0).
+Recorded here rather than left for a future reader to discover as a contradiction.
+
+**What this ADR decided.** Decision 2 moved the portable gate inputs (`test_command`,
+`feature_flag_marker`) out of gitignored `.ssd/project.yml` and into a **committed** `.ssd/gate.yml`,
+with a `!.ssd/gate.yml` negation in the selective `.gitignore`. That fixed root cause **P2**: *"those
+inputs live in gitignored `project.yml`, so gate config is per-checkout: a second contributor silently
+gets a weaker gate."*
+
+**What private mode does to it.** Private mode tracks nothing SSD produces, so **no committed
+`.ssd/gate.yml` can exist** — `methodology/private.gitignore` deliberately contains no `!` negation of
+any kind. P2 is therefore reopened for private projects, by construction and on purpose.
+
+**Verified graceful, not accidental.** `gate_input()` reads `project.yml` **first**, then `gate.yml`, so
+an absent `gate.yml` degrades to `project.yml` rather than erroring. This is why `ssd-init` under private
+mode writes `test_command` and `feature_flag_marker` as **real keys** in `project.yml` instead of the
+commented placeholders it writes for selective projects. Omitting that promotion would leave
+`tests-pass` and `feature-flag-present` permanently SKIPped — turning a privacy choice into a silently
+weaker gate, which is the failure this ADR exists to prevent.
+
+**The trade, stated plainly.** A private project's gate configuration **does not travel** to a second
+clone or a CI runner. For private mode's actual audience — a solo or personal practice inside someone
+else's repo — P2's blast radius is close to nil, because there is no second contributor to silently
+receive a weaker gate. That is the trade: P2's cost is proportional to the number of collaborators, and
+private mode's premise is that there are none.
+
+**What is NOT conceded.** Private mode does not weaken the *rules*. ADR-0017 fixes an `adr-delta`
+deadlock and a `feynman-clean` blind spot that diff-scoping would otherwise have introduced, precisely
+so private mode cannot become the hollow green gate described in this ADR's Context. A mode that
+silently stopped verifying would have reproduced this ADR's own root cause one release after fixing it.
+
+**Second addendum item — `NOOP` vs `ERROR` in `/ssd upgrade --apply`.** Decision 1 specified a
+commented `test_command` placeholder when no framework is detected, and the manifest's `detect` probe
+deliberately does **not** match a commented key (a commented key does not define the input). Those two
+correct decisions combined into a defect in `migrate.sh`: the apply returned success, `detect` then
+reported absent, and the engine emitted `ERROR :: apply ran but convention still absent` and **exited 3
+— on every project that simply has no test framework yet.** A blameless project state was reported as a
+broken upgrade engine.
+
+`migrate.sh` now distinguishes **`NOOP`** ("cannot apply — precondition genuinely absent"; convention
+stays outstanding, recorded version does not advance, exit 0) from **`ERROR`** ("apply ran and failed";
+exit 3). This is the same distinction this ADR drew for gate rules — *a rule that cannot run must be as
+loud as a rule that fails, and must not be mistaken for one that passed* — applied to the migration
+engine, which had the inverse bug: a state that could not apply was reported as a failure. Fixed in
+v2.8.0 alongside private mode, which is where the defect surfaced.
+
+**Revisit when:** SSD gains a mechanism for gate config that is portable without being committed — e.g.
+an `ssd-init`-emitted CI snippet carrying the inputs inline, or a `gate.yml` location outside the
+repo. That would close P2 for private projects and this addendum could be retired.
+
+---
+
 ## Revisit when
 
 - `gate-rules.sh` gains real `--staged` support for `feature-flag-present` / `adr-delta` — Decision 5's

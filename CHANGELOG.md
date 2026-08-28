@@ -6,6 +6,182 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.8.0] — 2026-08-28
+
+### `gitignore_mode: private` — SSD with no paper trail in git (ADR-0017, iteration A)
+
+SSD had two postures toward git and neither was private. Even on `blanket`, `.ssd/gate.yml` was
+force-committed, `docs/decisions/` was committed *by design* (ADR-0008 argues ADRs belong in
+history), branch names carried an `add-` prefix, and `ssd-init` offered to advertise the practice in
+a committed `CLAUDE.md`. A developer wanting to use SSD where the methodology paper trail is
+unwelcome — client work, a shared repo where SSD is a personal practice, an OSS contribution — could
+hand-edit `.gitignore` and then fight `ssd-init`, `/ssd upgrade`, and the gate rules forever, because
+nothing recorded the intent.
+
+`private` is the third value in the enum ADR-0008's "Future Compatibility" section reserved.
+
+- **New canonical pattern file `methodology/private.gitignore`** — six lines against selective's
+  forty-plus, ignoring all of `.ssd/` plus `docs/decisions/`, `docs/runbooks/`,
+  `docs/architecture/`. Contains **no `!` negation of any kind**, in particular no `!.ssd/gate.yml`.
+  Selective mode needs a precise allow-list because it commits a subset; private mode commits
+  nothing, so there is no allow-list to get wrong. Carries a `# ssd:gitignore-mode=private`
+  sentinel, because `ssd-init` Step 5.5 runs before `project.yml` exists and no functional line in
+  the pattern is distinctive enough (a bare `.ssd/` is indistinguishable from blanket).
+- **`ssd-init --private`** — Step 5 fourth case, Step 5.5 third detection branch (order is
+  load-bearing: **private → selective → blanket**, since a private `.gitignore` also contains a bare
+  `.ssd/` line and would otherwise misclassify as blanket), Step 6 template, Step 3 note, and Step 8
+  skips the committed-`CLAUDE.md` offer. Sets `branch_pattern: "{slug}"`, forces
+  `integrations.github.issue_tracking: off`, and writes `test_command` / `feature_flag_marker` as
+  **real keys** in `project.yml` rather than commented placeholders.
+- **`issue-sync.sh preflight` refuses under private mode** (`exit 4`, `state=refused`,
+  `reason=private-mode`), before any `gh` call. Duplicates `ssd-init`'s refusal on purpose:
+  `project.yml` is hand-editable, so init-time validation alone is a single point of failure.
+- **`migrate.sh`: `committed-gate-yml` and `strict-selective-gitignore` are N/A under private.**
+  Left alone they reported *permanent, unfixable* drift — and `--apply` would have re-added the
+  `!.ssd/gate.yml` negation, **actively breaking privacy**. A latent defect in the existing upgrade
+  path that private mode would have tripped. `apply_gate_inputs_present` now writes to `project.yml`
+  under private mode, so it and `ssd-init` agree on where a private project's gate config lives.
+
+### The gate must not go quiet
+
+Four gate rules are diff-scoped, and under private mode no SSD artifact is ever in a diff. All four
+bodies were read rather than assumed:
+
+- **`adr-delta` was a hard deadlock, not a degradation.** Past the 200-line threshold it FAILs
+  demanding a committed ADR delta that private mode forbids, while `no-leaky-state` FAILs if one is
+  force-added. **Both branches FAIL and the gate becomes unpassable** on an ordinary feature. Fixed
+  with a new `artifact_scope()` helper (`diff` normally, `worktree` under private) and a worktree
+  probe for an ADR modified since the base commit.
+- **`feynman-clean`** globs reports on disk under private mode; diff-scoping left it permanently
+  toothless, so a project that ran `/feynman` and got contradicted claims would have sailed through.
+- **`frontmatter-valid` needed no change** — its existing no-diff branch already walks the tree.
+  Pinned by a fixture so a future refactor cannot silently blind private projects.
+- **`no-leaky-state`** runs against an expanded deny-list under private mode and becomes the primary
+  enforcement of the privacy boundary. Under `blanket` it SKIPs because nothing needs protecting;
+  under `private` a leaked artifact is a privacy failure, not commit noise.
+
+This was not optional polish. SSD shipped [ADR-0015](docs/decisions/ADR-0015-ssd-init-gate-readiness.md)
+because `/ssd gate` once exited 0 with one of nine rules having verified anything — "a green signal
+that attests to less than the reader believes." Shipping private mode with a hollow gate would have
+reproduced SSD's own worst documented failure, deliberately, three releases after fixing it.
+
+### An unrecognized `gitignore_mode` is now loud
+
+`no-leaky-state` used to emit `SKIP :: unknown gitignore_mode`, so a typo (`privat`) silently
+disabled SSD's only leak-detection rule. It now **FAILs**. Under a mode whose entire purpose is
+privacy, a typo that turns protection off without saying so is unacceptable. `blanket` still SKIPs —
+the loud error is for *unrecognized* values, not the documented opt-out. No fourth status was
+invented; FAIL is the loud channel in the `PASS|FAIL|SKIP` contract.
+
+### Two MAJORs the code review caught
+
+Both were in the *seams* rather than the design, and neither was reachable by the coder phase's own
+dogfood (macOS, `selective`-shaped `project.yml`). Both closures were verified by reverting the fix
+and confirming the new fixture fails — not by reading the claim.
+
+- **`file_mtime` tried the BSD form first**, which corrupts the value on every GNU/Linux host: there
+  `-f` is `--file-system`, so `stat -f %m FILE` parses as two operands and prints a filesystem status
+  block to **stdout** before failing. `adr-delta` would have FAILed on every private Linux project,
+  CI runners included — the same defect class as the `find` bug below, on the opposite platform. Now
+  GNU-first **and** validating the result is a bare integer, so no `stat` variant's output can be
+  mistaken for a timestamp.
+- **The private `no-leaky-state` branch silently dropped `project.yml.ssd.gitignored_state`**,
+  contradicting both `chapters/enforcement.md` and the `project.yml` template's "additive only"
+  promise — in the one mode where the rule is the primary safety layer. The same failure shape as the
+  hazard this whole workstream was organized around, reintroduced one screen below the fix. The read
+  is now hoisted above the mode branch so there is **one** deny-list assembly for both modes and the
+  two drifting call sites no longer exist.
+
+Also closed: the worktree `feynman-clean` glob recognized a broader artifact set than diff scope (a
+`feynman-draft.md` under `.ssd/` would have FAILed the gate while being ignored on a selective
+project), and `apply_gate_inputs_present`'s private branch was missing the `^ssd:` guard both sibling
+appliers use.
+
+### Two bugs the fixtures caught during development
+
+- **`find -newermt "@epoch"` is GNU-only.** BSD `find` (stock macOS) rejects it outright —
+  `Can't parse date/time` — which turned the `adr-delta` worktree probe into a permanent FAIL on
+  macOS, trading the deadlock for a different unpassable gate. Replaced with a portable
+  `stat -f %m` / `stat -c %Y` probe. The bug was masked in development by an interactive
+  GNU-compatible `find` shim; only the fixture, which runs under `bash`, exposed it.
+- **mtime granularity.** `-newermt` and `-nt` are strictly-greater and mtimes are second-granular,
+  so an ADR written in the same second as the base commit did not count. The probe now allows one
+  second of slack — erring toward PASS, since a false FAIL here is an unpassable gate.
+
+### `/ssd upgrade --apply` no longer reports a broken engine for a blameless project
+
+Found as a QUESTION during review of this feature and fixed on the user's direction. Two
+individually-correct decisions were colliding: [ADR-0015](docs/decisions/ADR-0015-ssd-init-gate-readiness.md)
+specifies a *commented* `test_command` placeholder when no test framework is detected, and the
+manifest's `detect` probe deliberately does not match a commented key. The apply returned success,
+`detect` correctly reported absent, and the engine — having no vocabulary for "cannot apply" — emitted
+`ERROR :: apply ran but convention still absent` and **`exit 3`**. Every project that simply has no
+test framework yet was told its upgrade engine was broken.
+
+`apply_dispatch` now has an explicit return-code contract — `0` applied · `8` **NOOP** · `9`
+**DEFER** · other ERROR — and the report loop renders `NOOP`/`DEFER` without setting `engine_error`.
+A NOOP leaves the convention outstanding and the recorded version parked below it, so a later
+`--apply` re-offers it once the precondition exists; the status line names the missing precondition
+and the manual fix. **This is ADR-0015's own distinction applied to the migration engine**, which had
+the inverse bug: that ADR exists because a rule which *could not run* was indistinguishable from one
+that *passed*; here a state that *could not apply* was indistinguishable from one that *failed*.
+
+`9 = DEFER` had been documented in `apply_dispatch`'s contract but handled by **neither** side — a
+dead path that would have become a spurious `ERROR` + `exit 3` for the first apply function to use it.
+Both codes are now live.
+
+Two adjacent appliers (`committed-gate-yml`, `strict-selective-gitignore`) still report `ERROR` for an
+absent precondition, but only in a state where a v1.18.0 migration never ran. Left as a recorded
+finding rather than silently widened — see round-3 review.
+
+### The pattern/deny-list mirror test can now actually fail
+
+`deny-list-mirrors-pattern-file` asserted that four **known** patterns appeared in both
+`private.gitignore` and `gate-rules.sh`'s `private_baseline`. It could not detect the failure it
+existed to prevent: a fifth pattern added to one side left it green, because the fixture never learned
+about the fifth. It now extracts both sides and compares them as **sets**, so any addition, removal,
+or typo on either side fails by construction — verified in both directions, with the symmetric
+difference printed under `-v`. Given that these two files are the same set in two syntaxes and a
+forgotten side is a silent privacy leak, a spot-check was not adequate coverage.
+
+### Decisions recorded
+
+- **[ADR-0017](docs/decisions/ADR-0017-private-mode.md)** (new, Proposed) — the mode, its non-goals,
+  and the attribution carve-out.
+- **[ADR-0015](docs/decisions/ADR-0015-ssd-init-gate-readiness.md) addendum** — private mode
+  knowingly reopens root cause **P2**: no committed `gate.yml` can exist, so a private project's
+  gate config does not travel to a second clone or a CI runner. Verified graceful (`gate_input()`
+  reads `project.yml` first), which is why the inputs are promoted to real keys there. P2's cost is
+  proportional to collaborator count, and private mode's premise is that there are none.
+- **ADR-0008 reaffirmed, not superseded.** Relocating SSD docs under `.ssd/docs/`, and the general
+  `ssd.docs_root` indirection, were both **rejected on measurement**: twelve non-`.ssd/` files
+  hardcode `docs/decisions/`, including `rails.md` invariant 7, `adr-delta`, `parity-test.sh`, and
+  seven sub-skill `SKILL.md` files. ADR-0008 already rejected this exact move — *"keep the paths,
+  change the gitignore."* A falsifiable revisit trigger is recorded.
+- **A brief-level correction worth keeping.** The design brief feared that gitignoring `docs/`
+  would silently untrack pre-existing non-SSD content. It cannot: **`.gitignore` has no effect on
+  already-tracked files.** That hazard exists only via `git rm --cached`, which lives entirely in
+  iteration B's retrofit path — which is where its itemized-consent interlock belongs.
+
+### Attribution is deliberately kept
+
+The `🛠️ Crafted with SSD` commit/PR footer is **not** suppressed under private mode. Privacy here
+means no SSD mechanics or documentation in the tree; it does **not** mean anonymity. Requires no
+code — recorded so the absence of a footer change is not mistaken for an oversight.
+
+### Not in this release (iteration B)
+
+Retrofit via `/ssd upgrade`: the `private-mode` migration entry, `detect_`/`apply_` functions, the
+itemized-consent interlock before any `git rm --cached`, the "history is not rewritten" warning, and
+the `branch_pattern` override plumbing in `chapters/workstreams.md`. **Iteration A never runs
+`git rm --cached`** — the one genuinely destructive operation is quarantined behind its own review
+cycle.
+
+Parity: **83 → 128 assertions** (+45). `selective` and `blanket` projects are byte-identical to
+v2.7.0 — every change sits inside a `private` branch.
+
+---
+
 ## [2.7.0] — 2026-08-26
 
 ### `/feynman` is now invoked by the workflow it claimed to serve (ADR-0016)

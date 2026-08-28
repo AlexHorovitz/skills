@@ -127,6 +127,72 @@ gate_input() {
   yaml_get "$GATE_YML" "$key"
 }
 
+# ----- gitignore-mode helpers (ADR-0017) -------------------------------------
+# The project's commit posture. Exactly three values are recognized; anything else is a
+# configuration error, NOT a silent default (see rule_no_leaky_state).
+gitignore_mode() {
+  local mode
+  mode=$(yaml_get "$PROJECT_YML" "gitignore_mode")
+  [[ -z "$mode" ]] && mode="selective"   # default for v1.18.0+
+  echo "$mode"
+}
+
+# Which scope a rule that reads SSD ARTIFACTS should use.
+#
+# Under private mode (ADR-0017) no SSD artifact is ever tracked, so it can never appear in
+# `git diff <base>...HEAD`. A rule that diff-scopes its artifact lookup is therefore
+# structurally unable to fire — and for `adr-delta` it is worse than that: it FAILs demanding a
+# committed ADR delta that private mode forbids, while `no-leaky-state` FAILs if one is
+# force-added. Both branches FAIL and the gate becomes unpassable on any change over the
+# adr-delta threshold. See ADR-0017 § "The gate must not go quiet".
+#
+# Worktree scope is strictly weaker than diff scope (an mtime is touchable in a way a commit is
+# not); every caller must say so in its detail string. The alternative is a gate that either
+# deadlocks or attests to nothing.
+artifact_scope() {
+  [[ "$(gitignore_mode)" == "private" ]] && echo "worktree" || echo "diff"
+}
+
+# $BASE's commit time as epoch seconds, minus one second of slack. Empty if unresolvable.
+#
+# The slack is not cosmetic: filesystem mtimes are second-granular, so an artifact written in the
+# SAME second as the base commit would not count as "newer" and the rule would report a false FAIL.
+# Erring one second toward PASS is the right direction — a false FAIL on adr-delta is an unpassable
+# gate, which is the entire failure this fallback exists to avoid.
+base_commit_epoch() {
+  is_git_repo || { echo ""; return; }
+  local epoch
+  epoch=$(git -C "$PROJECT_ROOT" log -1 --format=%ct "$BASE" 2>/dev/null) || { echo ""; return; }
+  [[ -z "$epoch" ]] && { echo ""; return; }
+  echo "$((epoch - 1))"
+}
+
+# A file's mtime in epoch seconds. Empty if it cannot be determined.
+#
+# BSD (`stat -f %m`) and GNU (`stat -c %Y`) take incompatible flags, so both are tried. Two
+# non-obvious constraints, each learned from a real failure:
+#
+#   1. GNU FORM FIRST. On BSD, `stat -c` is an illegal option: it fails with EMPTY stdout, so falling
+#      through is clean. The reverse is not true — on GNU, `-f` means --file-system, so
+#      `stat -f %m FILE` parses as two operands (a file named `%m`, which fails, and FILE, which
+#      prints a FILESYSTEM STATUS BLOCK to stdout). Exit status is non-zero, so `||` would fall
+#      through, but the garbage is already on stdout. BSD-first therefore corrupts the value on every
+#      Linux host — including CI runners. (Review round-1 MAJOR-1.)
+#   2. VALIDATE THE OUTPUT. Ordering alone still trusts whatever lands on stdout. Requiring a bare
+#      integer means no `stat` variant on any platform can have its output mistaken for a timestamp;
+#      anything else returns empty, which callers must treat as "unknown", never as "old".
+#
+# Deliberately does NOT use `find -newermt`: BSD find cannot parse the `@epoch` form at all ("Can't
+# parse date/time"), which turned this probe into a permanent FAIL on stock macOS — trading the
+# deadlock this fallback fixes for a different unpassable gate. Both bugs are the same shape: a
+# mechanism asserted from knowledge, true on one platform only.
+file_mtime() {
+  local v
+  v=$(stat -c %Y "$1" 2>/dev/null) && [[ "$v" =~ ^[0-9]+$ ]] && { echo "$v"; return; }
+  v=$(stat -f %m "$1" 2>/dev/null) && [[ "$v" =~ ^[0-9]+$ ]] && { echo "$v"; return; }
+  echo ""
+}
+
 # Read a YAML list value into stdout, one item per line. Handles the simple two-space
 # indented form ssd-init writes:
 #
@@ -358,6 +424,45 @@ rule_adr_delta() {
     emit "SKIP" "adr-delta" "architectural diff $arch_lines lines below threshold $threshold"
     return
   fi
+  # Private mode (ADR-0017): docs/decisions/ is gitignored, so an ADR can never appear in the diff.
+  # Diff-scoping here would FAIL demanding a committed ADR delta that the mode forbids, while
+  # no-leaky-state FAILs if one is force-added — both branches FAIL and the gate is unpassable on
+  # any change over the threshold. Fall back to a worktree probe: an ADR touched more recently than
+  # the base commit. Deliberately weaker than a diff (an mtime is touchable) and the detail says so.
+  if [[ "$(artifact_scope)" == "worktree" ]]; then
+    local adr_dir="$PROJECT_ROOT/docs/decisions" base_epoch rcount=0 unreadable=0
+    if [[ ! -d "$adr_dir" ]]; then
+      emit "FAIL" "adr-delta" "$arch_lines architectural lines changed but docs/decisions/ does not exist (private mode, worktree scope)"
+      return
+    fi
+    base_epoch=$(base_commit_epoch)
+    if [[ -z "$base_epoch" ]]; then
+      # No reference point for "recently touched", so report the limitation rather than inventing a
+      # verdict in either direction. A SKIP here is honest; a PASS would attest to nothing.
+      emit "SKIP" "adr-delta" "private mode — cannot resolve base '$BASE' commit time; worktree ADR probe has no reference point"
+      return
+    fi
+    # Plain glob + stat rather than `find -newermt` (see file_mtime for why). docs/decisions/ is
+    # flat by convention (architect/SKILL.md § ADR), so a glob covers it.
+    local adr_file mt
+    for adr_file in "$adr_dir"/ADR-*.md; do
+      [[ -f "$adr_file" ]] || continue          # an unmatched glob stays literal
+      mt=$(file_mtime "$adr_file")
+      if [[ -z "$mt" ]]; then
+        unreadable=$((unreadable + 1))
+        continue
+      fi
+      [[ "$mt" -ge "$base_epoch" ]] && rcount=$((rcount + 1))
+    done
+    if [[ $rcount -gt 0 ]]; then
+      emit "PASS" "adr-delta" "$rcount ADR file(s) modified since base for $arch_lines architectural lines (private mode: worktree mtime probe, weaker than a diff)"
+    elif [[ $unreadable -gt 0 ]]; then
+      emit "SKIP" "adr-delta" "private mode — $unreadable ADR file(s) present but mtime unreadable; cannot verify (worktree scope)"
+    else
+      emit "FAIL" "adr-delta" "$arch_lines architectural lines changed but no ADR under docs/decisions/ modified since base '$BASE' (private mode, worktree scope)"
+    fi
+    return
+  fi
   local adr_changes
   adr_changes=$(echo "$files" | grep -E '^docs/decisions/ADR-' || true)
   if [[ -n "$adr_changes" ]]; then
@@ -451,14 +556,17 @@ frontmatter_get() {
 rule_no_leaky_state() {
   is_git_repo || { emit "SKIP" "no-leaky-state" "not a git repo"; return; }
   local mode
-  mode=$(yaml_get "$PROJECT_YML" "gitignore_mode")
-  [[ -z "$mode" ]] && mode="selective"   # default for v1.18.0+
+  mode=$(gitignore_mode)
   if [[ "$mode" == "blanket" ]]; then
     emit "SKIP" "no-leaky-state" "project on blanket gitignore mode (project.yml.ssd.gitignore_mode)"
     return
   fi
-  if [[ "$mode" != "selective" ]]; then
-    emit "SKIP" "no-leaky-state" "unknown gitignore_mode: '$mode' (expected selective|blanket)"
+  # An unrecognized value is a FAIL, not a SKIP (ADR-0017). Previously any unknown string —
+  # including a typo like `privat` — silently disabled SSD's only leak-detection rule. Under a mode
+  # whose entire purpose is privacy, a typo that turns protection off without saying so is
+  # unacceptable. FAIL is the loud channel in the PASS|FAIL|SKIP contract; no 4th status is invented.
+  if [[ "$mode" != "selective" && "$mode" != "private" ]]; then
+    emit "FAIL" "no-leaky-state" "unrecognized gitignore_mode: '$mode' (expected selective|blanket|private) — fix project.yml.ssd.gitignore_mode; leak detection is NOT running"
     return
   fi
   local files
@@ -469,6 +577,48 @@ rule_no_leaky_state() {
   fi
   # Baseline deny-list, hard-coded per ADR-0008 § "Decision". Projects extend (not shrink)
   # via project.yml.ssd.gitignored_state.
+  # Project-supplied additional patterns, read ONCE and unioned into whichever deny-list applies.
+  # Hoisted above the mode branch (review round-1 MAJOR-2): the private branch used to `return`
+  # before reaching this read, so a private project's `gitignored_state` was silently unenforced —
+  # in the one mode where this rule is the primary safety layer, and contradicting both
+  # chapters/enforcement.md and the project.yml template's "additive only" promise. Assembling the
+  # deny-list once for both modes removes the possibility of that drift recurring.
+  local additional=()
+  local _line
+  while IFS= read -r _line; do
+    [[ -z "$_line" ]] && continue
+    additional+=("$_line")
+  done < <(yaml_get_list "$PROJECT_YML" "gitignored_state")
+
+  # Private mode (ADR-0017) denies EVERYTHING SSD produces — this is the mode where the rule is
+  # load-bearing rather than advisory. Under `blanket` the rule SKIPs because nothing needs
+  # protecting; under `private` it is the primary enforcement of the privacy promise, so a leaked
+  # artifact is a privacy failure rather than commit noise.
+  #
+  # This set MUST mirror methodology/private.gitignore. They are the same set in two syntaxes and a
+  # forgotten side is a silent leak (ADR-0008 § "Future Compatibility"); parity fixture
+  # `deny-list-mirrors-pattern-file` asserts they agree.
+  if [[ "$mode" == "private" ]]; then
+    local private_baseline=( ".ssd/" "docs/decisions/" "docs/runbooks/" "docs/architecture/" )
+    local leaked=() pf pp
+    while IFS= read -r pf; do
+      [[ -z "$pf" ]] && continue
+      for pp in "${private_baseline[@]}" ${additional[@]+"${additional[@]}"}; do
+        if matches_deny_pattern "$pf" "$pp"; then
+          leaked+=("$pf")
+          break
+        fi
+      done
+    done <<< "$files"
+    if [[ ${#leaked[@]} -eq 0 ]]; then
+      emit "PASS" "no-leaky-state" "private mode — no SSD artifact tracked in diff ($(diff_scope_label))"
+    else
+      local lcount=${#leaked[@]} lsample
+      lsample=$(printf '%s|' "${leaked[@]:0:3}")
+      emit "FAIL" "no-leaky-state" "private mode — $lcount SSD file(s) tracked but must not be: ${lsample}"
+    fi
+    return
+  fi
   local baseline=(
     ".ssd/current.yml"
     ".ssd/current.notes.yml"
@@ -481,13 +631,7 @@ rule_no_leaky_state() {
     ".ssd/milestones/**/sha-before"
     ".ssd/milestones/**/metrics-before.yml"
   )
-  # Read project-supplied additional patterns.
-  local additional=()
-  local _line
-  while IFS= read -r _line; do
-    [[ -z "$_line" ]] && continue
-    additional+=("$_line")
-  done < <(yaml_get_list "$PROJECT_YML" "gitignored_state")
+  # (project-supplied `additional` patterns were read above the mode branch — see MAJOR-2 note)
   local forbidden=()
   local f pattern
   while IFS= read -r f; do
@@ -683,22 +827,45 @@ rule_issue_sync_current() {
 # so a PASS means "no failing audit in this change set", not "this project's beliefs are calibrated".
 rule_feynman_clean() {
   is_git_repo || { emit "SKIP" "feynman-clean" "not a git repo"; return; }
-  local files; files=$(diff_files)
-  if [[ -z "$files" ]]; then
-    emit "SKIP" "feynman-clean" "no diff ($(diff_scope_label))"; return
-  fi
-  # `*` in a bash case pattern crosses `/`, so these three patterns also cover reports nested under
-  # iterations/ (verified, not assumed).
   local reports=() f
-  while IFS= read -r f; do
-    [[ -z "$f" ]] && continue
-    case "$f" in
-      .ssd/features/*/feynman.md|.ssd/milestones/*/feynman.md|docs/audits/feynman-*.md)
-        [[ -f "$PROJECT_ROOT/$f" ]] && reports+=("$f") ;;
-    esac
-  done <<< "$files"
-  if [[ ${#reports[@]} -eq 0 ]]; then
-    emit "SKIP" "feynman-clean" "no feynman report in scope ($(diff_scope_label))"; return
+  local scope; scope=$(artifact_scope)
+  if [[ "$scope" == "worktree" ]]; then
+    # Private mode (ADR-0017): .ssd/ is gitignored, so a feynman report can never appear in the
+    # diff and diff-scoping would make this rule permanently toothless — a project that ran
+    # /feynman and got contradicted claims would sail through. Glob the worktree instead.
+    # The artifact SET must match the diff-scoped case patterns below exactly — the mode changes
+    # where the rule looks, never what counts as a report (review round-1 MINOR-1). So bare
+    # `feynman.md` under .ssd/, and `feynman-*.md` ONLY under docs/audits/. Applying `feynman-*.md`
+    # under .ssd/ too would make a draft or superseded report (feynman-old.md) FAIL the gate under
+    # private mode while being ignored on a selective project.
+    # Two `find` calls rather than one: -path/-prune portability across BSD and GNU is not worth the
+    # cleverness, and only -name is used here (unlike -newermt — see file_mtime).
+    while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
+      reports+=("${f#"$PROJECT_ROOT/"}")
+    done < <( { find "$PROJECT_ROOT/.ssd/features" "$PROJECT_ROOT/.ssd/milestones" \
+                    -name 'feynman.md' 2>/dev/null
+                find "$PROJECT_ROOT/docs/audits" -name 'feynman-*.md' 2>/dev/null; } | sort)
+    if [[ ${#reports[@]} -eq 0 ]]; then
+      emit "SKIP" "feynman-clean" "no feynman report on disk (private mode, worktree scope)"; return
+    fi
+  else
+    local files; files=$(diff_files)
+    if [[ -z "$files" ]]; then
+      emit "SKIP" "feynman-clean" "no diff ($(diff_scope_label))"; return
+    fi
+    # `*` in a bash case pattern crosses `/`, so these three patterns also cover reports nested under
+    # iterations/ (verified, not assumed).
+    while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
+      case "$f" in
+        .ssd/features/*/feynman.md|.ssd/milestones/*/feynman.md|docs/audits/feynman-*.md)
+          [[ -f "$PROJECT_ROOT/$f" ]] && reports+=("$f") ;;
+      esac
+    done <<< "$files"
+    if [[ ${#reports[@]} -eq 0 ]]; then
+      emit "SKIP" "feynman-clean" "no feynman report in scope ($(diff_scope_label))"; return
+    fi
   fi
   local problems="" checked=0 unreadable=0 contradicted theater posture
   for f in "${reports[@]}"; do

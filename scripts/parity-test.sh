@@ -992,6 +992,455 @@ EOF
   fixture_teardown "$tdir"
 }
 
+# ---------- private mode (ADR-0017) ----------------------------------------
+
+# Round-1 QUESTION-1 regression. A COMMENTED test_command placeholder deliberately does not satisfy
+# detect() (it does not define the input), so an apply that writes one must NOT report success. It
+# used to return 0, which made the caller emit `ERROR :: apply ran but convention still absent`,
+# set engine_error=1, and exit 3 — so `/ssd upgrade --apply` reported a BROKEN ENGINE on every
+# project that simply has no test framework yet. It must be NOOP with exit 0.
+test_fixture_apply_noop_not_error() {
+  echo "fixture: apply-noop-not-error"
+  local tdir out rc
+  tdir=$(fixture_setup "apply-noop")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  # Realistic 2.4.0-era project: selective block present, no test framework of any kind.
+  cat "$REPO_ROOT/methodology/selective.gitignore" > .gitignore
+
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.4.0 --to 2.8.0 --manifest "$MANIFEST" --apply 2>&1); rc=$?
+  _assert "apply-noop-not-error" "gate-inputs-present reports NOOP, not ERROR" \
+    "$(echo "$out" | grep -qE '^NOOP gate-inputs-present' && echo 0 || echo 1)"
+  _assert "apply-noop-not-error" "no ERROR line anywhere in the report" \
+    "$(echo "$out" | grep -qE '^ERROR ' && echo 1 || echo 0)"
+  _assert "apply-noop-not-error" "--apply exits 0 (not 3 = engine error)" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  # The NOOP must be actionable: say what is missing and what to do about it.
+  _assert "apply-noop-not-error" "NOOP detail names the missing precondition and the fix" \
+    "$(echo "$out" | grep -qE 'no test framework detected.*set test_command' && echo 0 || echo 1)"
+  # And it must stay PENDING-equivalent: the recorded version must NOT advance past an unapplied
+  # convention, or the next --apply would never re-offer it.
+  _assert "apply-noop-not-error" "recorded version does not advance past the NOOP entry" \
+    "$(grep -qE '^[[:space:]]*version:[[:space:]]*2\.(5|6|7|8)' .ssd/project.yml 2>/dev/null && echo 1 || echo 0)"
+
+  # Control: WITH a test framework the same run must APPLY and write a real key.
+  printf 'test:\n\t@echo ok\n' > Makefile
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.4.0 --to 2.8.0 --manifest "$MANIFEST" --apply 2>&1)
+  _assert "apply-noop-not-error" "control: with a Makefile test target it APPLIES" \
+    "$(echo "$out" | grep -qE '^APPLIED gate-inputs-present' && echo 0 || echo 1)"
+
+  fixture_teardown "$tdir"
+}
+
+# Round-1 MAJOR-1 regression. `file_mtime` must try the GNU form FIRST and validate the result is a
+# bare integer. BSD-first corrupts the value on every Linux host: on GNU, `-f` is --file-system, so
+# `stat -f %m FILE` prints a filesystem status block to STDOUT before failing, and that garbage is
+# then compared against an epoch. Structural assertion by necessity — the failure manifests only on
+# the other platform, so behavior alone cannot pin it from one OS.
+test_fixture_file_mtime_portability() {
+  echo "fixture: file-mtime-portability"
+  # Scope the ordering check to the FUNCTION BODY. Grepping the whole file matches the explanatory
+  # comment above file_mtime, which names both forms — the assertion then passes for the wrong reason
+  # (verified: it stayed green against the reverted BSD-first code). A test that cannot fail is worse
+  # than no test.
+  local body gnu bsd
+  body=$(awk '/^file_mtime\(\)/,/^}/' "$GATE_SCRIPT")
+  gnu=$(echo "$body" | grep -n 'stat -c %Y' | head -1 | cut -d: -f1)
+  bsd=$(echo "$body" | grep -n 'stat -f %m' | head -1 | cut -d: -f1)
+  _assert "file-mtime-portability" "GNU form (stat -c %Y) is attempted before BSD (stat -f %m)" \
+    "$([[ -n "$gnu" && -n "$bsd" && "$gnu" -lt "$bsd" ]] && echo 0 || echo 1)"
+  _assert "file-mtime-portability" "file_mtime validates its output is a bare integer" \
+    "$(awk '/^file_mtime\(\)/,/^}/' "$GATE_SCRIPT" | grep -qF '^[0-9]+$' && echo 0 || echo 1)"
+  # And the probe must actually work on THIS platform, whichever it is.
+  local tdir mt
+  tdir=$(fixture_setup "file-mtime")
+  cd "$tdir" || exit 2
+  echo x > f
+  mt=$(bash -c 'v=$(stat -c %Y f 2>/dev/null) && [[ "$v" =~ ^[0-9]+$ ]] && { echo "$v"; exit; }
+                v=$(stat -f %m f 2>/dev/null) && [[ "$v" =~ ^[0-9]+$ ]] && { echo "$v"; exit; }')
+  _assert "file-mtime-portability" "the probe returns a bare integer on this host" \
+    "$([[ "$mt" =~ ^[0-9]+$ ]] && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Round-1 MAJOR-2 regression. The private branch used to `return` before reading
+# project.yml.ssd.gitignored_state, silently unenforcing a project's own patterns in the one mode
+# where no-leaky-state is the primary safety layer.
+test_fixture_private_honors_gitignored_state() {
+  echo "fixture: private-honors-gitignored-state"
+  local tdir
+  tdir=$(fixture_setup "private-extra")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd secrets
+  cat > .ssd/project.yml <<'EOF'
+ssd:
+  gitignore_mode: private
+  gitignored_state:
+    - secrets/**
+EOF
+  echo "base" > app.py
+  git add -A app.py && git commit -qm "initial"
+  git checkout -qb feat
+
+  # (a) control — a code-only change is clean
+  echo "change" >> app.py
+  git add -A app.py && git commit -qm "code only"
+  assert_rule "private-honors-gitignored-state" "no-leaky-state" "PASS"
+
+  # (b) a project-declared pattern in the diff must FAIL, exactly as under selective mode
+  echo "hunter2" > secrets/key.txt
+  git add -f secrets/key.txt && git commit -qm "leak a project-declared secret"
+  assert_rule "private-honors-gitignored-state" "no-leaky-state" "FAIL"
+
+  fixture_teardown "$tdir"
+}
+
+# Round-1 MINOR-1 regression. Worktree scope must recognize the SAME artifact set as diff scope: the
+# mode changes where the rule looks, not what counts as a report. `feynman-*.md` belongs to
+# docs/audits/ only; a draft or superseded report under .ssd/ must not FAIL the gate.
+test_fixture_feynman_private_scope_mirrors_diff() {
+  echo "fixture: feynman-private-scope-mirrors-diff"
+  local tdir
+  tdir=$(fixture_setup "feynman-scope")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/f1
+  printf 'ssd:\n  gitignore_mode: private\n' > .ssd/project.yml
+  echo "base" > app.py
+  git add -A app.py && git commit -qm "initial"
+  git checkout -qb feat
+  echo "change" >> app.py
+  git add -A app.py && git commit -qm "code only"
+
+  # A superseded/draft report under .ssd/ is NOT a report — diff scope would never match it either.
+  cat > .ssd/features/f1/feynman-draft.md <<'EOF'
+---
+skill: feynman
+claim_counts:
+  contradicted: 9
+  theater: 9
+gate_pass: false
+---
+Draft, superseded.
+EOF
+  assert_rule "feynman-private-scope-mirrors-diff" "feynman-clean" "SKIP"
+
+  # The canonical filename IS a report, and still FAILs on contradicted claims.
+  cat > .ssd/features/f1/feynman.md <<'EOF'
+---
+skill: feynman
+claim_counts:
+  contradicted: 1
+  theater: 0
+gate_pass: false
+---
+Real report.
+EOF
+  assert_rule "feynman-private-scope-mirrors-diff" "feynman-clean" "FAIL"
+
+  fixture_teardown "$tdir"
+}
+
+# The canonical pattern file itself. Private mode's whole promise is "no `!` negation anywhere";
+# a stray negation would re-expose an artifact class silently.
+test_fixture_private_gitignore_sentinel() {
+  echo "fixture: private-gitignore-sentinel"
+  local pf="$REPO_ROOT/methodology/private.gitignore"
+  _assert "private-gitignore-sentinel" "methodology/private.gitignore exists" \
+    "$([[ -f "$pf" ]] && echo 0 || echo 1)"
+  _assert "private-gitignore-sentinel" "carries the # ssd:gitignore-mode=private sentinel" \
+    "$(grep -qxF '# ssd:gitignore-mode=private' "$pf" 2>/dev/null && echo 0 || echo 1)"
+  # No negation of ANY kind — in particular no !.ssd/gate.yml (ADR-0015 inputs cannot be committed).
+  _assert "private-gitignore-sentinel" "contains NO '!' negation line" \
+    "$(grep -qE '^[[:space:]]*!' "$pf" 2>/dev/null && echo 1 || echo 0)"
+  for pat in '.ssd/' 'docs/decisions/' 'docs/runbooks/' 'docs/architecture/'; do
+    _assert "private-gitignore-sentinel" "ignores $pat" \
+      "$(grep -qxF "$pat" "$pf" 2>/dev/null && echo 0 || echo 1)"
+  done
+}
+
+# The deny-list in gate-rules.sh and the pattern file are the same set in two syntaxes. ADR-0008
+# § "Future Compatibility" warns a forgotten side is a silent leak; under private mode that leak is
+# a privacy failure. This is the only mechanical defense against the two drifting apart.
+#
+# SET EQUALITY, not a spot-check (round-1 SUGGESTION-1). The earlier version asserted that four
+# KNOWN patterns appeared in both files, which could not detect the failure it existed to prevent:
+# adding a fifth pattern to one file only left it green, because the fixture never learned about the
+# fifth. Comparing the full sets means any divergence — an addition, a removal, or a typo on either
+# side — fails by construction, with no fixture edit required.
+test_fixture_private_deny_list_mirrors_pattern() {
+  echo "fixture: deny-list-mirrors-pattern-file"
+  local pf="$REPO_ROOT/methodology/private.gitignore"
+  _assert "deny-list-mirrors-pattern-file" "methodology/private.gitignore exists" \
+    "$([[ -f "$pf" ]] && echo 0 || echo 1)"
+  [[ -f "$pf" ]] || return
+
+  # Pattern file: every non-comment, non-blank line, trailing whitespace trimmed.
+  local from_file from_code
+  from_file=$(grep -vE '^[[:space:]]*(#|$)' "$pf" | sed 's/[[:space:]]*$//' | sort -u)
+
+  # gate-rules.sh: the quoted tokens of the private_baseline array. The awk range tolerates the array
+  # being reflowed across lines, so a future `git diff`-driven reformat cannot quietly break the test.
+  from_code=$(awk '/private_baseline=\(/,/\)/' "$GATE_SCRIPT" \
+              | grep -o '"[^"]*"' | tr -d '"' | sort -u)
+
+  _assert "deny-list-mirrors-pattern-file" "both sides are non-empty (extraction actually worked)" \
+    "$([[ -n "$from_file" && -n "$from_code" ]] && echo 0 || echo 1)"
+  _assert "deny-list-mirrors-pattern-file" "private.gitignore and gate-rules private_baseline are the SAME SET" \
+    "$([[ "$from_file" == "$from_code" ]] && echo 0 || echo 1)"
+  if [[ $VERBOSE -eq 1 && "$from_file" != "$from_code" ]]; then
+    echo "    --- only in private.gitignore ---"; comm -23 <(echo "$from_file") <(echo "$from_code") | sed 's/^/    /'
+    echo "    --- only in private_baseline ---"; comm -13 <(echo "$from_file") <(echo "$from_code") | sed 's/^/    /'
+  fi
+}
+
+# Under private mode no-leaky-state must RUN (not SKIP as it does under blanket) and must FAIL when
+# an SSD artifact is actually tracked. This is the mode where the rule is load-bearing.
+test_fixture_private_no_leaky_state() {
+  echo "fixture: no-leaky-state-private"
+  local tdir
+  tdir=$(fixture_setup "private-leaky")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd docs/decisions
+  printf 'ssd:\n  gitignore_mode: private\n' > .ssd/project.yml
+  echo "base" > app.py
+  git add -A app.py && git commit -qm "initial"
+  git checkout -qb feat
+
+  # (a) code-only change, nothing SSD tracked → PASS (rule ran; did NOT skip)
+  echo "change" >> app.py
+  git add -A app.py && git commit -qm "code only"
+  assert_rule "no-leaky-state-private" "no-leaky-state" "PASS"
+
+  # (b) an ADR force-added into the diff → FAIL. Under selective this would be perfectly legal;
+  #     under private it is a privacy leak.
+  cat > docs/decisions/ADR-9999-leak.md <<'EOF'
+# ADR-9999: leaked
+EOF
+  git add -f docs/decisions/ADR-9999-leak.md && git commit -qm "leak an ADR"
+  assert_rule "no-leaky-state-private" "no-leaky-state" "FAIL"
+
+  fixture_teardown "$tdir"
+}
+
+# A typo used to make no-leaky-state SKIP, silently disabling SSD's only leak detection. Under a
+# mode whose purpose is privacy that is unacceptable — an unrecognized value must be loud.
+test_fixture_unrecognized_gitignore_mode() {
+  echo "fixture: unrecognized-gitignore-mode"
+  local tdir
+  tdir=$(fixture_setup "bad-mode")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'ssd:\n  gitignore_mode: privat\n' > .ssd/project.yml
+  echo "base" > app.py
+  git add -A && git commit -qm "initial"
+  git checkout -qb feat
+  echo "change" >> app.py
+  git add -A && git commit -qm "change"
+
+  assert_rule "unrecognized-gitignore-mode" "no-leaky-state" "FAIL"
+  # blanket must still SKIP — the loud error is for UNRECOGNIZED values, not for the legacy opt-out.
+  printf 'ssd:\n  gitignore_mode: blanket\n' > .ssd/project.yml
+  git add -A && git commit -qm "switch to blanket"
+  assert_rule "unrecognized-gitignore-mode" "no-leaky-state" "SKIP"
+
+  fixture_teardown "$tdir"
+}
+
+# THE ACCEPTANCE TEST FOR THE WHOLE FEATURE (ADR-0017 § "The gate must not go quiet").
+# Under private mode docs/decisions/ is gitignored, so an ADR can never appear in a diff. Naive
+# diff-scoping makes adr-delta FAIL demanding a committed ADR delta while no-leaky-state FAILs if
+# one is force-added: both branches FAIL and the gate is UNPASSABLE on any >200-line change.
+test_fixture_adr_delta_private_no_deadlock() {
+  echo "fixture: adr-delta-private-no-deadlock"
+  local tdir
+  tdir=$(fixture_setup "adr-private")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd docs/decisions
+  printf 'ssd:\n  gitignore_mode: private\n' > .ssd/project.yml
+  echo "base" > app.py
+  git add -A app.py && git commit -qm "initial"
+  git checkout -qb feat
+
+  # 250 architectural lines, over the 200-line threshold.
+  yes "x" | head -250 > big_arch.py
+  git add -A big_arch.py && git commit -qm "large architectural change"
+
+  # (a) NO ADR on disk → FAIL is correct: the rule still has teeth under private mode.
+  assert_rule "adr-delta-private-no-deadlock" "adr-delta" "FAIL"
+
+  # (b) An UNTRACKED ADR on disk, newer than the base commit → PASS. This is the deadlock breaker:
+  #     the ADR is gitignored (never in the diff) yet the rule can still see it.
+  cat > docs/decisions/ADR-9999-private.md <<'EOF'
+# ADR-9999: designed under private mode
+## Status
+Proposed
+EOF
+  touch docs/decisions/ADR-9999-private.md
+  assert_rule "adr-delta-private-no-deadlock" "adr-delta" "PASS"
+
+  # (c) And the ADR must NOT have to be tracked for that PASS — confirm it is genuinely untracked,
+  #     otherwise this fixture would be silently testing the selective path.
+  _assert "adr-delta-private-no-deadlock" "the passing ADR is untracked (not in git)" \
+    "$(git ls-files --error-unmatch docs/decisions/ADR-9999-private.md >/dev/null 2>&1 && echo 1 || echo 0)"
+
+  # (d) The whole gate must now be passable — the deadlock is what this feature exists to prevent.
+  _assert "adr-delta-private-no-deadlock" "gate has no FAIL under private mode with an ADR on disk" \
+    "$(bash "$GATE_SCRIPT" --base main 2>&1 | grep -q '^FAIL ' && echo 1 || echo 0)"
+
+  fixture_teardown "$tdir"
+}
+
+# frontmatter-valid already had a no-diff fallback that walks the tree, so it needs NO private-mode
+# change. Pin that, so a future refactor of that branch cannot silently blind private projects.
+test_fixture_frontmatter_valid_private_walks_tree() {
+  echo "fixture: frontmatter-valid-private-walks-tree"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    echo "  (skipped — PyYAML not installed)"
+    return
+  fi
+  local tdir
+  tdir=$(fixture_setup "fm-private")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/f1 methodology
+  cp "$VALIDATOR" methodology/
+  cp -R "$SCHEMAS_DIR" methodology/
+  printf 'ssd:\n  gitignore_mode: private\n' > .ssd/project.yml
+  echo "base" > app.py
+  git add -A app.py methodology && git commit -qm "initial"
+  git checkout -qb feat
+  echo "change" >> app.py
+  git add -A app.py && git commit -qm "code only"
+
+  # An UNTRACKED, invalid coder-status: never in the diff, so only a tree walk can find it.
+  cat > .ssd/features/f1/03-coder-status.md <<'EOF'
+---
+skill: coder
+version: 1.4.0
+---
+Missing every other required field.
+EOF
+  assert_rule "frontmatter-valid-private-walks-tree" "frontmatter-valid" "FAIL"
+
+  fixture_teardown "$tdir"
+}
+
+# Diff-scoping feynman-clean under private mode would leave it permanently toothless: a project that
+# ran /feynman and got contradicted claims would sail through.
+test_fixture_feynman_clean_private_worktree() {
+  echo "fixture: feynman-clean-private-worktree"
+  local tdir
+  tdir=$(fixture_setup "feynman-private")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/milestones/m1
+  printf 'ssd:\n  gitignore_mode: private\n' > .ssd/project.yml
+  echo "base" > app.py
+  git add -A app.py && git commit -qm "initial"
+  git checkout -qb feat
+  echo "change" >> app.py
+  git add -A app.py && git commit -qm "code only"
+
+  # (a) no report on disk → SKIP. /feynman is never mandatory.
+  assert_rule "feynman-clean-private-worktree" "feynman-clean" "SKIP"
+
+  # (b) UNTRACKED report with contradicted claims → FAIL. Never appears in a diff.
+  cat > .ssd/milestones/m1/feynman.md <<'EOF'
+---
+skill: feynman
+version: 1.1.0
+claim_counts:
+  contradicted: 2
+  theater: 1
+posture: self-deceiving
+gate_pass: false
+not_examined:
+  - production telemetry
+---
+# Feynman Audit
+Body prose.
+EOF
+  assert_rule "feynman-clean-private-worktree" "feynman-clean" "FAIL"
+
+  fixture_teardown "$tdir"
+}
+
+# Mirroring workstream state to a public tracker contradicts private mode outright. The refusal is
+# duplicated at init time and here, because project.yml is hand-editable.
+test_fixture_issue_sync_refuses_private() {
+  echo "fixture: issue-sync-refuses-private"
+  local tdir out rc
+  tdir=$(fixture_setup "issue-sync-private")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'ssd:\n  gitignore_mode: private\n' > .ssd/project.yml
+  out=$(bash "$ISSUE_SYNC_SCRIPT" preflight 2>&1); rc=$?
+  _assert "issue-sync-refuses-private" "preflight exits 4 under private mode" \
+    "$([[ $rc -eq 4 ]] && echo 0 || echo 1)"
+  _assert "issue-sync-refuses-private" "preflight reports state=refused" \
+    "$(echo "$out" | grep -q 'state=refused' && echo 0 || echo 1)"
+  # The refusal must precede any gh call, so it holds even with gh absent/unauthenticated.
+  _assert "issue-sync-refuses-private" "refusal cites private-mode, not a gh problem" \
+    "$(echo "$out" | grep -q 'private-mode' && echo 0 || echo 1)"
+  # A refusal must not present itself as an OK line (ADR-0015-class misleading green signal).
+  _assert "issue-sync-refuses-private" "status line is prefixed REFUSED, not OK" \
+    "$(echo "$out" | grep -qE '^REFUSED preflight' && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Two existing mechanical entries probe for artifacts private mode must NOT have. Left as-is they
+# would report permanent unfixable drift — and --apply would re-add !.ssd/gate.yml, breaking privacy.
+test_fixture_migrate_private_na_entries() {
+  echo "fixture: migrate-private-na-entries"
+  local tdir out
+  tdir=$(fixture_setup "migrate-private")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  cat > .ssd/project.yml <<'EOF'
+ssd:
+  gitignore_mode: private
+EOF
+  # A private project has no .ssd/gate.yml and no deep-deny line; both entries must read as
+  # satisfied rather than as outstanding drift.
+  # The entries must read as SATISFIED (SKIP-present), not as outstanding drift (PENDING). Asserting
+  # the id is absent from the report would be wrong — it is present, reported as already adopted.
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.4.0 --to 2.8.0 --manifest "$MANIFEST" 2>&1)
+  _assert "migrate-private-na-entries" "committed-gate-yml reads as SKIP-present under private" \
+    "$(echo "$out" | grep -qE '^SKIP-present committed-gate-yml' && echo 0 || echo 1)"
+  _assert "migrate-private-na-entries" "strict-selective-gitignore reads as SKIP-present under private" \
+    "$(echo "$out" | grep -qE '^SKIP-present strict-selective-gitignore' && echo 0 || echo 1)"
+  _assert "migrate-private-na-entries" "neither entry is PENDING under private" \
+    "$(echo "$out" | grep -qE '^PENDING (committed-gate-yml|strict-selective-gitignore)' && echo 1 || echo 0)"
+
+  # Control: the SAME version window on a SELECTIVE project with neither convention present MUST
+  # report them as PENDING. Without this the fixture could pass by accident — e.g. if the version
+  # window were empty, or if detect() started returning 0 for everything.
+  cat > .ssd/project.yml <<'EOF'
+ssd:
+  gitignore_mode: selective
+EOF
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.4.0 --to 2.8.0 --manifest "$MANIFEST" 2>&1)
+  _assert "migrate-private-na-entries" "control: selective project reports committed-gate-yml PENDING" \
+    "$(echo "$out" | grep -qE '^PENDING committed-gate-yml' && echo 0 || echo 1)"
+  _assert "migrate-private-na-entries" "control: selective project reports strict-selective-gitignore PENDING" \
+    "$(echo "$out" | grep -qE '^PENDING strict-selective-gitignore' && echo 0 || echo 1)"
+
+  # gate-inputs-present must write to project.yml under private mode, NOT to .ssd/gate.yml. Two
+  # writers disagreeing on where a private project's gate config lives is the dual-source drift
+  # ADR-0013's extraction work exists to prevent — and gate.yml is a file ADR-0017 says cannot exist.
+  cat > .ssd/project.yml <<'EOF'
+ssd:
+  gitignore_mode: private
+EOF
+  printf 'test:\n\t@echo ok\n' > Makefile
+  bash "$MIGRATE_SCRIPT" --from 2.4.0 --to 2.8.0 --manifest "$MANIFEST" --apply >/dev/null 2>&1
+  _assert "migrate-private-na-entries" "apply writes test_command into project.yml under private" \
+    "$(grep -qE '^[[:space:]]*test_command:[[:space:]]*make test' .ssd/project.yml 2>/dev/null && echo 0 || echo 1)"
+  _assert "migrate-private-na-entries" "apply does NOT create .ssd/gate.yml under private" \
+    "$([[ -f .ssd/gate.yml ]] && echo 1 || echo 0)"
+
+  fixture_teardown "$tdir"
+}
+
 test_fixture_clean_flagged
 test_fixture_wip_commit
 test_fixture_missing_flag
@@ -1020,6 +1469,19 @@ test_fixture_close_epic_open_children
 test_fixture_close_epic_all_closed
 test_fixture_issue_sync_current_skip_no_gh
 test_fixture_feynman_clean
+test_fixture_apply_noop_not_error
+test_fixture_file_mtime_portability
+test_fixture_private_honors_gitignored_state
+test_fixture_feynman_private_scope_mirrors_diff
+test_fixture_private_gitignore_sentinel
+test_fixture_private_deny_list_mirrors_pattern
+test_fixture_private_no_leaky_state
+test_fixture_unrecognized_gitignore_mode
+test_fixture_adr_delta_private_no_deadlock
+test_fixture_frontmatter_valid_private_walks_tree
+test_fixture_feynman_clean_private_worktree
+test_fixture_issue_sync_refuses_private
+test_fixture_migrate_private_na_entries
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

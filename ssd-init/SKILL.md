@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.11.0
+**Version:** 1.12.0
 
 ## Purpose
 
@@ -26,7 +26,7 @@ Run **once** at the beginning of a project's SSD adoption. Idempotent: safe to r
 | | |
 |---|---|
 | **Input** | Current working directory (assumed project root, or walked upward to find one); optional user clarifications for platform / distribution channel |
-| **Output** | `.ssd/` directory with subtree; `.gitignore` entry; `.ssd/project.yml`; `.ssd/init-log.md` |
+| **Output** | `.ssd/` directory with subtree; `.gitignore` entry (selective · blanket · **private**); `.ssd/project.yml`; `.ssd/init-log.md` |
 | **Consumed by** | `.ssd` (all phases), `architect`, `systems-designer`, `coder`, review skills — all read from and write to `.ssd/` |
 | **SSD Phase** | Prerequisite to all phases. Typically called before `/ssd start`. |
 
@@ -124,11 +124,17 @@ mkdir -p .ssd/features .ssd/milestones .ssd/audits \
          .ssd/archive/features .ssd/archive/milestones
 ```
 
-Also ensure the committed decision-record locations exist (these live outside `.ssd/` because they are tracked):
+Also ensure the decision-record locations exist (these live outside `.ssd/` because they are normally tracked):
 
 ```bash
 mkdir -p docs/decisions docs/runbooks docs/architecture
 ```
+
+**Under `gitignore_mode: private`** ([ADR-0017](../docs/decisions/ADR-0017-private-mode.md)) these
+three directories are still **created** — SSD writes ADRs, runbooks, and architecture docs to the same
+well-known paths in every mode — but they are **gitignored** rather than tracked. Private mode changes
+the commit posture, never the artifact paths (the alternative, relocating them under `.ssd/docs/`, was
+rejected: twelve non-`.ssd/` files hardcode `docs/decisions/`).
 
 If `.ssd/` already exists:
 - Verify each expected top-level subdirectory is present; create missing ones.
@@ -183,7 +189,12 @@ As of v1.6.0 (companion to library v1.18.0 / [ADR-0008](../docs/decisions/ADR-00
 notes, milestone records) get committed; machine state (`current.yml`, `project.yml`,
 `init-log.md`, `archive/`, `audits/`, snapshot machinery) stays gitignored.
 
-**Four cases:**
+**Private mode short-circuits this step.** If the user invoked `ssd-init --private` (or chose
+privacy at the prompt below), write the **private pattern** —
+[`methodology/private.gitignore`](../methodology/private.gitignore) contents verbatim — and skip the
+four selective cases entirely. See § "Private mode" below.
+
+**Four cases (selective, the default):**
 
 1. **No `.gitignore` exists:** create it with the **selective pattern** below.
 2. **`.gitignore` exists with no `.ssd` reference:** append the selective pattern.
@@ -226,6 +237,42 @@ permanently); never silently skip it.
 `.ssd/` line instead of the selective pattern, and sets `project.yml.ssd.gitignore_mode:
 blanket`.
 
+**Private mode** (v2.8.0+, [ADR-0017](../docs/decisions/ADR-0017-private-mode.md)). For a project
+where the SSD paper trail should not appear in git at all — client work, a shared repo where SSD is a
+personal rather than team practice, an OSS contribution.
+
+Offer it once, alongside the selective default:
+
+> "SSD can run **privately**: nothing it produces is tracked by git — not `.ssd/`, not the ADRs,
+> runbooks, or architecture docs under `docs/`. Every rail step and gate rule still runs; only the
+> storage posture changes. Branch names lose the `add-` prefix and GitHub issue tracking is forced
+> off. The `🛠️ Crafted with SSD` commit footer is **kept** — this is privacy, not anonymity.
+> Use private mode?"
+
+On yes (or `ssd-init --private`):
+
+- Write [`methodology/private.gitignore`](../methodology/private.gitignore) contents **verbatim**.
+  Do not maintain a second copy here — it is the canonical single source, exactly as
+  `selective.gitignore` is for selective mode.
+- Set `project.yml.ssd.gitignore_mode: private` (Step 6).
+- Set `branch_pattern: "{slug}"` (Step 6) — the default `add-{slug}` is an SSD fingerprint on
+  every branch name.
+- Force `integrations.github.issue_tracking: off` (Step 6). If the user asks for `on`, **refuse and
+  explain** rather than silently honoring one of the two: mirroring workstream state to a public
+  tracker contradicts the mode outright. `issue-sync.sh preflight` also refuses at runtime
+  (`exit 4`), because `project.yml` is hand-editable.
+- Write `test_command` / `feature_flag_marker` as **real keys** in `project.yml`, not commented
+  placeholders. Private mode has no committed `.ssd/gate.yml`, so `project.yml` is the only place
+  the gate can read them from. Omitting them means `tests-pass` and `feature-flag-present` cannot
+  run at all.
+
+**State the limits plainly when the user accepts** — do not let "private" be heard as a security
+guarantee:
+
+> "Private means **untracked**, not encrypted and not anonymous. Artifacts sit in plaintext on disk.
+> If this repo already has SSD artifacts committed, switching now does not remove them from
+> history — `/ssd upgrade` can stop future tracking but cannot rewrite what is already pushed."
+
 If the project is not a git repo (Step 2 outcome: no git, user declined init), skip this step
 and note in the log.
 
@@ -239,15 +286,27 @@ PR time. See [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md) and
 uninstall / coexistence docs.
 
 **Step 5.5 mode-detection (must run first, before anything else in this step).** Read the
-project's `.gitignore` file. If it contains the selective-pattern marker line
-(`!.ssd/features/**/01-architect.md` is unique and only present under the v1.18.0+
-selective pattern), proceed with Step 5.5. If it contains a bare `.ssd/` line (Step 5 kept
-the legacy blanket OR the user invoked `--keep-blanket-gitignore`), skip Step 5.5 entirely
-— installing the hook would be a no-op since `no-leaky-state` SKIPs under blanket mode.
+project's `.gitignore` file and test the three modes **in this order** — private, then selective,
+then blanket:
+
+1. **Private** — contains the sentinel `# ssd:gitignore-mode=private`. **Proceed with Step 5.5**;
+   under private mode the hook is *more* valuable than under selective, because it is the
+   pre-commit backstop for the privacy promise rather than a tidiness check.
+2. **Selective** — contains `!.ssd/features/**/01-architect.md` (unique to the v1.18.0+ selective
+   pattern). Proceed with Step 5.5.
+3. **Blanket** — a bare `.ssd/` line and neither marker above. **Skip Step 5.5 entirely** —
+   installing the hook would be a no-op since `no-leaky-state` SKIPs under blanket mode.
+
+**Order is load-bearing:** a private `.gitignore` also contains a bare `.ssd/` line, so testing
+blanket first would misclassify every private project as blanket and skip the hook offer exactly
+where it matters most.
+
 Detection is grounded in `.gitignore` state at this point in the init flow because
 `.ssd/project.yml`'s `gitignore_mode` key is not written until Step 6. Do NOT branch on
 `project.yml`'s contents at Step 5.5 time — it may not exist yet (fresh init) or may be on
-an older schema lacking the key.
+an older schema lacking the key. (This is the one sanctioned exception to the
+[ADR-0017](../docs/decisions/ADR-0017-private-mode.md) rule that every consumer reads the mode from
+`project.yml`; it is also why the private pattern carries a comment sentinel at all.)
 
 Offer the install with an explicit yes/no/skip prompt (the user can also install later via the hooks
 README). The offer never auto-installs.
@@ -341,14 +400,21 @@ ssd:
   artifact_root: .ssd/            # relative to project root
 
   # Parallel-features defaults (v1.16.0, ADR-0007). Override per-project as needed.
+  # Under gitignore_mode: private, write "{slug}" instead — the `add-` prefix is an SSD
+  # fingerprint on every branch name (ADR-0017).
   branch_pattern: "add-{slug}"
   worktree_root: "../"
   worktree_name_pattern: "{repo}-{slug}"
   switch_note_default: prompt    # prompt | auto | skip (default: prompt)
 
-  # Commit-split defaults (v1.18.0, ADR-0008). Selective is the default; blanket is the
-  # legacy v1.3.0–v1.17.x behavior for solo developers who prefer it.
-  gitignore_mode: selective      # selective | blanket
+  # Commit-split defaults (v1.18.0, ADR-0008; `private` added v2.8.0, ADR-0017). Selective is the
+  # default; blanket is the legacy v1.3.0–v1.17.x behavior for solo developers who prefer it;
+  # private tracks NOTHING SSD produces (see Step 5 § "Private mode").
+  #
+  # Exactly these three literals are recognized. A typo is NOT a silent default — gate-rules.sh
+  # FAILs the no-leaky-state rule on an unrecognized value, because a misspelled mode used to
+  # disable leak detection without saying so (ADR-0017).
+  gitignore_mode: selective      # selective | blanket | private
   gitignored_state: []           # additional patterns the no-leaky-state gate rule denies;
                                  # additive only — projects cannot shrink the baseline.
 
@@ -357,6 +423,11 @@ ssd:
   # gate-rules.sh reads project.yml first, then gate.yml.
   # test_command: <cmd>          # local override of gate.yml's test_command
   # feature_flag_marker: <regex> # local override of gate.yml's feature_flag_marker
+  #
+  # UNDER PRIVATE MODE these two are NOT optional and NOT commented: private mode has no committed
+  # .ssd/gate.yml, so project.yml is the only place the gate can read them from. Leaving them
+  # commented means `tests-pass` and `feature-flag-present` cannot run at all. This is ADR-0015's
+  # root cause P2 knowingly reopened as the documented cost of privacy — see the ADR-0015 addendum.
 
 integrations:                    # optional; filled in as features are added
   - type: jira
@@ -366,6 +437,9 @@ integrations:                    # optional; filled in as features are added
     issue_tracking: off          # ADR-0014: mirror workstream state to GitHub issues (ADR=epic,
                                  # workstream=feature issue, ssd:phase/* labels). off (default) =
                                  # feature dormant, zero network. Set `on` to opt in.
+                                 # FORCED off under gitignore_mode: private — a public tracker
+                                 # mirror contradicts the mode outright (ADR-0017). issue-sync.sh
+                                 # preflight also refuses at runtime (exit 4).
     auto_close: false            # close feature/epic issues automatically on `done`? false (default)
                                  # = prompt once per close; true = close without prompting.
 
@@ -551,6 +625,18 @@ See `.ssd/README.md` for the artifact tree.
 
 Do not overwrite an existing `CLAUDE.md`. If the user wants to merge, that's a separate action.
 
+**Under `gitignore_mode: private`, skip the offer entirely.** `CLAUDE.md` is committed, so an "SSD
+Convention" section in it announces the practice in exactly the repo the user is keeping quiet.
+
+Nothing functional is lost. `/ssd`'s actual prerequisite is `.ssd/project.yml` (see `ssd/SKILL.md`
+§ "Prerequisite"), not a `CLAUDE.md` pointer — this section has always been advisory, which is why
+this step only ever *offered* it. Under private mode the convention pointer lives in
+`.ssd/README.md`, written by Step 4 and gitignored like everything else.
+
+If `CLAUDE.md` already exists and already mentions SSD, say so rather than editing it — removing
+content the user wrote is not this step's business. Note it in the init log so the leak is visible
+and the user can decide.
+
 ### Step 9 — Prerequisite Checks
 
 Report the status of SSD prerequisites. These are not blockers for `ssd-init` — they are blockers for `/ssd start` — but the user should see them immediately.
@@ -575,7 +661,7 @@ Record what was done and what was found. This is the primary output artifact of 
 ```markdown
 ---
 skill: ssd-init
-version: 1.11.0
+version: 1.12.0
 produced_at: <ISO-8601>
 project: <name>
 ---
@@ -651,6 +737,10 @@ Based on the prerequisite check results and project state:
 1. **Never overwrites existing files.** If `.ssd/project.yml` exists, it is read, not replaced. The user must delete or edit it manually to change detected values.
 2. **Never deletes existing files or directories.** No `rm`, no `mv`, no destructive ops.
 3. **Idempotent edits to `.gitignore`.** Check before appending; multiple runs produce identical output.
+   Detect the existing mode by sentinel — private (`# ssd:gitignore-mode=private`) before selective
+   (`!.ssd/features/**/01-architect.md`) before blanket — and never append a second pattern block.
+   A re-run on a private project must not "migrate" it to selective: an explicitly recorded
+   `gitignore_mode: private` is a user decision, not drift.
 4. **Appends to `.ssd/init-log.md` on re-run.** Each run adds a new section with its timestamp; does not replace prior entries.
 
 If the project state genuinely needs to be reset, the user invokes `ssd-init --reset` (interactive, requires explicit confirmation on each deletion).
