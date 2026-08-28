@@ -207,6 +207,56 @@ delivered in iteration B with two mandatory safeguards:
   `CLAUDE.local.md`, whose loading behavior was not verified.
 - **Not history rewriting, not encryption, not anonymity.** See Non-Goals.
 
+## Amendment (2026-08-28) — the retrofit is **elective**, and what it cannot undo
+
+Added by iteration B, which builds the retrofit iteration A deliberately withheld.
+
+### The retrofit is elective, not swept
+
+This ADR's "Retrofit" section said the migration would be *"a `/ssd upgrade` migration entry
+(`private-mode`, mechanical, `introduced_in: 2.8.0`)."* **`mechanical` was wrong**, and the reason is
+worth recording so it is not relitigated: a mechanical entry is *drift to be closed*, so
+`/ssd upgrade --apply` on **any** project would have `git rm --cached` its committed ADRs, briefs, and
+reviews — a team repository swept into privacy because someone ran a routine upgrade. The `guided`
+alternative fails differently: it re-surfaces until adopted, nagging every project forever about a
+posture most should never take.
+
+The entry is therefore **`kind: mechanical` + `elective: true`**
+([ADR-0013 addendum](ADR-0013-project-upgrade-migration-manifest.md)): excluded from the default sweep,
+never `PENDING`, never a participant in version advancement, applied only when named —
+`/ssd upgrade --apply private-mode`. The entry point this ADR promised survives; what changed is that
+the default sweep can never reach it. `introduced_in` is **2.9.0**, the release that adds the retrofit.
+
+### Dry-run by default
+
+`--elect <id>` **mutates nothing**: it enumerates, prints, and exits 10 (needs-confirm).
+`--elect <id> --confirm` acts. This inverts the engine's normal behavior — every other `apply_*`
+mutates when invoked — because this is the only operation in `migrate.sh` that can remove something
+from git. It follows ADR-0013 iteration A's own stance: that release shipped read-only *"so the
+corruption risk of a bad migration cannot fire,"* and this operation is strictly more dangerous than
+the one that justified it.
+
+### What the retrofit cannot undo
+
+Stated here rather than left for a user to discover:
+
+- **`git rm --cached` stops future tracking. It does not rewrite published history.** An artifact that
+  was committed and pushed remains in the repository's history and on every clone. Electing private
+  mode on a repository whose SSD paper trail is already public makes future commits private; it does
+  **not** make the project private retroactively. The interlock states this verbatim in both the
+  dry-run and the confirmed run.
+- **Files are untracked, not deleted.** They remain on disk. This is recoverable (`git add` restores
+  tracking) but it will read as deletion in a diff, and may be pushed before anyone notices.
+- **`docs/` may hold content SSD never created.** The interlock lists such files under a separate
+  heading, because untracking a team's unrelated architecture document — because it shared a directory
+  with SSD's output — would be the worst outcome this feature could produce.
+- **There is no inverse migration.** Moving *out* of private mode is not built. A user can re-track by
+  hand; nothing automates it. Recorded so the absence is not mistaken for an oversight.
+
+**This remains a visibility posture, not a security guarantee** — the original Non-Goals below are
+unchanged, and iteration B is where a user acts on that belief, which is why the warning is repeated
+at the point of action rather than only here.
+
 ## Non-Goals
 
 - **Not history rewriting.** No `filter-branch`, no `bfg`. The retrofit untracks and warns.

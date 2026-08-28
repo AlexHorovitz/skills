@@ -254,6 +254,25 @@ since it is what enforces the boundary.
 - **Cannot un-publish history.** Switching an existing project stops *future* tracking;
   `git rm --cached` does not rewrite what is already pushed.
 
+### Retrofitting an existing project
+
+*v2.9.0+ — iteration B*
+
+```bash
+/ssd upgrade --apply private-mode            # DRY RUN — shows everything, changes nothing
+/ssd upgrade --apply private-mode --confirm  # applies
+```
+
+The dry-run lists **every** tracked path under `.ssd/` and the three SSD `docs/` trees, separates
+files SSD demonstrably produced from files it **cannot confirm** it produced (so a doc your team owns
+is never quietly untracked), and states plainly that `git rm --cached` stops *future* tracking but
+**does not rewrite published history**. Nothing changes until you re-run with `--confirm`.
+
+`private-mode` is an **elective** migration: a plain `/ssd upgrade` never mentions it, and a plain
+`/ssd upgrade --apply` never applies it. It is a choice, not drift — see the
+[ADR-0013 addendum](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md). Moving back *out*
+of private mode is not automated.
+
 ### Trade-offs, stated plainly
 
 - **Gate config does not travel.** No committed `.ssd/gate.yml` can exist, so `test_command` and

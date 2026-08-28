@@ -15,6 +15,15 @@
 #                 v2.2.0 (ssd-2.0-cuts iter C, ADR-0012/0013) when SSD 2.0 removed the profile keys.
 #   applies_to    project | library   (`/ssd upgrade` runs only `project`-scoped entries)
 #   kind          mechanical | guided (guided = a practice; cannot be auto-applied)
+#   elective      (optional) true = this entry is NOT drift. It is a CHOICE only some projects should
+#                 ever make, so it is excluded from the default sweep entirely: never listed in the
+#                 report, never PENDING, never applied by `--apply`, and never a participant in
+#                 recorded-version advancement. It runs only when named (`--elect <id>`). Absent =>
+#                 false => swept exactly as before, so every pre-2.9.0 entry is unaffected.
+#                 ORTHOGONAL to `kind`: `kind` answers HOW an entry is adopted, `elective` answers
+#                 WHETHER every project should adopt it at all. Added v2.9.0 (ADR-0013 addendum,
+#                 ADR-0017) because a *mechanical* private-mode entry would have let
+#                 `/ssd upgrade --apply` untrack a team's committed ADRs on a routine upgrade.
 #   adr           the decision record that introduced it
 #   title         one-line human description
 #   detect        HUMAN description of the idempotency probe. The executable probe lives in
@@ -141,3 +150,16 @@ migrations:
     title: "feynman-clean gate rule + /feynman proposed at milestone, verify, audit, pre-ship"
     detect: null
     guidance: "The gate gained a `feynman-clean` rule: any .ssd/**/feynman.md in a change set must report zero `contradicted` and zero `theater` claims, or the gate FAILs (logged `/ssd ship --force` override, as with any FAILable rule). Nothing to install — the rule ships in gate-rules.sh and SKIPs in every project with no audit in scope, so a project that never runs /feynman is unaffected. What changed for you: /ssd milestone now offers the audit at Step 0.5 (declining is recorded, not silent), and /ssd verify re-proposes it. Run /feynman before your next release to see what it says."
+
+  - id: private-mode
+    introduced_in: "2.9.0"
+    applies_to: project
+    kind: mechanical
+    # `elective` on its OWN line, never inline after another value — the awk/yaml_get readers do not
+    # strip a trailing `# …` from every field, and a comment leaking into a parsed value is the
+    # ssd-upgrade iter-B MAJOR-4 defect class.
+    elective: true
+    adr: ADR-0017
+    title: "private mode retrofit (gitignore_mode: private + untrack tracked SSD artifacts)"
+    detect: "project.yml.ssd.gitignore_mode is `private` AND .gitignore carries the `# ssd:gitignore-mode=private` sentinel (executable probe: detect_private_mode() in migrate.sh)"
+    apply: "DRY-RUN BY DEFAULT. `--elect private-mode` enumerates every tracked path under .ssd/ and docs/{decisions,runbooks,architecture}, prints the complete list (flagging any docs/ file SSD did not create), prints the history-is-not-rewritten warning, and exits 10 having mutated nothing. With `--confirm`: writes methodology/private.gitignore verbatim, sets gitignore_mode/branch_pattern/issue_tracking, promotes gate inputs into project.yml, then `git rm --cached` the enumerated paths. Idempotent: an already-private project is a no-op."
