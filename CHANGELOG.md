@@ -77,7 +77,7 @@ v2.0.0 (the BREAKING SSD 2.0 release) was also missing. Each is now tagged on th
 `VERSION` became that value, cross-checked against its `CHANGELOG` entry and confirmed to be an
 ancestor of `main`. The 2.x line is contiguous v2.0.0 → v2.8.0.
 
-Parity: **188 → 200 assertions** (+12).
+Parity: **188 → 202 assertions** (+14).
 
 ---
 

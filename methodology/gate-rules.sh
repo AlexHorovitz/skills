@@ -773,10 +773,18 @@ parse_active_workstreams() {
       if ($0 ~ /slug:/) slug = scalar($0, "slug")
       next
     }
-    !have || ind != bnd + 2 { next }            # only this workstream'"'"'s own fields, at its own depth
-    /slug:/  { slug  = scalar($0, "slug");  next }
-    /phase:/ { phase = scalar($0, "phase"); next }
-    /issue:/ { issue = scalar($0, "issue"); next }
+    # Fields are accepted at ANY depth INSIDE the current workstream (ind > bnd), not only at bnd+2.
+    # A stricter `ind == bnd + 2` was tried and REGRESSED tolerance the previous parser had: a file
+    # using non-canonical field indent (fields at bnd+4 under a bnd list item) lost phase and issue,
+    # which degrades the rule to "no binding" — honest, but a needless narrowing. The boundary rule
+    # (ind == bnd) is what fixes the fragmentation; the field rule does not need to be strict too.
+    # Safe against the documented schema: the only keys nested deeper inside a workstream are the
+    # rail_deviations item fields (step/reason/ts) plus bare-string list items, none of which collide
+    # with slug/phase/issue.
+    !have || ind <= bnd { next }
+    /^[[:space:]]+slug:/  { slug  = scalar($0, "slug");  next }
+    /^[[:space:]]+phase:/ { phase = scalar($0, "phase"); next }
+    /^[[:space:]]+issue:/ { issue = scalar($0, "issue"); next }
     END { flush() }
   ' "$file"
 }

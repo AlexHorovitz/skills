@@ -1114,6 +1114,45 @@ test_fixture_apply_noop_on_absent_precondition() {
   fixture_teardown "$tdir"
 }
 
+# The fragmentation fix must not narrow the field tolerance the previous parser had. A file using
+# non-canonical field indent (fields deeper than boundary+2) must still yield its binding — an
+# `ind == bnd + 2` field rule was tried first and silently lost phase/issue on such a file.
+test_fixture_parse_active_workstreams_indent_tolerance() {
+  echo "fixture: parse-active-workstreams-indent-tolerance"
+  local tdir out bindir
+  tdir=$(fixture_setup "parse-indent")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  printf 'integrations:
+  - type: github
+    issue_tracking: on
+' > .ssd/project.yml
+  # Fields at boundary+4, plus a nested list — non-canonical but valid YAML.
+  cat > .ssd/current.yml <<'EOF'
+schema_version: 2
+
+active:
+  - slug: odd-indent
+      phase: code
+      touches:
+        - a.sh
+      issue: 77
+
+archived: []
+EOF
+  echo base > a.txt && git add -A && git commit -qm base
+  bindir=$(setup_mock_gh "$tdir")
+  printf '77|OPEN|ssd:feature,ssd:phase/code|body
+' > "$tdir/issues.txt"
+  out=$(MOCK_GH_ISSUES="$tdir/issues.txt" PATH="$bindir:$PATH" \
+        bash "$GATE_SCRIPT" --base main --rules issue-sync-current 2>&1)
+  _assert "parse-active-workstreams-indent-tolerance" "non-canonical field indent still yields the binding" \
+    "$(echo "$out" | grep -qE '^PASS issue-sync-current' && echo 0 || echo 1)"
+  _assert "parse-active-workstreams-indent-tolerance" "not degraded to 'no active workstream has an issue binding'" \
+    "$(echo "$out" | grep -q 'no active workstream has an issue binding' && echo 1 || echo 0)"
+  fixture_teardown "$tdir"
+}
+
 # ---------- private mode (ADR-0017) ----------------------------------------
 
 # ---- iteration B: the elective retrofit (ADR-0013 addendum, ADR-0017 amendment) ----
@@ -1975,6 +2014,7 @@ test_fixture_issue_sync_current_skip_no_gh
 test_fixture_feynman_clean
 test_fixture_parse_active_workstreams_nested_lists
 test_fixture_apply_noop_on_absent_precondition
+test_fixture_parse_active_workstreams_indent_tolerance
 test_fixture_elective_inert_in_default_sweep
 test_fixture_read_manifest_eight_columns
 test_fixture_read_manifest_empty_middle_field
