@@ -992,6 +992,128 @@ EOF
   fixture_teardown "$tdir"
 }
 
+# ---------- recorded-defect fixes ------------------------------------------
+
+# parse_active_workstreams fragmented ANY workstream carrying a nested list. `rail_deviations`,
+# `adrs_authored` and `touches` are all documented v2 schema LIST fields, and the parser treated every
+# `- ` line as a new workstream boundary — so one workstream became ~18 records, the record holding
+# `issue:` had an empty slug, the rule's `[[ -n $slug ]]` guard skipped it, and issue-sync-current
+# emitted "gh lookups all failed" having made ZERO gh calls. It could never PASS for a real workstream
+# and had almost certainly never passed since shipping in v2.4.0.
+#
+# The fixture that let this through built a FLAT current.yml (slug/phase/issue, nothing nested) — a
+# shape no real workstream has. This one is built from the realistic schema, which is the whole point.
+test_fixture_parse_active_workstreams_nested_lists() {
+  echo "fixture: parse-active-workstreams-nested-lists"
+  local tdir out
+  tdir=$(fixture_setup "parse-nested")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd methodology
+  printf 'integrations:\n  - type: github\n    issue_tracking: on\n' > .ssd/project.yml
+  # A REALISTIC active entry: nested rail_deviations, adrs_authored and touches, with issue: LAST —
+  # exactly the ordering that made the binding unreachable.
+  cat > .ssd/current.yml <<'EOF'
+schema_version: 2
+
+active:
+  - slug: demo-feature
+    phase: code
+    iteration: null
+    started: 2026-08-28T00:00:00Z
+    rail_deviations:
+      - step: systems-designer
+        reason: "no runtime"
+        ts: 2026-08-28T00:00:00Z
+    blockers: []
+    adrs_authored:
+      - ADR-0099 (something)
+      - ADR-0098 (something else)
+    branch: add-demo-feature
+    worktree: null
+    touches:
+      - methodology/a.sh
+      - methodology/b.sh
+      - scripts/c.sh
+    epic: 100
+    issue: 101
+
+archived: []
+EOF
+  echo base > a.txt && git add -A && git commit -qm base
+
+  # gh MUST be available for the bug to manifest — with gh absent the rule SKIPs at the gh check
+  # before the loop ever runs, so the buggy and fixed code look identical. Mock gh, and give issue 101
+  # a label that MATCHES the local phase, so a correctly-parsed workstream PASSES.
+  local bindir; bindir=$(setup_mock_gh "$tdir")
+  printf '101|OPEN|ssd:feature,ssd:phase/code|body\n' > "$tdir/issues.txt"
+  local out
+  out=$(MOCK_GH_ISSUES="$tdir/issues.txt" PATH="$bindir:$PATH" \
+        bash "$GATE_SCRIPT" --base main --rules issue-sync-current 2>&1)
+
+  _assert "parse-active-workstreams-nested-lists" "the issue binding survives the nested lists → rule PASSES" \
+    "$(echo "$out" | grep -qE '^PASS issue-sync-current' && echo 0 || echo 1)"
+  _assert "parse-active-workstreams-nested-lists" "does NOT claim 'gh lookups all failed'" \
+    "$(echo "$out" | grep -q 'gh lookups all failed' && echo 1 || echo 0)"
+  _assert "parse-active-workstreams-nested-lists" "reports exactly ONE binding, not a fragmented count" \
+    "$(echo "$out" | grep -qE '1 issue binding\(s\)' && echo 0 || echo 1)"
+
+  # And real drift must still be detected — a fix that made the rule always PASS would be worse.
+  printf '101|OPEN|ssd:feature,ssd:phase/deploy|body\n' > "$tdir/issues.txt"
+  out=$(MOCK_GH_ISSUES="$tdir/issues.txt" PATH="$bindir:$PATH" \
+        bash "$GATE_SCRIPT" --base main --rules issue-sync-current 2>&1)
+  _assert "parse-active-workstreams-nested-lists" "label/phase drift still FAILs (rule kept its teeth)" \
+    "$(echo "$out" | grep -qE '^FAIL issue-sync-current' && echo 0 || echo 1)"
+  _assert "parse-active-workstreams-nested-lists" "drift message names the slug (not an empty string)" \
+    "$(echo "$out" | grep -q 'demo-feature' && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
+# Q2 (recorded at iteration A's ship). `committed-gate-yml` and `strict-selective-gitignore` reported
+#   ERROR :: apply ran but convention still absent — inspect manually     (engine exit 3)
+# when their precondition was genuinely absent — a project with NO .gitignore at all, so there is no
+# file to append the `!.ssd/gate.yml` negation to and no selective block to harden. That is the same
+# misleading-signal class as QUESTION-1: "cannot apply" reported as "tried and failed", telling a user
+# their upgrade engine is broken when the project state is simply not ready.
+#
+# v2.8.0 already introduced the vocabulary for this (NOOP, return 8). These two just never used it.
+test_fixture_apply_noop_on_absent_precondition() {
+  echo "fixture: apply-noop-on-absent-precondition"
+  local tdir out rc
+  tdir=$(fixture_setup "noop-precond")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  # Recorded at 2.4.0 with the marker key present but NO .gitignore — so selective-gitignore
+  # (introduced 1.18.0) is outside the window and never establishes the pattern.
+  printf 'ssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  printf 'test:\n\t@echo ok\n' > Makefile
+  echo base > a.txt && git add -A && git commit -qm base
+
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.4.0 --to 2.9.0 --manifest "$MANIFEST" --apply 2>&1); rc=$?
+
+  _assert "apply-noop-on-absent-precondition" "committed-gate-yml reports NOOP, not ERROR" \
+    "$(echo "$out" | grep -qE '^NOOP committed-gate-yml' && echo 0 || echo 1)"
+  _assert "apply-noop-on-absent-precondition" "strict-selective-gitignore reports NOOP, not ERROR" \
+    "$(echo "$out" | grep -qE '^NOOP strict-selective-gitignore' && echo 0 || echo 1)"
+  _assert "apply-noop-on-absent-precondition" "no ERROR line anywhere in the report" \
+    "$(echo "$out" | grep -qE '^ERROR ' && echo 1 || echo 0)"
+  _assert "apply-noop-on-absent-precondition" "--apply exits 0 (not 3 = engine error)" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  # The NOOP must name the missing precondition specifically — a generic "precondition absent" would
+  # not tell the user what to do next.
+  _assert "apply-noop-on-absent-precondition" "NOOP detail names the missing .gitignore precondition" \
+    "$(echo "$out" | grep -qE 'NOOP (committed-gate-yml|strict-selective-gitignore).*\.gitignore' && echo 0 || echo 1)"
+
+  # CONTROL: with the selective pattern present, both must still APPLY. A "fix" that made them
+  # unconditionally NOOP would be worse than the bug.
+  cat "$REPO_ROOT/methodology/selective.gitignore" > .gitignore
+  out=$(bash "$MIGRATE_SCRIPT" --from 2.4.0 --to 2.9.0 --manifest "$MANIFEST" --apply 2>&1)
+  _assert "apply-noop-on-absent-precondition" "control: with the pattern present, committed-gate-yml APPLIES" \
+    "$(echo "$out" | grep -qE '^(APPLIED|SKIP-present) committed-gate-yml' && echo 0 || echo 1)"
+  _assert "apply-noop-on-absent-precondition" "control: strict-selective-gitignore APPLIES" \
+    "$(echo "$out" | grep -qE '^(APPLIED|SKIP-present) strict-selective-gitignore' && echo 0 || echo 1)"
+  fixture_teardown "$tdir"
+}
+
 # ---------- private mode (ADR-0017) ----------------------------------------
 
 # ---- iteration B: the elective retrofit (ADR-0013 addendum, ADR-0017 amendment) ----
@@ -1851,6 +1973,8 @@ test_fixture_close_epic_open_children
 test_fixture_close_epic_all_closed
 test_fixture_issue_sync_current_skip_no_gh
 test_fixture_feynman_clean
+test_fixture_parse_active_workstreams_nested_lists
+test_fixture_apply_noop_on_absent_precondition
 test_fixture_elective_inert_in_default_sweep
 test_fixture_read_manifest_eight_columns
 test_fixture_read_manifest_empty_middle_field

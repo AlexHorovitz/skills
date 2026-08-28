@@ -365,6 +365,14 @@ EOF
 
 apply_committed_gate_yml() {      # ADR-0015 — create gate.yml + the !.ssd/gate.yml gitignore exception.
   local gate="$ROOT/.ssd/gate.yml" pj="$ROOT/.ssd/project.yml" gi="$ROOT/.gitignore"
+  # PRECONDITION → NOOP (8), not failure (Q2). detect() requires BOTH gate.yml and the
+  # `!.ssd/gate.yml` negation; with no .gitignore there is nothing to add the negation to, so this
+  # used to create gate.yml, return success, fail detect, and surface as ERROR + exit 3. Guard FIRST
+  # so it does not even create gate.yml — a half-applied convention is worse than an honest NOOP.
+  if [[ ! -f "$gi" ]]; then
+    APPLY_NOTE="no .gitignore exists, so the !.ssd/gate.yml exception cannot be added — run the selective-gitignore migration first (a full-window --apply does this automatically)"
+    return 8
+  fi
   ensure_gate_yml_header "$gate"
   # Carry any gate inputs already set (uncommented) in project.yml into gate.yml if not already there.
   local k
@@ -383,10 +391,20 @@ apply_committed_gate_yml() {      # ADR-0015 — create gate.yml + the !.ssd/gat
 
 apply_strict_selective_gitignore() {   # Feynman audit C12/C14 — make the allow-list load-bearing.
   local gi="$ROOT/.gitignore"
-  [[ -f "$gi" ]] || return 1
+  # PRECONDITIONS → NOOP (8), not failure (Q2). These two states mean "cannot apply", not "tried and
+  # failed", and returning 1 made the engine report `ERROR :: apply ran but convention still absent`
+  # and exit 3 — telling a user their upgrade engine is broken when the project simply is not ready.
+  # Same misleading-signal class as QUESTION-1; v2.8.0 already added the NOOP vocabulary for it.
+  if [[ ! -f "$gi" ]]; then
+    APPLY_NOTE="no .gitignore exists, so there is no selective block to harden — run the selective-gitignore migration first (a full-window --apply does this automatically)"
+    return 8
+  fi
   # Only upgrade a project that already carries the selective block; a project without it is the
   # `selective-gitignore` migration's job, and that one appends the canonical (already-strict) file.
-  grep -qF '!.ssd/features/**/01-architect.md' "$gi" || return 1
+  if ! grep -qF '!.ssd/features/**/01-architect.md' "$gi"; then
+    APPLY_NOTE=".gitignore does not carry the selective block — run the selective-gitignore migration first (a full-window --apply does this automatically)"
+    return 8
+  fi
   grep -qxF '.ssd/features/**' "$gi" && return 0            # idempotent — already strict
   backup_gi
   # Pass A: the deep deny + directory re-includes, immediately after the `!.ssd/milestones/` line so
