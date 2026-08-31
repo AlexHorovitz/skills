@@ -12,17 +12,18 @@ consumed_by: []
 
 ## Status
 
-**v2.10.0 is merged and tagged. v2.10.1 is shipped to PR, awaiting merge.** Not tagged —
+**Both versions are merged, tagged, and installed.** The release is closed.
+
 `chapters/phases.md` § `/ssd ship` states the orchestrator does **not** auto-tag, because tagging
-pushes to the remote and outward-facing actions stay under explicit human control. The tag goes on
-the merge commit, by hand.
+pushes to the remote and outward-facing actions stay under explicit human control. Both tags were
+created on explicit instruction, on the merge commit, by hand — the process held.
 
 | | v2.10.0 | v2.10.1 |
 |---|---|---|
 | Branch | `add-ssd-store` | `fix-store-key-collision` |
 | Commit | squash `c445d08` | `8ef1821` |
-| PR | [#43](https://github.com/AlexHorovitz/skills/pull/43) — **merged** | [#44](https://github.com/AlexHorovitz/skills/pull/44) — **open**, `MERGEABLE` / `CLEAN` |
-| Tag | `v2.10.0` ✓ | pending merge |
+| PR | [#43](https://github.com/AlexHorovitz/skills/pull/43) — **merged** | [#44](https://github.com/AlexHorovitz/skills/pull/44) — **merged** `f8cb746`, 2026-08-31T19:44Z |
+| Tag | `v2.10.0` ✓ | `v2.10.1` ✓ → `f8cb746`, annotated + GPG-signed, pushed |
 | Review | **none at merge time** (see deviations) | round 1 post-hoc `gate_pass: false`, round 2 `gate_pass: true` |
 
 This log is written once for both, because v2.10.1 is not a separate feature — it is the fix for the
@@ -107,13 +108,20 @@ The current config surface is `store_root` / `store_dir` / `store_auto_commit`, 
 
 ## Outstanding — recorded, deliberately not fixed (hard rule 4)
 
-1. **Installed-clone drift (hard rule 6, production parity).** `~/.claude/skills` is a git clone on
-   `main` at `e039961` — **two commits behind**: `c445d08` (#43, v2.10.0) and `8ef1821` (v2.10.1). It
-   *does* carry the `parse_active_workstreams` fix and the epic-close-guard fix (both landed at or
-   before `e039961`); what it lacks is the store itself, so `methodology/store.sh` does not exist in
-   the user's actual tooling. Remediation is a `git pull`, not a reinstall. **The gate cannot check
-   this** — it reads the repo, never the install, which is SSD's own distribution channel going
-   unverified by SSD.
+1. ~~**Installed-clone drift (hard rule 6, production parity).**~~ **Closed at ship.**
+   `~/.claude/skills` is a git clone that sat on `main` at `e039961` — two commits behind
+   (`c445d08` #43 and `8ef1821`), so `methodology/store.sh` **did not exist in the user's actual
+   tooling** while the store was being called shipped. It *did* carry the
+   `parse_active_workstreams` and epic-close-guard fixes (both at or before `e039961`), so the drift
+   was narrower than first reported — a correction made in the ship report rather than left standing.
+   Fast-forwarded to `f8cb746` and verified as *working*, not merely present: **264/264** from the
+   installed tree and `bash methodology/store.sh status` returning `linked=no mode=selective` exit 0.
+
+   **The lasting finding is that no rule caught this.** The gate reads the repo and never the
+   install, so for a `distribution.channel: direct-install` library SSD leaves its own distribution
+   channel unverified — the one place hard rule 6 is actually about. An `install-parity` rule
+   (compare `~/.claude/skills` HEAD against `origin/main`) is the obvious candidate and is **not
+   built**; it needs its own PR under hard rule 4.
 2. **QUESTION-2** — `committed-gate-yml` / `strict-selective-gitignore` report `ERROR` for an absent
    precondition, reachable only when a ≥2.4.0 project has no `.gitignore` at all. In `migrate.sh`.
 3. **QUESTION-1 (gate review)** — an inconsistent list indent inside one `active:` block would
@@ -121,21 +129,41 @@ The current config surface is `store_root` / `store_dir` / `store_auto_commit`, 
 4. **Store features not built**, and stated as such rather than implied: worktree fan-out, an `unlink`
    verb (moving *out* of the store), and a `migrations.yml` entry for the store.
 
-## Post-merge checklist (human)
+## Post-merge — done
 
-```bash
-# after PR #44 merges to main
-git tag -a v2.10.1 <merge-sha> -F - <<'MSG'
-v2.10.1 — store_root/store_dir key collision; the ADR-0018 drift check shipped unreachable
-MSG
-git push origin v2.10.1
-
-# hard rule 6 — the distribution channel is the install, and it is two commits behind
-git -C ~/.claude/skills pull
-
-# optional, closes the ADR-0014 mirror gap (creates two issues, then closes them)
-bash methodology/issue-sync.sh ensure-epic ADR-0018 "the private artifact store"
-```
+| Step | Result |
+|---|---|
+| Merge #44 | `f8cb746` on `main`, squash, 2026-08-31T19:44Z |
+| Tag | `git tag -a v2.10.1 f8cb746 -F -` → tag object `9b663e3`, signed; pushed to `origin` |
+| Install (hard rule 6) | `git -C ~/.claude/skills pull --ff-only`: `e039961` → `f8cb746`, VERSION `2.9.0` → `2.10.1` |
+| Install verified | installed tree runs **264/264**; `store.sh status` exit 0 |
+| Release chain | all twelve `v2.*` tags resolve to real commits — no gaps remain from the earlier backfill |
 
 Use `-F` for the tag message, not `-m`: backticks inside a double-quoted `-m` string are
 command-substituted by the shell, which mangled the `v2.10.0` annotation.
+
+## Still open, and each needs its own PR
+
+Nothing blocks the release. Carried forward: the **ADR-0014 mirror gap** (deviation 6 — ADR-0018 has
+no epic issue; the maintainer's call, commands above), **QUESTION-2**, **QUESTION-1**, the four
+unbuilt store features, and the new **`install-parity` gate rule** from outstanding item 1.
+
+### New at ship — `frontmatter-valid` reports absence where it means "no schema"
+
+Gating the docs branch that closes this log surfaced it. That diff is **exactly one SSD artifact**,
+and the gate said:
+
+```
+SKIP frontmatter-valid :: no SSD artifacts in scope
+```
+
+False — the validator saw the file and said `SKIP … no matching schema`, exit 0.
+`rule_frontmatter_valid` branches on the count of **PASS** lines alone; at `count == 0` it emits *"no
+SSD artifacts in scope"* regardless of `skipped`, so a change set of only schemaless artifacts
+(deploy logs, briefs, skeptic reports) reads as containing none.
+
+Same defect class as the Feynman-audit C4 fix whose comment sits directly above that branch: that fix
+stopped `count > 0` from **over-reporting coverage** and left `count == 0` **claiming absence**, which
+is the stronger misstatement. It also means a deploy log's frontmatter has never been validated by
+anything — including this file. Recorded, not fixed (hard rule 4); needs a fixture that fails against
+the current message.
