@@ -43,6 +43,13 @@ already required following the link. So it can never be the authority. `store.sh
 `readlink`, and a `project.yml` that disagrees with the link is **drift to report**, not a value to
 trust. `store-link-sane` FAILs on that disagreement.
 
+**The recording keys are flat and uniquely named** — `ssd.store_root`, `ssd.store_dir`,
+`ssd.store_auto_commit` — not a nested `store:` block with `root:`/`dir:`. That is a correction made
+after v2.10.0 shipped (see the addendum), and the reason is mechanical: both `gate-rules.sh`'s
+`yaml_get` and `store.sh`'s `yaml_scalar` are deliberately crude parsers that match the first `<key>:`
+at **any** indentation, and `project.yml` has carried `project.root` — the *project's own* path — since
+`ssd-init` v1.0.0. `worktree_root` is the existing precedent for the flat form.
+
 ### Zero changes to existing consumers
 
 Verified by inspection, not assumed: **no tool anywhere `cd`s into `.ssd/`.** All three helpers
@@ -207,3 +214,34 @@ mutating, and in the store those are evidence.
 - **Per-project store repos as the default.** Stronger isolation, more repos to manage. Available but
   not the supported layout (user-ratified).
 - **Auto-push with auto-commit.** Rejected: it would make every phase advance an outward action.
+
+---
+
+## Addendum (2026-08-31) — v2.10.1: the drift check shipped unreachable
+
+v2.10.0 designed a **nested** `project.yml.ssd.store` block with `root:` and `dir:` keys, and read it
+with **flat** readers. Those were never reconciled, and a post-hoc review of the shipped release caught
+it. Verified:
+
+```
+yaml_scalar root -> [/Users/ahorovit/Development/insanelygreat/skills]   # the PROJECT, not the store
+yaml_scalar dir  -> []
+```
+
+Two failure modes from one cause:
+
+1. **The `DRIFT` check was structurally unreachable.** Both call sites guard on
+   `[[ -n "$rroot" && -n "$rdir" ]]`; nothing writes a bare `dir:`, so the comparison never ran. One of
+   the six checks this ADR advertises for `store-link-sane` could not fire.
+2. **Filling in the documented config turned it into a false FAIL.** With `dir:` present, `root:` still
+   resolved to the *project* path, so the rule compared the link target against `<project-root>/<dir>`
+   and would FAIL a healthy store.
+
+Fixed by renaming to `store_root` / `store_dir` / `store_auto_commit` — each unique in `project.yml`,
+both existing readers unmodified, no new YAML machinery added to two intentionally crude parsers. The
+alternative (a block-scoped getter in both files) was rejected: it buys a prettier block at the cost of
+duplicating scoping logic in two more places, and `worktree_root` shows flat is this file's convention.
+
+**Process note worth keeping.** PR #43 merged with **no code-review artifact** — rails invariant 4 was
+never satisfied for the release. A `/ssd gate` run surfaced that, the post-hoc review was written, and
+it found this MAJOR in released code. The missing step was not paperwork.

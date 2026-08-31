@@ -269,11 +269,16 @@ Then record it in `project.yml` (Step 6) and note it in the init log:
 
 ```yaml
 ssd:
-  store:
-    root: <root>
-    dir: <project-basename>
-    auto_commit: true      # commit the store on every phase advance — LOCAL only, never pushes
+  store_root: <root>                # FLAT and uniquely named — see the note below
+  store_dir: <project-basename>
+  store_auto_commit: true           # commit on every phase advance — LOCAL only, never pushes
 ```
+
+> **Why flat keys and not a nested `store:` block.** `gate-rules.sh` and `store.sh` read YAML with
+> deliberately crude parsers that match the first `<key>:` at **any** indentation, and `project.yml`
+> has carried `project.root` — the *project's* own path — since v1.0.0. A nested block read as bare
+> `root`/`dir` made `store-link-sane`'s DRIFT check unreachable and a false FAIL once configured.
+> `worktree_root` is the existing precedent for this naming.
 
 **Refuse on `selective`.** Git **cannot track files through a directory symlink**
 (`fatal: pathspec … is beyond a symbolic link`), so selective mode's entire purpose — committing
@@ -467,10 +472,11 @@ ssd:
   # Private artifact store (v2.10.0, ADR-0018). Absent ⇒ feature inert; .ssd/ is a normal directory.
   # Requires private or blanket — git cannot track files through a directory symlink, so a selective
   # project with a linked .ssd would commit NOTHING under it.
-  # store:
-  #   root: /path/to/private-ssd   # the private git repo (one repo, subdir per project)
-  #   dir: <project-basename>      # subdirectory within it
-  #   auto_commit: true            # commit on every phase advance — LOCAL only, never pushes
+  # store_root: /path/to/private-ssd  # the private git repo (one repo, subdir per project)
+  # store_dir: <project-basename>      # subdirectory within it
+  # store_auto_commit: true            # commit on every phase advance — LOCAL only, never pushes
+  # Flat + uniquely named on purpose: the YAML readers match the first `<key>:` at ANY indentation,
+  # and `project.root` already exists. Compare `worktree_root` above.
   # The SYMLINK is authoritative, not these keys: project.yml lives INSIDE the store, so reading it
   # already required following the link. store-link-sane FAILs if the two disagree.
   gitignored_state: []           # additional patterns the no-leaky-state gate rule denies;

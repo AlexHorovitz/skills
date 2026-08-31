@@ -124,7 +124,7 @@ impossible. `store.sh link` refuses on `selective`; `store-link-sane` FAILs on i
 
 Managed by [`methodology/store.sh`](../../methodology/store.sh): `status` · `init` · `link` (dry-run by
 default; it *moves* your artifacts) · `commit` (**local only**) · `push` (explicit). With
-`store.auto_commit: true`, phase advances commit the store automatically — committing is bookkeeping,
+`store_auto_commit: true`, phase advances commit the store automatically — committing is bookkeeping,
 pushing stays an outward action under explicit control.
 
 Canonical pattern sources: [`methodology/selective.gitignore`](../../methodology/selective.gitignore)
