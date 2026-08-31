@@ -90,6 +90,30 @@ Fixed in three layers: a bare `.ssd` line in `private.gitignore`, an exact `.ssd
   `MISPLACED-CONTENT` rather than the bogus `SELECTIVE-MODE` it inferred from an unreadable
   `project.yml`.
 
+### Also released here: the epic-close guard fix (PR #42)
+
+Merged to `main` after `v2.9.0` was tagged, so it is **not** in the `v2.9.0` tag and is released with
+this version. Recorded here because a shipped fix with no changelog entry is exactly the kind of gap
+this project's own gate rules exist to make loud.
+
+`do_close_epic` refuses to close an epic while any `ssd:feature` child is still open — the guard
+[ADR-0014](docs/decisions/ADR-0014-github-issue-state-tracking.md)'s D1 split provides against a
+**premature epic close**. It was **inert**: found while acting on an instruction to close epic #37, the
+tool reported *"all children closed"* with **#38 and #39 both OPEN**.
+
+The same file wrote one format and read another — `ensure_feature` emits `**Epic:** #N` (markdown
+emphasis) while `find_open_children` matched the literal `Epic: #N`, so the colon was followed by `**`
+rather than a space and the pattern matched **no body for any epic**. The reader now strips emphasis
+before matching, which keeps the `#27`-vs-`#270` word boundary intact.
+
+Its fixture had hand-written the child body as plain `x: Epic: #27` — a shape the writer never
+produces — so it passed for the entire life of the defect. The fixture now uses the real writer format
+and adds a **mirror assertion** that writer and reader still agree.
+
+**On the tag line:** `v2.9.0` points at `7984dd8` (PR #41) and correctly does not contain this fix.
+`main` carried `VERSION 2.9.0` while being one commit ahead of that tag — an ambiguity resolved by this
+release, where `VERSION` and the `v2.10.0` tag agree again.
+
 Parity: **205 → 258 assertions** (+53). Projects without a store block behave identically to v2.9.0.
 
 ---
