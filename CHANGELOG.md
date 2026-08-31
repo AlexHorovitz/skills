@@ -6,6 +6,45 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.10.1] — 2026-08-31
+
+### The artifact store's drift check shipped unreachable (ADR-0018 addendum)
+
+v2.10.0 designed a **nested** `project.yml.ssd.store` block with `root:`/`dir:` keys and read it with
+**flat** readers. Both `gate-rules.sh`'s `yaml_get` and `store.sh`'s `yaml_scalar` match the first
+`<key>:` at **any** indentation — and `project.yml` has carried `project.root`, the *project's own*
+path, since `ssd-init` v1.0.0:
+
+```
+yaml_scalar root -> [/Users/ahorovit/Development/insanelygreat/skills]   # the PROJECT, not the store
+yaml_scalar dir  -> []
+```
+
+Two failure modes from one cause:
+
+- **The `DRIFT` check could not fire.** Both call sites guard on `[[ -n "$rroot" && -n "$rdir" ]]` and
+  nothing writes a bare `dir:`, so the comparison never ran. One of the six checks ADR-0018 advertises
+  for `store-link-sane` was structurally unreachable.
+- **Configuring the feature as documented made it a false FAIL.** With `dir:` present, `root:` still
+  resolved to the project path, so the rule compared the link target against `<project-root>/<dir>` and
+  would FAIL a healthy store.
+
+Renamed to **`store_root` / `store_dir` / `store_auto_commit`** — flat and each unique in
+`project.yml`, so both readers work unmodified and no new YAML machinery lands in two deliberately
+crude parsers. `worktree_root` is the existing precedent. A block-scoped getter was rejected: prettier
+block, duplicated scoping logic in two more files.
+
+**How it got through, and it is the process finding that matters:** PR #43 merged with **no
+code-review artifact** — rails invariant 4 ("at least one code review with `gate_pass: true`") was
+never satisfied for the release. A `/ssd gate` run surfaced the gap, the post-hoc review was written,
+and it found this MAJOR in released code on the first pass. Second occurrence in this epic (#41 was the
+first). The missing rails step was not paperwork.
+
+Parity: **258 → 264 assertions** (+6), including an assertion that genuine drift is still caught — a
+fix that merely deleted the check would have been worse than the bug.
+
+---
+
 ## [2.10.0] — 2026-08-28
 
 ### The private artifact store — `.ssd` as a symlink into a separate private repo (ADR-0018)

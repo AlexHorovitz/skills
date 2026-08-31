@@ -75,7 +75,13 @@ yaml_scalar() {
 }
 
 project_name() { basename "$ROOT"; }
-store_dir_name() { [[ -n "$DIR_OVERRIDE" ]] && { echo "$DIR_OVERRIDE"; return; }; yaml_scalar "$PROJECT_YML" dir 2>/dev/null | grep . || project_name; }
+# NOTE the key names: store_root / store_dir / store_auto_commit, FLAT under `ssd:` and each unique in
+# project.yml. NOT a nested `store:` block with `root:`/`dir:` — yaml_scalar matches the first `<key>:`
+# at ANY indentation, and project.yml has carried `project.root` (the PROJECT's own path) since
+# ssd-init v1.0.0. Reading a bare `root` returned that, which left store-link-sane's DRIFT check
+# structurally unreachable and turned it into a false FAIL as soon as the config was filled in.
+# `worktree_root` is the existing precedent for this flat naming. (Review round-1 MAJOR-1.)
+store_dir_name() { [[ -n "$DIR_OVERRIDE" ]] && { echo "$DIR_OVERRIDE"; return; }; yaml_scalar "$PROJECT_YML" store_dir 2>/dev/null | grep . || project_name; }
 
 # The link target, or empty when .ssd is not a symlink.
 link_target() { [[ -L "$ROOT/.ssd" ]] && readlink "$ROOT/.ssd" || echo ""; }
@@ -104,8 +110,8 @@ do_status() {
   fi
   repo="$(enclosing_repo "$tgt")"
   local recorded_root recorded_dir
-  recorded_root="$(yaml_scalar "$PROJECT_YML" root)"
-  recorded_dir="$(yaml_scalar "$PROJECT_YML" dir)"
+  recorded_root="$(yaml_scalar "$PROJECT_YML" store_root)"
+  recorded_dir="$(yaml_scalar "$PROJECT_YML" store_dir)"
   if [[ -n "$recorded_root" && -n "$recorded_dir" && "$tgt" != "$recorded_root/$recorded_dir" ]]; then
     drift="project.yml says $recorded_root/$recorded_dir"
   fi

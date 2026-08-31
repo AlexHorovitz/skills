@@ -299,7 +299,7 @@ project/.ssd -> private-ssd/<name>              ← never committed
 Everything works identically: every skill and gate rule reads `.ssd/` unchanged, because the symlink is
 resolved by the filesystem and no SSD tool ever `cd`s into `.ssd/`.
 
-With `store.auto_commit: true`, each phase advance commits the store. **Committing is local; `push` is
+With `store_auto_commit: true`, each phase advance commits the store. **Committing is local; `push` is
 always explicit** — bookkeeping versus an outward action.
 
 **Requires private or blanket mode.** Git cannot track files through a directory symlink, so a

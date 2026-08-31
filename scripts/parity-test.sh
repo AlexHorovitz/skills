@@ -1016,6 +1016,59 @@ EOF
 
 # ---------- artifact store (ADR-0018) --------------------------------------
 
+# Round-1 MAJOR-1 regression. The store location must be read with keys that are UNIQUE in
+# project.yml. `root` is not: ssd-init has written `project.root` (the PROJECT's own path) since
+# v1.0.0, and both readers here match the first `<key>:` at ANY indentation. Result: the DRIFT check
+# advertised by store-link-sane and ADR-0018 was structurally unreachable (rdir empty ⇒ guard skipped),
+# and filling in the documented config turned it into a FALSE FAIL — the rule would compare the link
+# target against <project-root>/<dir>.
+test_fixture_store_keys_dont_collide() {
+  echo "fixture: store-keys-dont-collide"
+  # 1. STRUCTURAL: neither reader may look up the bare `root` / `dir` keys.
+  _assert "store-keys-dont-collide" "store.sh does not read a bare 'root' key" \
+    "$(grep -qE 'yaml_scalar "\$PROJECT_YML" root([^_]|$)' "$STORE_SCRIPT" && echo 1 || echo 0)"
+  _assert "store-keys-dont-collide" "store.sh does not read a bare 'dir' key" \
+    "$(grep -qE 'yaml_scalar "\$PROJECT_YML" dir([^_]|$)' "$STORE_SCRIPT" && echo 1 || echo 0)"
+  _assert "store-keys-dont-collide" "gate-rules.sh does not read a bare 'root'/'dir' key" \
+    "$(grep -qE 'yaml_get "\$PROJECT_YML" "(root|dir)"' "$GATE_SCRIPT" && echo 1 || echo 0)"
+
+  # 2. BEHAVIOURAL: with the documented config filled in, a HEALTHY link must PASS — the false-FAIL
+  #    this defect produces. Uses a project.yml that carries `project.root`, exactly as ssd-init writes.
+  local tdir out; tdir=$(fixture_setup "store-keys")
+  cd "$tdir" || exit 2
+  mkdir -p store/proj/features proj
+  echo x > store/proj/features/brief.md
+  mkdir -p proj && cd proj || exit 2
+  git init -q -b main; git config user.email t@t.l; git config user.name t; git config commit.gpgsign false
+  echo base > a.txt && git add -A >/dev/null 2>&1 && git commit -qm base >/dev/null 2>&1
+  ln -s "$tdir/store/proj" .ssd
+  printf '.ssd\n' > .gitignore
+  # project.root is the PROJECT path (as ssd-init writes it); the store keys point elsewhere.
+  cat > "$tdir/store/proj/project.yml" <<EOF
+project:
+  name: demo
+  root: $tdir/proj
+ssd:
+  gitignore_mode: private
+  store_root: $tdir/store
+  store_dir: proj
+EOF
+  out=$(bash "$GATE_SCRIPT" --base main --rules store-link-sane 2>&1)
+  _assert "store-keys-dont-collide" "healthy link with store config filled in -> PASS" \
+    "$(echo "$out" | grep -qE '^PASS store-link-sane' && echo 0 || echo 1)"
+  _assert "store-keys-dont-collide" "does NOT report bogus DRIFT against the project root" \
+    "$(echo "$out" | grep -q 'DRIFT' && echo 1 || echo 0)"
+
+  # 3. And real drift MUST still be caught — a fix that just deleted the check would be worse.
+  printf 'project:\n  root: %s\nssd:\n  gitignore_mode: private\n  store_root: /somewhere/else\n  store_dir: proj\n' "$tdir/proj" > "$tdir/store/proj/project.yml"
+  out=$(bash "$GATE_SCRIPT" --base main --rules store-link-sane 2>&1)
+  _assert "store-keys-dont-collide" "genuine drift IS caught (check kept its teeth)" \
+    "$(echo "$out" | grep -q 'DRIFT' && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+
 # REGRESSION GUARD, added because the suite did not have one and a change nearly shipped without it.
 # Adding a bare `.ssd` line to selective.gitignore excludes the DIRECTORY, and gitignore cannot
 # re-include a file whose parent directory is excluded — so every `!.ssd/features/**/…` negation goes
@@ -2358,6 +2411,7 @@ test_fixture_close_epic_all_closed
 test_fixture_issue_sync_current_skip_no_gh
 test_fixture_feynman_clean
 test_fixture_selective_artifacts_still_committable
+test_fixture_store_keys_dont_collide
 test_fixture_store_symlink_is_ignored
 test_fixture_deny_list_catches_symlink
 test_fixture_store_link_dry_run

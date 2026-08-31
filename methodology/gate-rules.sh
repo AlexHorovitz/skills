@@ -707,7 +707,10 @@ rule_store_link_sane() {
     && problems+=" SELECTIVE-MODE(git cannot track through a symlink; switch to private or blanket)"
 
   local rroot rdir
-  rroot="$(yaml_get "$PROJECT_YML" "root")"; rdir="$(yaml_get "$PROJECT_YML" "dir")"
+  # store_root / store_dir, NOT bare root/dir: yaml_get matches the first `<key>:` at any indentation
+  # and project.yml has carried `project.root` (the PROJECT path) since ssd-init v1.0.0. Reading a bare
+  # `root` made this DRIFT check unreachable, and a false FAIL once configured. (Round-1 MAJOR-1.)
+  rroot="$(yaml_get "$PROJECT_YML" "store_root")"; rdir="$(yaml_get "$PROJECT_YML" "store_dir")"
   if [[ -n "$rroot" && -n "$rdir" && "$target" != "$rroot/$rdir" ]]; then
     problems+=" DRIFT(project.yml says $rroot/$rdir)"
   fi

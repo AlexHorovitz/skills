@@ -64,7 +64,7 @@ The standard daily development cycle. Repeat per feature.
 
 #### Artifact-store commit on phase advance (ADR-0018, opt-in)
 
-When `.ssd` is a store symlink and `project.yml.ssd.store.auto_commit` is true, the orchestrator
+When `.ssd` is a store symlink and `project.yml.ssd.store_auto_commit` is true, the orchestrator
 commits the store on **every** phase transition above:
 
 ```bash
