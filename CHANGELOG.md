@@ -6,6 +6,118 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.10.0] — 2026-08-28
+
+### The private artifact store — `.ssd` as a symlink into a separate private repo (ADR-0018)
+
+[ADR-0017](docs/decisions/ADR-0017-private-mode.md) solved **visibility**: under
+`gitignore_mode: private` nothing SSD produces is tracked by the project. It did nothing for
+**durability** — the whole methodology record then lives in one untracked directory on one machine,
+with no history, no backup, and one `rm -rf` between you and losing it. Private mode is *for* work where
+the paper trail matters, which is exactly where losing it hurts.
+
+`.ssd` can now be an absolute symlink into a per-project subdirectory of one separate private git repo:
+
+```
+private-ssd/            ← ONE git repo: the private history
+├── .gitignore          ← MINIMAL, deliberately
+├── skills/             ← that project's .ssd content, fully committed
+└── client-x/
+
+project/.ssd -> private-ssd/<name>       ← never committed
+```
+
+- **New `methodology/store.sh`** — `status` · `init` · `link` · `commit` · `push`. `link` *moves* an
+  existing `.ssd/` into the store, so it is **dry-run by default** (exit 10) and prints the complete
+  file list first — the second destructive operation in the library, held to the same discipline as
+  v2.9.0's retrofit interlock.
+- **New `store-link-sane` gate rule.** When `.ssd` is a symlink it must be gitignored, **not tracked**,
+  its target present, its content reachable, the mode not `selective`, and `project.yml` in agreement.
+  Every failure is a **FAIL, never a SKIP**.
+- **`ssd-init --store <root>`** and Step 5.6, offered only after private mode is accepted.
+- **Auto-commit on phase advance** (`store.auto_commit`), and the constraint that matters: **commit is
+  local, `push` is explicit**. `store.sh commit` has no network path at all.
+- **Zero changes to any existing consumer.** All three helpers resolve `PROJECT_ROOT` once from the
+  invocation cwd and read `"$PROJECT_ROOT/.ssd/…"`, which the filesystem resolves through the link.
+  Verified by inspection that **no tool anywhere `cd`s into `.ssd/`**, so none can resolve the *store's*
+  git root by mistake. That audit is what made the mechanism cheap instead of invasive.
+
+### The leak the naive implementation would have shipped
+
+Tested before any code was written, and it inverts the feature's own purpose:
+
+```
+$ cat .gitignore          # private.gitignore, verbatim
+.ssd/
+$ git check-ignore -v .ssd
+(no output)               # NOT IGNORED
+$ git add -A && git ls-files -s
+120000 1043e5e0… 0  .ssd  # committed, as a symlink
+$ git cat-file -p 1043e5e0
+/private/tmp/…/store/proj # the ABSOLUTE TARGET PATH
+```
+
+**A trailing-slash gitignore pattern matches directories only, and to git a symlink is a file** — so
+`.ssd/` cannot match a `.ssd` symlink. `no-leaky-state` was blind the same way:
+`matches_deny_pattern ".ssd" ".ssd/"` is a non-match. Enabling the store would have committed the
+user's home path and private-store location into the very repository they were keeping private.
+
+Fixed in three layers: a bare `.ssd` line in `private.gitignore`, an exact `.ssd` entry in **both**
+`no-leaky-state` baselines, and the new gate rule.
+
+### Two corrections this feature forced on its own design
+
+- **The store is incompatible with `selective` mode**, and the first draft of ADR-0018 said the
+  opposite. One line settled it: `git add .ssd/features/f1/00-brief.md` →
+  *`fatal: pathspec … is beyond a symbolic link`*. **Git cannot track files through a directory symlink
+  at all**, so selective's whole purpose becomes silently impossible. `link` refuses; the gate rule
+  FAILs; the ADR records the correction rather than quietly changing its mind.
+- **A bare `.ssd` must NOT go in `selective.gitignore`** — the first implementation put it there. A bare
+  pattern excludes the *directory*, and gitignore cannot re-include a file under an excluded parent, so
+  it rendered every `!.ssd/features/**/…` negation inert and a selective project committed **nothing**
+  under `.ssd/`. `git add -A` staged only `.gitignore`. **The full 205-assertion suite passed while that
+  was true**, because no fixture asserted selective mode's core promise. One does now
+  (`selective-artifacts-still-committable`), and it is the guard that would have caught it.
+
+### Two bugs the live dogfood found that the fixtures had not
+
+- **`mv src dest` with an existing `dest` moves src *inside* it.** `init` pre-creates `<root>/<dir>`, so
+  the happy path produced `<dest>/.ssd/…` instead of `<dest>/…`. The clobber guard only fired on a
+  *non-empty* destination.
+- **Verifying that the link resolves is not enough.** A misplaced move leaves a symlink to a real
+  directory whose content is one level too deep — which reads as healthy until something opens a file.
+  `link` now verifies a file that was actually moved, and `store-link-sane` reports
+  `MISPLACED-CONTENT` rather than the bogus `SELECTIVE-MODE` it inferred from an unreadable
+  `project.yml`.
+
+### Also released here: the epic-close guard fix (PR #42)
+
+Merged to `main` after `v2.9.0` was tagged, so it is **not** in the `v2.9.0` tag and is released with
+this version. Recorded here because a shipped fix with no changelog entry is exactly the kind of gap
+this project's own gate rules exist to make loud.
+
+`do_close_epic` refuses to close an epic while any `ssd:feature` child is still open — the guard
+[ADR-0014](docs/decisions/ADR-0014-github-issue-state-tracking.md)'s D1 split provides against a
+**premature epic close**. It was **inert**: found while acting on an instruction to close epic #37, the
+tool reported *"all children closed"* with **#38 and #39 both OPEN**.
+
+The same file wrote one format and read another — `ensure_feature` emits `**Epic:** #N` (markdown
+emphasis) while `find_open_children` matched the literal `Epic: #N`, so the colon was followed by `**`
+rather than a space and the pattern matched **no body for any epic**. The reader now strips emphasis
+before matching, which keeps the `#27`-vs-`#270` word boundary intact.
+
+Its fixture had hand-written the child body as plain `x: Epic: #27` — a shape the writer never
+produces — so it passed for the entire life of the defect. The fixture now uses the real writer format
+and adds a **mirror assertion** that writer and reader still agree.
+
+**On the tag line:** `v2.9.0` points at `7984dd8` (PR #41) and correctly does not contain this fix.
+`main` carried `VERSION 2.9.0` while being one commit ahead of that tag — an ambiguity resolved by this
+release, where `VERSION` and the `v2.10.0` tag agree again.
+
+Parity: **205 → 258 assertions** (+53). Projects without a store block behave identically to v2.9.0.
+
+---
+
 ## [2.9.0] — 2026-08-28
 
 ### The private-mode retrofit — and a new manifest concept: entries that are *not* drift (ADR-0017 iter B)

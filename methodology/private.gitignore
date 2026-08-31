@@ -13,6 +13,18 @@
 # functional line here is distinctive enough to serve (a bare `.ssd/` is indistinguishable from
 # blanket mode), hence a comment sentinel. Detection order must be private -> selective -> blanket.
 # ssd:gitignore-mode=private
+# A BARE `.ssd` LINE, in addition to `.ssd/` below (ADR-0018). Not redundant: a gitignore pattern with
+# a TRAILING SLASH matches DIRECTORIES ONLY, and to git a symlink is a FILE — so `.ssd/` cannot match a
+# `.ssd` symlink, which is what the artifact store makes it. Verified: without this line
+# `git check-ignore .ssd` fails and `git add -A` commits the symlink, publishing the absolute store path
+# (the user's home directory) into the repository they are keeping private.
+#
+# THIS LINE BELONGS ONLY HERE, NEVER IN selective.gitignore. A bare `.ssd` excludes the DIRECTORY, and
+# gitignore cannot re-include a file whose parent directory is excluded — so in selective mode it makes
+# every `!.ssd/features/**/…` negation inert and the project commits NOTHING under .ssd/. Verified by
+# regression, and pinned by the `selective-artifacts-still-committable` fixture. Private mode excludes
+# the whole tree anyway, so here the directory-exclusion side effect changes nothing.
+.ssd
 .ssd/
 docs/decisions/
 docs/runbooks/

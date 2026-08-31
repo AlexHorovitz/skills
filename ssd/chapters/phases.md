@@ -62,6 +62,40 @@ The standard daily development cycle. Repeat per feature.
 
 **Shippable state invariant**: At the end of each work session, verify the invariant defined in `methodology/core.md` § "The Shippable State Invariant." The canonical checklist lives there — do not maintain a separate copy here.
 
+#### Artifact-store commit on phase advance (ADR-0018, opt-in)
+
+When `.ssd` is a store symlink and `project.yml.ssd.store.auto_commit` is true, the orchestrator
+commits the store on **every** phase transition above:
+
+```bash
+bash methodology/store.sh commit --auto -m "<phase>: <slug>[#<iter>]"
+```
+
+Three properties, each deliberate:
+
+- **Local only.** `store.sh commit` has no network path at all. Committing is bookkeeping; **pushing is
+  an outward action** and stays explicit (`/ssd store push`), consistent with this library's refusal to
+  auto-tag or auto-push.
+- **Silent no-op** when the store has no changes, so a phase that wrote nothing produces no commit.
+- **Never fails a phase.** A store-commit failure warns and continues — the `.ssd/` write already
+  succeeded and remains the authoritative state, exactly as a failed `issue-sync` mirror does.
+
+With no store link, or `auto_commit` false, this is a no-op.
+
+#### `/ssd store` — manage the private artifact store
+
+| Command | Effect |
+|---|---|
+| `/ssd store status` | link, target, store repo, uncommitted count, and any `project.yml` drift |
+| `/ssd store init <root>` | prepare the private repo (idempotent) |
+| `/ssd store link <root>` | **dry-run**: lists every file that would move out of the project |
+| `/ssd store link <root> --confirm` | acts — moves the artifacts and creates the symlink |
+| `/ssd store commit [-m msg]` | commit the store (local) |
+| `/ssd store push` | push the store (outward; explicit) |
+
+`link` *moves* artifacts out of the project — the second destructive operation in the library — so it
+is dry-run by default and always prints the complete file list first.
+
 #### GitHub issue sync on phase advance (ADR-0014, opt-in)
 
 When `.ssd/project.yml` has `integrations.github.issue_tracking: on`, the orchestrator mirrors the

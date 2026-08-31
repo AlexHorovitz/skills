@@ -599,7 +599,11 @@ rule_no_leaky_state() {
   # forgotten side is a silent leak (ADR-0008 § "Future Compatibility"); parity fixture
   # `deny-list-mirrors-pattern-file` asserts they agree.
   if [[ "$mode" == "private" ]]; then
-    local private_baseline=( ".ssd/" "docs/decisions/" "docs/runbooks/" "docs/architecture/" )
+    # `.ssd` (exact) alongside `.ssd/` (prefix) — ADR-0018. matches_deny_pattern treats a trailing
+    # slash as a DIRECTORY PREFIX, so `.ssd/` does not match the bare path `.ssd`, which is what a
+    # symlinked artifact store appears as in a diff. Without the exact entry this rule is blind to a
+    # committed store symlink — the one leak the store feature must never permit.
+    local private_baseline=( ".ssd" ".ssd/" "docs/decisions/" "docs/runbooks/" "docs/architecture/" )
     local leaked=() pf pp
     while IFS= read -r pf; do
       [[ -z "$pf" ]] && continue
@@ -620,6 +624,7 @@ rule_no_leaky_state() {
     return
   fi
   local baseline=(
+    ".ssd"                     # exact: a symlinked artifact store (ADR-0018); `.ssd/` cannot match it
     ".ssd/current.yml"
     ".ssd/current.notes.yml"
     ".ssd/init-log.md"
@@ -650,6 +655,68 @@ rule_no_leaky_state() {
     local sample
     sample=$(printf '%s|' "${forbidden[@]:0:3}")
     emit "FAIL" "no-leaky-state" "$count file(s) gitignored by policy but tracked: ${sample}"
+  fi
+}
+
+# ----- rule: store-link-sane -------------------------------------------------
+# store-link-sane (ADR-0018): when `.ssd` is a symlink into a private artifact store, the link must be
+# safe. Every failure mode here is a FAIL, never a SKIP, because each one is a silent leak or a
+# silent data-loss path:
+#
+#   tracked        the leak has ALREADY happened — the absolute store path (the user's home directory)
+#                  is committed in a repository they are keeping private.
+#   not ignored    one `git add -A` from that leak. `.ssd/` cannot ignore a symlink: a trailing-slash
+#                  pattern matches directories only, and to git a symlink is a file. A bare `.ssd` is
+#                  required, which is why private.gitignore carries one.
+#   dangling       SSD is writing into nothing, or into a fresh directory that looks like the store.
+#   selective mode git CANNOT track files through a directory symlink, so selective mode's whole
+#                  purpose (committing .ssd/features/** to the project) is silently impossible.
+#   drift          project.yml records a store location that disagrees with the link. The LINK is
+#                  authoritative — project.yml lives inside the store — so a mismatch means one of
+#                  them is a lie.
+#
+# SKIPs cleanly for every project whose .ssd is an ordinary directory, which is the common case.
+rule_store_link_sane() {
+  local link="$PROJECT_ROOT/.ssd"
+  if [[ ! -L "$link" ]]; then
+    emit "SKIP" "store-link-sane" "no store link (.ssd is a project-local directory)"
+    return
+  fi
+  is_git_repo || { emit "SKIP" "store-link-sane" "not a git repo"; return; }
+  local target problems=""
+  target="$(readlink "$link" 2>/dev/null)"
+  [[ -n "$target" ]] || { emit "FAIL" "store-link-sane" ".ssd is a symlink but its target is unreadable"; return; }
+
+  git -C "$PROJECT_ROOT" ls-files --error-unmatch .ssd >/dev/null 2>&1 \
+    && problems+=" TRACKED(the store path is committed in this repo — remove it: git rm --cached .ssd)"
+  git -C "$PROJECT_ROOT" check-ignore -q .ssd 2>/dev/null \
+    || problems+=" NOT-IGNORED(add a bare '.ssd' line to .gitignore — '.ssd/' cannot match a symlink)"
+  [[ -d "$target" ]] || problems+=" DANGLING(target does not exist: $target)"
+  # A link that RESOLVES but whose content is misplaced (e.g. one level too deep after a bad move)
+  # reads as healthy until something opens a file. project.yml is the file every consumer needs, so
+  # its absence through the link is the cheapest true signal. Checked BEFORE reading the mode, because
+  # an unreadable project.yml makes gitignore_mode default to `selective` and would otherwise be
+  # reported as a bogus SELECTIVE-MODE failure.
+  local mode="unknown"
+  if [[ -d "$target" && ! -f "$link/project.yml" ]]; then
+    problems+=" MISPLACED-CONTENT(.ssd/project.yml unreadable through the link — inspect $target)"
+  else
+    mode=$(gitignore_mode)
+  fi
+  [[ "$mode" == "selective" ]] \
+    && problems+=" SELECTIVE-MODE(git cannot track through a symlink; switch to private or blanket)"
+
+  local rroot rdir
+  rroot="$(yaml_get "$PROJECT_YML" "root")"; rdir="$(yaml_get "$PROJECT_YML" "dir")"
+  if [[ -n "$rroot" && -n "$rdir" && "$target" != "$rroot/$rdir" ]]; then
+    problems+=" DRIFT(project.yml says $rroot/$rdir)"
+  fi
+
+  if [[ -n "$problems" ]]; then
+    emit "FAIL" "store-link-sane" "store link unsafe:${problems}"
+  else
+    local repo; repo="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null || true)"
+    emit "PASS" "store-link-sane" "store link ok: $target${repo:+ (repo $repo)}"
   fi
 }
 
@@ -925,6 +992,7 @@ should_run feature-flag-present && rule_feature_flag_present
 should_run adr-delta          && rule_adr_delta
 should_run frontmatter-valid  && rule_frontmatter_valid
 should_run no-leaky-state     && rule_no_leaky_state
+should_run store-link-sane    && rule_store_link_sane
 should_run skill-version-sync && rule_skill_version_sync
 should_run migration-manifest-current && rule_migration_manifest_current
 should_run feynman-clean      && rule_feynman_clean

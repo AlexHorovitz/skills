@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.12.0
+**Version:** 1.13.0
 
 ## Purpose
 
@@ -237,6 +237,54 @@ permanently); never silently skip it.
 `.ssd/` line instead of the selective pattern, and sets `project.yml.ssd.gitignore_mode:
 blanket`.
 
+### Step 5.6 — Offer the private artifact store (v2.10.0+, optional)
+
+*[ADR-0018](../docs/decisions/ADR-0018-ssd-artifact-store.md). Only offered when Step 5 produced
+**private** (or blanket) mode — see the refusal below.*
+
+Private mode makes the SSD record invisible to the project. It does nothing for **durability**: the
+whole methodology record then lives in one untracked directory on one machine, with no history and no
+backup. The artifact store closes that by making `.ssd` a symlink into a separate private git repo.
+
+Offer it after the privacy offer is accepted:
+
+> "Private mode keeps the SSD record out of this repo — but also out of *any* repo, so there is no
+> history or backup of it. SSD can instead keep `.ssd/` in a **separate private git repository** by
+> making `.ssd` a symlink into it. Everything works identically; the record just lives (and versions)
+> elsewhere. Store it at `<store-root>`?"
+
+On yes (or `ssd-init --store <root>`):
+
+```bash
+bash methodology/store.sh init <root>            # prepare the private repo (idempotent)
+bash methodology/store.sh link <root>            # DRY RUN — shows exactly what would move
+bash methodology/store.sh link <root> --confirm   # act
+```
+
+`ssd-init` **prints these commands rather than running `link` itself.** `link` *moves* an existing
+`.ssd/` out of the project — the second destructive operation in the library — so it stays behind its
+own dry-run and explicit confirmation, exactly like ADR-0017's retrofit interlock.
+
+Then record it in `project.yml` (Step 6) and note it in the init log:
+
+```yaml
+ssd:
+  store:
+    root: <root>
+    dir: <project-basename>
+    auto_commit: true      # commit the store on every phase advance — LOCAL only, never pushes
+```
+
+**Refuse on `selective`.** Git **cannot track files through a directory symlink**
+(`fatal: pathspec … is beyond a symbolic link`), so selective mode's entire purpose — committing
+`.ssd/features/**` into the project — becomes silently impossible. `store.sh link` refuses with that
+explanation, and the `store-link-sane` gate rule FAILs on the combination. Do not offer the store to a
+selective project; offer private mode first.
+
+**State the trade plainly:** the store is a **second repository the user must not lose**. It is not a
+backup *of* the record — it *is* the record. Cloning the project alone leaves `.ssd` dangling, which
+`store-link-sane` reports rather than letting SSD write into nothing.
+
 **Private mode** (v2.8.0+, [ADR-0017](../docs/decisions/ADR-0017-private-mode.md)). For a project
 where the SSD paper trail should not appear in git at all — client work, a shared repo where SSD is a
 personal rather than team practice, an OSS contribution.
@@ -415,6 +463,16 @@ ssd:
   # FAILs the no-leaky-state rule on an unrecognized value, because a misspelled mode used to
   # disable leak detection without saying so (ADR-0017).
   gitignore_mode: selective      # selective | blanket | private
+
+  # Private artifact store (v2.10.0, ADR-0018). Absent ⇒ feature inert; .ssd/ is a normal directory.
+  # Requires private or blanket — git cannot track files through a directory symlink, so a selective
+  # project with a linked .ssd would commit NOTHING under it.
+  # store:
+  #   root: /path/to/private-ssd   # the private git repo (one repo, subdir per project)
+  #   dir: <project-basename>      # subdirectory within it
+  #   auto_commit: true            # commit on every phase advance — LOCAL only, never pushes
+  # The SYMLINK is authoritative, not these keys: project.yml lives INSIDE the store, so reading it
+  # already required following the link. store-link-sane FAILs if the two disagree.
   gitignored_state: []           # additional patterns the no-leaky-state gate rule denies;
                                  # additive only — projects cannot shrink the baseline.
 
@@ -661,7 +719,7 @@ Record what was done and what was found. This is the primary output artifact of 
 ```markdown
 ---
 skill: ssd-init
-version: 1.12.0
+version: 1.13.0
 produced_at: <ISO-8601>
 project: <name>
 ---

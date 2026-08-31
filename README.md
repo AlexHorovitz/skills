@@ -21,6 +21,7 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 - [`ssd-skill-chapter-split`](.ssd/features/ssd-skill-chapter-split/00-brief.md) — split the `ssd/SKILL.md` monolith into a thin spine + on-demand chapters (v1.25; the [ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) 2.0 prerequisite P1).
 - [`ssd-2.0-cuts`](.ssd/features/ssd-2.0-cuts/01-architect.md) — **SSD 2.0**, the subtractive milestone ([ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md), greenlit via [`ssd-2.0-greenlight`](.ssd/features/ssd-2.0-greenlight/00-brief.md)). Three iterations: (A) remove the `developer_profile`/`teaching_mode` concept library-wide — BREAKING, v2.0.0; (B) collapse to **one surface, progressively disclosed** — v2.1.0; (C) the `/ssd upgrade` deprecation path via the `obsoleted_in` manifest field — v2.2.0.
 - [`ssd-private-mode`](.ssd/features/ssd-private-mode/01-architect.md) — `gitignore_mode: private`: run SSD with **no paper trail in git** ([ADR-0017](docs/decisions/ADR-0017-private-mode.md)). Nothing SSD produces is tracked — `.ssd/` plus the `docs/decisions/`, `docs/runbooks/`, `docs/architecture/` trees — while every rail step and gate rule still runs. Iteration A ships the mode (v2.8.0); iteration B adds the `/ssd upgrade` retrofit. Opt-in at `ssd-init --private`; absent ⇒ byte-identical behavior. See [Private mode](#private-mode-optional) below.
+- [`ssd-store`](.ssd/features/ssd-store/01-architect.md) — the private artifact store ([ADR-0018](docs/decisions/ADR-0018-ssd-artifact-store.md)): `.ssd` becomes a symlink into a separate private git repo, so the methodology record is version-controlled **outside** the project that keeps it private (v2.10.0). Found and fixed the leak the naive version would have shipped — a symlinked `.ssd` was ignored by neither `.gitignore` nor `no-leaky-state`.
 - [`github-issue-tracking`](.ssd/features/github-issue-tracking/01-architect.md) — opt-in, one-way mirror of workstream state to GitHub issues (ADR=epic, workstream=feature issue, `ssd:phase/*` labels; [ADR-0014](docs/decisions/ADR-0014-github-issue-state-tracking.md)). Two iterations: (A) the additive mirror — `ensure-epic`/`ensure-feature`/`set-phase` + auto-sync on phase advance, v2.3.0; (B) the close lifecycle (`close-feature`/`close-epic` behind `auto_close`) + the informational `issue-sync-current` gate rule, v2.4.0. Default-off — zero behavior change until a project opts in. See [GitHub Issue Tracking](#github-issue-tracking-optional) below.
 
 ## Methodology
@@ -272,6 +273,42 @@ is never quietly untracked), and states plainly that `git rm --cached` stops *fu
 `/ssd upgrade --apply` never applies it. It is a choice, not drift — see the
 [ADR-0013 addendum](docs/decisions/ADR-0013-project-upgrade-migration-manifest.md). Moving back *out*
 of private mode is not automated.
+
+### Keeping the record in a separate private repo
+
+*v2.10.0+ · [ADR-0018](docs/decisions/ADR-0018-ssd-artifact-store.md)*
+
+Private mode makes the SSD record invisible to the project — and also to *any* repo, so there is no
+history or backup of it. The **artifact store** closes that: `.ssd` becomes a symlink into one separate
+private git repo, so the whole methodology record is version-controlled outside the project.
+
+```bash
+/ssd store init /path/to/private-ssd            # prepare the private repo (idempotent)
+/ssd store link /path/to/private-ssd            # DRY RUN — lists every file that would move
+/ssd store link /path/to/private-ssd --confirm  # acts
+```
+
+```
+private-ssd/            ← ONE git repo, one subdirectory per project
+├── skills/             ← that project's .ssd content, fully committed
+└── client-x/
+
+project/.ssd -> private-ssd/<name>              ← never committed
+```
+
+Everything works identically: every skill and gate rule reads `.ssd/` unchanged, because the symlink is
+resolved by the filesystem and no SSD tool ever `cd`s into `.ssd/`.
+
+With `store.auto_commit: true`, each phase advance commits the store. **Committing is local; `push` is
+always explicit** — bookkeeping versus an outward action.
+
+**Requires private or blanket mode.** Git cannot track files through a directory symlink, so a
+`selective` project with a linked `.ssd` would commit *nothing* under it. `store.sh link` refuses, and
+the `store-link-sane` gate rule FAILs on the combination.
+
+**The store is a second repository you must not lose.** It is not a backup *of* the record — it *is*
+the record. Clone the project alone and `.ssd` dangles, which `store-link-sane` reports rather than
+letting SSD write into nothing.
 
 ### Trade-offs, stated plainly
 

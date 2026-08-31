@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.9.0
+**Version:** 1.10.0
 
 **Canonical methodology pages**: [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html) (full doctrine), [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html) (practical implementation), [insanelygreat.com/agile2.html](https://insanelygreat.com/agile2.html) (companion manifesto). The website is the user-facing reference; this skill set is the in-repo doctrine the orchestrator enforces.
 
@@ -45,6 +45,7 @@ This skill is organized into three focused files. Load the relevant file based o
 | `issue-sync.sh` | One-way GitHub issue mirror (ensure-epic/ensure-feature/set-phase/close-*); invoked by the orchestrator on phase advance when `integrations.github.issue_tracking: on` | Automated — opt-in, best-effort. Refuses (`exit 4`) under `gitignore_mode: private`. See [ADR-0014](../docs/decisions/ADR-0014-github-issue-state-tracking.md), [ADR-0017](../docs/decisions/ADR-0017-private-mode.md). |
 | `frontmatter-validate.py` | Python validator for SSD artifact YAML frontmatter; invoked by the `frontmatter-valid` gate rule | Automated — runs against `.ssd/features/<slug>/*.md` and `.ssd/milestones/<topic>/*.md`. |
 | `selective.gitignore` | **Canonical single source** for the `gitignore_mode: selective` pattern (durable artifacts committed, machine state local) | Consumed verbatim by `ssd-init` Step 5 and `migrate.sh` (`apply_selective_gitignore`). Never duplicate it. See [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md). |
+| `store.sh` | The private artifact store: makes `.ssd` a symlink into a separate private git repo so the methodology record is version-controlled outside the project | Automated — `status`/`init`/`link`/`commit`/`push`, invoked by `ssd-init` Step 5.6 and `/ssd store`. Requires private or blanket mode. See [ADR-0018](../docs/decisions/ADR-0018-ssd-artifact-store.md). |
 | `private.gitignore` | **Canonical single source** for the `gitignore_mode: private` pattern (nothing SSD produces is tracked) | Consumed verbatim by `ssd-init` Step 5 and `migrate.sh` (`apply_private_mode`, iter B). Carries the `# ssd:gitignore-mode=private` sentinel Step 5.5 detects on. See [ADR-0017](../docs/decisions/ADR-0017-private-mode.md). |
 | `schemas/<skill>.yml` | Per-skill schema describing required frontmatter fields and types | Read by `frontmatter-validate.py`. One file per consuming skill. |
 
