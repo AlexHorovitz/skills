@@ -147,3 +147,23 @@ command-substituted by the shell, which mangled the `v2.10.0` annotation.
 Nothing blocks the release. Carried forward: the **ADR-0014 mirror gap** (deviation 6 — ADR-0018 has
 no epic issue; the maintainer's call, commands above), **QUESTION-2**, **QUESTION-1**, the four
 unbuilt store features, and the new **`install-parity` gate rule** from outstanding item 1.
+
+### New at ship — `frontmatter-valid` reports absence where it means "no schema"
+
+Gating the docs branch that closes this log surfaced it. That diff is **exactly one SSD artifact**,
+and the gate said:
+
+```
+SKIP frontmatter-valid :: no SSD artifacts in scope
+```
+
+False — the validator saw the file and said `SKIP … no matching schema`, exit 0.
+`rule_frontmatter_valid` branches on the count of **PASS** lines alone; at `count == 0` it emits *"no
+SSD artifacts in scope"* regardless of `skipped`, so a change set of only schemaless artifacts
+(deploy logs, briefs, skeptic reports) reads as containing none.
+
+Same defect class as the Feynman-audit C4 fix whose comment sits directly above that branch: that fix
+stopped `count > 0` from **over-reporting coverage** and left `count == 0` **claiming absence**, which
+is the stronger misstatement. It also means a deploy log's frontmatter has never been validated by
+anything — including this file. Recorded, not fixed (hard rule 4); needs a fixture that fails against
+the current message.
