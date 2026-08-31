@@ -98,6 +98,35 @@ Two things to note about the last row and the `gate.yml` row:
   twelve non-`.ssd/` files hardcode `docs/decisions/`, and ADR-0008 already settled this as "keep the
   paths, change the gitignore."
 
+**The private artifact store (v2.10.0+, [ADR-0018](../../docs/decisions/ADR-0018-ssd-artifact-store.md)).**
+Private mode makes the record invisible; it does not make it *durable*. The store closes that by making
+`.ssd` an **absolute symlink** into a per-project subdirectory of one separate private git repo:
+
+```
+<store-root>/            ← ONE git repo: the private history
+├── .gitignore           ← MINIMAL. Must NOT copy SSD's project-side ignores, or the store
+├── README.md              silently drops current.yml, project.yml, archive/ and *.bak —
+├── <project-a>/           precisely the files whose history it exists to keep.
+└── <project-b>/
+
+<project-a>/.ssd  ->  <store-root>/<project-a>      (never committed)
+```
+
+Every skill and gate rule reads `.ssd/` unchanged: all three helpers resolve `PROJECT_ROOT` once from
+the invocation cwd and then read `"$PROJECT_ROOT/.ssd/…"`, which the filesystem resolves through the
+link. **No tool anywhere `cd`s into `.ssd/`**, so none can resolve the *store's* git root by mistake —
+which is why the mechanism needs zero consumer changes.
+
+**Requires `private` or `blanket`, and this is a hard constraint, not a preference.** Git cannot track
+files through a directory symlink at all (`fatal: pathspec … is beyond a symbolic link`), so
+`selective` mode's whole purpose — committing `.ssd/features/**` into the project — becomes silently
+impossible. `store.sh link` refuses on `selective`; `store-link-sane` FAILs on it.
+
+Managed by [`methodology/store.sh`](../../methodology/store.sh): `status` · `init` · `link` (dry-run by
+default; it *moves* your artifacts) · `commit` (**local only**) · `push` (explicit). With
+`store.auto_commit: true`, phase advances commit the store automatically — committing is bookkeeping,
+pushing stays an outward action under explicit control.
+
 Canonical pattern sources: [`methodology/selective.gitignore`](../../methodology/selective.gitignore)
 and [`methodology/private.gitignore`](../../methodology/private.gitignore). Both are consumed verbatim
 by `ssd-init` Step 5 and `methodology/migrate.sh`; neither pattern is duplicated anywhere else.

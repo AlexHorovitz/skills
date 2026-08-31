@@ -33,6 +33,7 @@ SCHEMAS_DIR="$REPO_ROOT/methodology/schemas"
 MIGRATE_SCRIPT="$REPO_ROOT/methodology/migrate.sh"
 MANIFEST="$REPO_ROOT/methodology/migrations.yml"
 ISSUE_SYNC_SCRIPT="$REPO_ROOT/methodology/issue-sync.sh"
+STORE_SCRIPT="$REPO_ROOT/methodology/store.sh"
 VERBOSE=0
 
 while [[ $# -gt 0 ]]; do
@@ -1010,6 +1011,329 @@ EOF
   git add -A && git commit -qm "audit with unreadable counters"
   assert_rule "feynman-clean" "feynman-clean" "SKIP"
 
+  fixture_teardown "$tdir"
+}
+
+# ---------- artifact store (ADR-0018) --------------------------------------
+
+# REGRESSION GUARD, added because the suite did not have one and a change nearly shipped without it.
+# Adding a bare `.ssd` line to selective.gitignore excludes the DIRECTORY, and gitignore cannot
+# re-include a file whose parent directory is excluded — so every `!.ssd/features/**/…` negation goes
+# inert and a selective project commits NOTHING under .ssd/. 205 assertions passed while that was true.
+# This asserts the CORE PROMISE of selective mode directly.
+test_fixture_selective_artifacts_still_committable() {
+  echo "fixture: selective-artifacts-still-committable"
+  local tdir; tdir=$(fixture_setup "sel-commit")
+  cd "$tdir" || exit 2
+  git init -q -b main; git config user.email t@t.l; git config user.name t; git config commit.gpgsign false
+  mkdir -p .ssd/features/f1/iterations/b/code-review .ssd/milestones/m1
+  cat "$REPO_ROOT/methodology/selective.gitignore" > .gitignore
+  echo x > .ssd/features/f1/00-brief.md
+  echo x > .ssd/features/f1/01-architect.md
+  echo x > .ssd/features/f1/iterations/b/brief.md
+  echo x > .ssd/features/f1/iterations/b/code-review/round-1.md
+  echo x > .ssd/milestones/m1/verification.md
+  echo x > .ssd/current.yml          # machine state — must STAY ignored
+  echo x > .ssd/project.yml          # machine state — must STAY ignored
+
+  local f
+  for f in .ssd/features/f1/00-brief.md .ssd/features/f1/01-architect.md \
+           .ssd/features/f1/iterations/b/brief.md \
+           .ssd/features/f1/iterations/b/code-review/round-1.md \
+           .ssd/milestones/m1/verification.md; do
+    _assert "selective-artifacts-still-committable" "durable artifact is committable: ${f#.ssd/}" \
+      "$(git check-ignore -q "$f" && echo 1 || echo 0)"
+  done
+  for f in .ssd/current.yml .ssd/project.yml; do
+    _assert "selective-artifacts-still-committable" "machine state stays ignored: ${f#.ssd/}" \
+      "$(git check-ignore -q "$f" && echo 0 || echo 1)"
+  done
+  # And the observable end-to-end promise: git actually stages them.
+  git add -A >/dev/null 2>&1
+  _assert "selective-artifacts-still-committable" "git stages the durable artifacts" \
+    "$([[ "$(git diff --cached --name-only | grep -c '^\.ssd/')" -ge 5 ]] && echo 0 || echo 1)"
+  _assert "selective-artifacts-still-committable" "selective.gitignore carries NO bare .ssd line" \
+    "$(grep -qxF '.ssd' "$REPO_ROOT/methodology/selective.gitignore" && echo 1 || echo 0)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+
+# ACCEPTANCE TEST. A symlinked `.ssd` must be ignored by BOTH canonical pattern files. It is not, and
+# that is the whole safety story: a trailing-slash gitignore pattern matches DIRECTORIES ONLY, and to
+# git a symlink is a file — so `.ssd/` cannot match a symlink named `.ssd`. Left unfixed, enabling the
+# store would commit the absolute store path (the user's home directory) into the very repository they
+# are keeping private. Uses the REAL pattern files, not a hand-written approximation.
+test_fixture_store_symlink_is_ignored() {
+  echo "fixture: store-symlink-is-ignored"
+  # PRIVATE ONLY. selective.gitignore must NOT carry a bare `.ssd` — see
+  # selective-artifacts-still-committable for why, and ADR-0018 for the reason the store requires
+  # private (git cannot track files through a directory symlink at all).
+  local pat
+  for pat in private; do
+    local tdir; tdir=$(fixture_setup "store-ign-$pat")
+    cd "$tdir" || exit 2
+    mkdir -p realstore/proj
+    echo x > realstore/proj/project.yml
+    mkdir -p proj && cd proj || exit 2
+    git init -q -b main; git config user.email t@t.l; git config user.name t; git config commit.gpgsign false
+    ln -s "$tdir/realstore/proj" .ssd
+    cat "$REPO_ROOT/methodology/$pat.gitignore" > .gitignore
+    _assert "store-symlink-is-ignored" "$pat.gitignore ignores a symlinked .ssd" \
+      "$(git check-ignore -q .ssd && echo 0 || echo 1)"
+    # And the consequence if it is not: `git add -A` must not stage it.
+    git add -A >/dev/null 2>&1
+    _assert "store-symlink-is-ignored" "$pat: git add -A does not stage the symlink" \
+      "$(git diff --cached --name-only | grep -qx '.ssd' && echo 1 || echo 0)"
+    cd "$REPO_ROOT" || exit 2
+    fixture_teardown "$tdir"
+  done
+}
+
+# The gate's SECOND layer was equally blind: no-leaky-state's deny-list uses the same `.ssd/` prefix
+# form, and matches_deny_pattern ".ssd" ".ssd/" is a NON-match. Tests the real function.
+test_fixture_deny_list_catches_symlink() {
+  echo "fixture: deny-list-catches-symlink"
+  local probe; probe=$(mktemp "${TMPDIR:-/tmp}/mdp.XXXXXX")
+  awk '/^matches_deny_pattern\(\)/,/^}/' "$GATE_SCRIPT" > "$probe"
+  cat >> "$probe" <<'EOS'
+matches_deny_pattern ".ssd" ".ssd" && echo EXACT_MATCH
+matches_deny_pattern ".ssd/features/f/00-brief.md" ".ssd/" && echo PREFIX_STILL_WORKS
+EOS
+  local out; out=$(bash "$probe" 2>&1); rm -f "$probe"
+  _assert "deny-list-catches-symlink" "an exact .ssd pattern matches the bare symlink path" \
+    "$(echo "$out" | grep -q EXACT_MATCH && echo 0 || echo 1)"
+  _assert "deny-list-catches-symlink" "the .ssd/ prefix form still matches paths beneath it" \
+    "$(echo "$out" | grep -q PREFIX_STILL_WORKS && echo 0 || echo 1)"
+  # BOTH baselines in gate-rules.sh must carry the exact entry.
+  local sel priv
+  sel=$(awk '/local baseline=\(/,/\)/' "$GATE_SCRIPT" | grep -c '"\.ssd"' || true)
+  priv=$(awk '/local private_baseline=\(/,/\)/' "$GATE_SCRIPT" | grep -c '"\.ssd"' || true)
+  _assert "deny-list-catches-symlink" "selective baseline carries an exact .ssd entry" \
+    "$([[ "$sel" -ge 1 ]] && echo 0 || echo 1)"
+  _assert "deny-list-catches-symlink" "private baseline carries an exact .ssd entry" \
+    "$([[ "$priv" -ge 1 ]] && echo 0 || echo 1)"
+}
+
+# `store.sh link` MOVES a directory — the second destructive operation in the library. Dry-run by
+# default (exit 10), nothing touched, no symlink created.
+test_fixture_store_link_dry_run() {
+  echo "fixture: store-link-dry-run"
+  local tdir out rc
+  tdir=$(fixture_setup "store-dry")
+  cd "$tdir" || exit 2
+  mkdir -p proj/.ssd/features/f1 store
+  echo "# brief" > proj/.ssd/features/f1/00-brief.md
+  printf 'ssd:\n  gitignore_mode: private\n' > proj/.ssd/project.yml
+  cd proj || exit 2
+  git init -q -b main; git config user.email t@t.l; git config user.name t; git config commit.gpgsign false
+  echo code > app.py && git add -A >/dev/null 2>&1 && git commit -qm base >/dev/null 2>&1
+
+  out=$(bash "$STORE_SCRIPT" link "$tdir/store" 2>&1); rc=$?
+  _assert "store-link-dry-run" "dry-run exits 10 (needs-confirm)" \
+    "$([[ $rc -eq 10 ]] && echo 0 || echo 1)"
+  _assert "store-link-dry-run" ".ssd is STILL a real directory (nothing moved)" \
+    "$([[ -d .ssd && ! -L .ssd ]] && echo 0 || echo 1)"
+  _assert "store-link-dry-run" "the artifact is still in place" \
+    "$([[ -f .ssd/features/f1/00-brief.md ]] && echo 0 || echo 1)"
+  _assert "store-link-dry-run" "the store destination was NOT populated" \
+    "$([[ -z "$(ls -A "$tdir/store" 2>/dev/null)" ]] && echo 0 || echo 1)"
+  _assert "store-link-dry-run" "it enumerates what would move" \
+    "$(echo "$out" | grep -qF 'features/f1/00-brief.md' && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# `link --confirm` end to end, INCLUDING the two bugs the live dogfood found that no fixture had:
+#   (a) `init` pre-creates <root>/<dir>, and `mv src dest` with dest an EXISTING directory moves src
+#       INSIDE it — producing <dest>/.ssd/… instead of <dest>/…. The clobber guard only fired on a
+#       NON-empty destination, so the happy path walked straight into it.
+#   (b) verifying that the link RESOLVES is not enough: a misplaced move leaves a link to a real
+#       directory whose content is one level too deep, which looks healthy until a file is opened.
+test_fixture_store_link_confirm() {
+  echo "fixture: store-link-confirm"
+  local tdir; tdir=$(fixture_setup "store-confirm")
+  cd "$tdir" || exit 2
+  mkdir -p proj/.ssd/features/f1/iterations/b store
+  printf 'ssd:\n  gitignore_mode: private\n' > proj/.ssd/project.yml
+  echo x > proj/.ssd/features/f1/00-brief.md
+  echo x > proj/.ssd/features/f1/iterations/b/brief.md
+  cd proj || exit 2
+  git init -q -b main; git config user.email t@t.l; git config user.name t; git config commit.gpgsign false
+  cat "$REPO_ROOT/methodology/private.gitignore" > .gitignore
+  echo code > app.py && git add -A >/dev/null 2>&1 && git commit -qm base >/dev/null 2>&1
+
+  # init FIRST, so the destination already exists — this is the trap.
+  bash "$STORE_SCRIPT" init "$tdir/store" >/dev/null 2>&1
+  bash "$STORE_SCRIPT" link "$tdir/store" --confirm >/dev/null 2>&1
+  local rc=$?
+
+  _assert "store-link-confirm" "link --confirm succeeds even though init pre-created the destination" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  _assert "store-link-confirm" ".ssd is now a symlink" \
+    "$([[ -L .ssd ]] && echo 0 || echo 1)"
+  # (b): content reachable THROUGH the link, at the right depth — not nested under an extra .ssd/.
+  _assert "store-link-confirm" "artifact readable through the link (not nested one level too deep)" \
+    "$([[ -f .ssd/features/f1/00-brief.md ]] && echo 0 || echo 1)"
+  _assert "store-link-confirm" "nested iteration artifact readable through the link" \
+    "$([[ -f .ssd/features/f1/iterations/b/brief.md ]] && echo 0 || echo 1)"
+  _assert "store-link-confirm" "project.yml readable through the link" \
+    "$([[ -f .ssd/project.yml ]] && echo 0 || echo 1)"
+  # (a) stated directly: no doubled .ssd inside the store.
+  _assert "store-link-confirm" "store contains NO doubled .ssd directory" \
+    "$([[ -d "$tdir/store/proj/.ssd" ]] && echo 1 || echo 0)"
+  _assert "store-link-confirm" ".gitignore gained the bare .ssd line" \
+    "$(grep -qxF '.ssd' .gitignore && echo 0 || echo 1)"
+  _assert "store-link-confirm" "the symlink is ignored and not staged" \
+    "$(git add -A >/dev/null 2>&1; git diff --cached --name-only | grep -qx '.ssd' && echo 1 || echo 0)"
+  # Idempotent re-link.
+  bash "$STORE_SCRIPT" link "$tdir/store" --confirm >/dev/null 2>&1
+  _assert "store-link-confirm" "re-link is idempotent (exit 0, still one symlink)" \
+    "$([[ $? -eq 0 && -L .ssd ]] && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# `link` must refuse on selective mode: git cannot track files through a directory symlink, so
+# selective's whole purpose (committing .ssd/features/** to the project) becomes silently impossible.
+test_fixture_store_link_refuses_selective() {
+  echo "fixture: store-link-refuses-selective"
+  local tdir out rc; tdir=$(fixture_setup "store-sel")
+  cd "$tdir" || exit 2
+  mkdir -p proj/.ssd store && printf 'ssd:\n  gitignore_mode: selective\n' > proj/.ssd/project.yml
+  cd proj || exit 2
+  git init -q -b main; git config user.email t@t.l; git config user.name t
+  out=$(bash "$STORE_SCRIPT" link "$tdir/store" --confirm 2>&1); rc=$?
+  _assert "store-link-refuses-selective" "refuses on selective mode (exit 2)" \
+    "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  _assert "store-link-refuses-selective" "explains that git cannot track through a symlink" \
+    "$(echo "$out" | grep -q 'beyond\|cannot track' && echo 0 || echo 1)"
+  _assert "store-link-refuses-selective" "nothing was linked" \
+    "$([[ -L .ssd ]] && echo 1 || echo 0)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# store-link-sane: every failure mode is a FAIL, never a SKIP, and the healthy case PASSes.
+test_fixture_store_link_sane_verdicts() {
+  echo "fixture: store-link-sane-verdicts"
+  local tdir; tdir=$(fixture_setup "store-sane")
+  cd "$tdir" || exit 2
+  mkdir -p store/proj/features && printf 'ssd:\n  gitignore_mode: private\n' > store/proj/project.yml
+  echo x > store/proj/features/brief.md
+  mkdir -p proj && cd proj || exit 2
+  git init -q -b main; git config user.email t@t.l; git config user.name t; git config commit.gpgsign false
+  echo base > a.txt && git add -A >/dev/null 2>&1 && git commit -qm base >/dev/null 2>&1
+
+  # NOTE on the capture-then-grep shape used throughout: `bash "$GATE_SCRIPT" … | grep -q …` does NOT
+  # work under this harness's `set -o pipefail` — the gate exits 1 whenever a rule FAILs, and pipefail
+  # propagates that, defeating the `&&` even when grep matched. Capture first, then grep the variable.
+  local out
+
+  # (1) plain directory -> SKIP
+  mkdir -p .ssd && printf 'ssd:\n  gitignore_mode: private\n' > .ssd/project.yml
+  out=$(bash "$GATE_SCRIPT" --base main --rules store-link-sane 2>&1)
+  _assert "store-link-sane-verdicts" "plain .ssd directory -> SKIP" \
+    "$(echo "$out" | grep -qE '^SKIP store-link-sane' && echo 0 || echo 1)"
+  rm -rf .ssd
+
+  # (2) symlink, NOT ignored -> FAIL
+  ln -s "$tdir/store/proj" .ssd
+  : > .gitignore
+  out=$(bash "$GATE_SCRIPT" --base main --rules store-link-sane 2>&1)
+  _assert "store-link-sane-verdicts" "unignored symlink -> FAIL (NOT-IGNORED)" \
+    "$(echo "$out" | grep -q 'NOT-IGNORED' && echo 0 || echo 1)"
+
+  # (3) ignored + target present -> PASS
+  printf '.ssd\n' > .gitignore
+  out=$(bash "$GATE_SCRIPT" --base main --rules store-link-sane 2>&1)
+  _assert "store-link-sane-verdicts" "ignored symlink with live target -> PASS" \
+    "$(echo "$out" | grep -qE '^PASS store-link-sane' && echo 0 || echo 1)"
+
+  # (4) tracked symlink -> FAIL (the leak already happened)
+  git add -f .ssd >/dev/null 2>&1 && git commit -qm leak >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules store-link-sane 2>&1)
+  _assert "store-link-sane-verdicts" "tracked symlink -> FAIL (TRACKED)" \
+    "$(echo "$out" | grep -q 'TRACKED' && echo 0 || echo 1)"
+  git rm -q --cached .ssd >/dev/null 2>&1; git commit -qm unleak >/dev/null 2>&1
+
+  # (5) dangling target -> FAIL
+  mv "$tdir/store/proj" "$tdir/store/moved"
+  out=$(bash "$GATE_SCRIPT" --base main --rules store-link-sane 2>&1)
+  _assert "store-link-sane-verdicts" "dangling target -> FAIL (DANGLING)" \
+    "$(echo "$out" | grep -q 'DANGLING' && echo 0 || echo 1)"
+  mv "$tdir/store/moved" "$tdir/store/proj"
+
+  # (6) misplaced content: link resolves, but project.yml is unreachable through it -> FAIL, and NOT
+  #     with a bogus SELECTIVE-MODE reason (an unreadable project.yml makes the mode default to
+  #     selective; the rule must report the real problem).
+  mv "$tdir/store/proj/project.yml" "$tdir/store/proj/features/"
+  out=$(bash "$GATE_SCRIPT" --base main --rules store-link-sane 2>&1)
+  _assert "store-link-sane-verdicts" "misplaced content -> FAIL (MISPLACED-CONTENT)" \
+    "$(echo "$out" | grep -q 'MISPLACED-CONTENT' && echo 0 || echo 1)"
+  _assert "store-link-sane-verdicts" "misplaced content is NOT misreported as SELECTIVE-MODE" \
+    "$(echo "$out" | grep -q 'SELECTIVE-MODE' && echo 1 || echo 0)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# The store's own .gitignore must be MINIMAL. Copying SSD's project-side ignores in would silently drop
+# current.yml, project.yml, archive/ and *.bak — precisely the files whose history the store exists for.
+test_fixture_store_gitignore_minimal() {
+  echo "fixture: store-gitignore-minimal"
+  local tdir; tdir=$(fixture_setup "store-ign-min")
+  cd "$tdir" || exit 2
+  bash "$STORE_SCRIPT" init "$tdir/store" >/dev/null 2>&1
+  local gi="$tdir/store/.gitignore" pat
+  _assert "store-gitignore-minimal" "init wrote a .gitignore" "$([[ -f "$gi" ]] && echo 0 || echo 1)"
+  for pat in '.ssd/*' '.ssd/features/**' '.ssd/audits/' '*.bak'; do
+    _assert "store-gitignore-minimal" "store does NOT ignore '$pat'" \
+      "$(grep -qxF "$pat" "$gi" 2>/dev/null && echo 1 || echo 0)"
+  done
+  # And the store repo must actually be able to track machine state.
+  mkdir -p "$tdir/store/proj" && echo x > "$tdir/store/proj/current.yml"
+  _assert "store-gitignore-minimal" "current.yml is trackable in the store" \
+    "$(git -C "$tdir/store" check-ignore -q proj/current.yml && echo 1 || echo 0)"
+  # init is idempotent.
+  local before; before=$(git -C "$tdir/store" rev-parse --git-dir)
+  bash "$STORE_SCRIPT" init "$tdir/store" >/dev/null 2>&1
+  _assert "store-gitignore-minimal" "init is idempotent (same repo, not reinitialised)" \
+    "$([[ "$before" == "$(git -C "$tdir/store" rev-parse --git-dir)" ]] && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# commit is LOCAL ONLY and --auto is a silent no-op when nothing changed.
+test_fixture_store_commit_local_only() {
+  echo "fixture: store-commit-local-only"
+  local tdir out; tdir=$(fixture_setup "store-commit")
+  cd "$tdir" || exit 2
+  mkdir -p proj/.ssd/features && printf 'ssd:\n  gitignore_mode: private\n' > proj/.ssd/project.yml
+  echo x > proj/.ssd/features/brief.md
+  cd proj || exit 2
+  git init -q -b main; git config user.email t@t.l; git config user.name t; git config commit.gpgsign false
+  cat "$REPO_ROOT/methodology/private.gitignore" > .gitignore
+  echo c > app.py && git add -A >/dev/null 2>&1 && git commit -qm base >/dev/null 2>&1
+  bash "$STORE_SCRIPT" init "$tdir/store" >/dev/null 2>&1
+  bash "$STORE_SCRIPT" link "$tdir/store" --confirm >/dev/null 2>&1
+
+  out=$(bash "$STORE_SCRIPT" commit -m "code: demo" 2>&1)
+  _assert "store-commit-local-only" "commit reports a sha" \
+    "$(echo "$out" | grep -qE 'STORE commit :: [0-9a-f]{7}' && echo 0 || echo 1)"
+  _assert "store-commit-local-only" "commit says it did NOT push" \
+    "$(echo "$out" | grep -q 'not pushed' && echo 0 || echo 1)"
+  _assert "store-commit-local-only" "the store repo has a commit containing the artifacts" \
+    "$(git -C "$tdir/store" log --oneline 2>/dev/null | grep -q . && echo 0 || echo 1)"
+  _assert "store-commit-local-only" "store.sh contains no push call inside commit" \
+    "$(awk '/^do_commit\(\)/,/^}/' "$STORE_SCRIPT" | grep -qE 'git( -C [^ ]+)? push' && echo 1 || echo 0)"
+  # --auto with nothing to commit: exit 0, no new commit, no output noise.
+  local n1 n2; n1=$(git -C "$tdir/store" rev-list --count HEAD)
+  out=$(bash "$STORE_SCRIPT" commit --auto -m x 2>&1); local rc=$?
+  n2=$(git -C "$tdir/store" rev-list --count HEAD)
+  _assert "store-commit-local-only" "--auto with no changes exits 0" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  _assert "store-commit-local-only" "--auto with no changes creates no commit" "$([[ "$n1" == "$n2" ]] && echo 0 || echo 1)"
+  _assert "store-commit-local-only" "--auto with no changes is silent" "$([[ -z "$out" ]] && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
   fixture_teardown "$tdir"
 }
 
@@ -2033,6 +2357,15 @@ test_fixture_close_epic_open_children
 test_fixture_close_epic_all_closed
 test_fixture_issue_sync_current_skip_no_gh
 test_fixture_feynman_clean
+test_fixture_selective_artifacts_still_committable
+test_fixture_store_symlink_is_ignored
+test_fixture_deny_list_catches_symlink
+test_fixture_store_link_dry_run
+test_fixture_store_link_confirm
+test_fixture_store_link_refuses_selective
+test_fixture_store_link_sane_verdicts
+test_fixture_store_gitignore_minimal
+test_fixture_store_commit_local_only
 test_fixture_parse_active_workstreams_nested_lists
 test_fixture_apply_noop_on_absent_precondition
 test_fixture_parse_active_workstreams_indent_tolerance

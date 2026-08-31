@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 2.9.0
+**Version:** 2.10.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -64,6 +64,7 @@ is still directly invokable, just documented in the chapters rather than taught 
 | force a specific phase | `start` · `feature` · `design` · `milestone` · `verify` · `audit` · `gate` · `ship` | [`chapters/phases.md`](chapters/phases.md) |
 | migrate a project to the latest SSD conventions | `upgrade` | [`chapters/upgrade.md`](chapters/upgrade.md) |
 | run parallel workstreams | `feature new` · `switch` · `worktree` | [`chapters/workstreams.md`](chapters/workstreams.md) |
+| keep `.ssd/` in a separate private repo | `store` | [`chapters/phases.md`](chapters/phases.md) |
 
 The command path is a **thin alias** that lowers into the conversational path — a power-user
 shorthand, **not** a co-equal surface with its own state. Everything a command does, `/ssd` can
