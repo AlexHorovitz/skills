@@ -2680,6 +2680,68 @@ test_fixture_doc_claims_are_true() {
 }
 
 
+# CI reach (Feynman audit post-v2.11.0, follow-on). `quality.yml` filtered pull_request on
+# `branches: [main]`, so a STACKED PR — base = another feature branch — triggered no jobs at all and
+# merged with a green button and zero checks. The gate job also hardcoded `--base origin/main`, which
+# on a stacked PR reports the whole stack instead of that PR's own delta.
+#
+# A workflow trigger cannot be exercised from a bash suite, so these are STRUCTURAL assertions on the
+# YAML — deliberately narrow, and labelled so nobody reads them as proof the workflow runs. The proof
+# of that is a green check on a stacked PR, which is a thing to observe, not to assert.
+test_fixture_ci_covers_stacked_prs() {
+  echo "fixture: ci-covers-stacked-prs"
+  local wf="$REPO_ROOT/.github/workflows/quality.yml"
+  if [[ ! -f "$wf" ]]; then
+    echo "  (skipped — no workflow file)"
+    return
+  fi
+  # 1. pull_request must carry NO branches: filter. Checked by parsing, not by grep: `branches:` also
+  #    appears under `push:`, and a grep would pass on the wrong one.
+  local pr_filter
+  pr_filter=$(python3 - "$wf" <<'EOS'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+on = d.get(True, d.get("on", {})) or {}
+pr = on.get("pull_request", None)
+print("FILTERED" if isinstance(pr, dict) and pr.get("branches") else "UNFILTERED")
+EOS
+)
+  _assert "ci-covers-stacked-prs" "pull_request has no branches: filter, so a stacked PR triggers CI" \
+    "$([[ "$pr_filter" == "UNFILTERED" ]] && echo 0 || echo 1)"
+
+  # 2. The gate job must diff against the PR's OWN base, not a hardcoded main.
+  _assert "ci-covers-stacked-prs" "the gate job does not hardcode --base origin/main" \
+    "$(grep -q -- 'gate-rules.sh --base origin/main' "$wf" && echo 1 || echo 0)"
+  _assert "ci-covers-stacked-prs" "the gate job resolves the base from github.base_ref" \
+    "$(grep -q 'BASE_REF: \${{ github.base_ref }}' "$wf" && echo 0 || echo 1)"
+
+  # 3. base_ref must reach bash through env, not through ${{ }} inside a run block — a branch name can
+  #    carry shell metacharacters and the runner expands the interpolation before bash sees it.
+  #    Stated as: the interpolation occurs exactly ONCE, and that once is the env assignment. A first
+  #    attempt at this assertion matched the correct `env:` line itself and failed against the fix —
+  #    an over-broad regex is a broken assertion, not a finding.
+  local bref_total bref_env
+  bref_total=$(grep -c '\${{ github.base_ref }}' "$wf" || true)
+  bref_env=$(grep -c 'BASE_REF: \${{ github.base_ref }}' "$wf" || true)
+  _assert "ci-covers-stacked-prs" "github.base_ref is interpolated exactly once" \
+    "$([[ "$bref_total" -eq 1 ]] && echo 0 || echo 1)"
+  _assert "ci-covers-stacked-prs" "that one interpolation is the env assignment, not a run: line" \
+    "$([[ "$bref_env" -eq 1 ]] && echo 0 || echo 1)"
+
+  # 4. push stays scoped to main — a push-triggered gate run has no base to diff against.
+  local push_filter
+  push_filter=$(python3 - "$wf" <<'EOS'
+import sys, yaml
+d = yaml.safe_load(open(sys.argv[1]))
+on = d.get(True, d.get("on", {})) or {}
+print(",".join((on.get("push") or {}).get("branches", [])))
+EOS
+)
+  _assert "ci-covers-stacked-prs" "push is still scoped to main" \
+    "$([[ "$push_filter" == "main" ]] && echo 0 || echo 1)"
+}
+
+
 test_fixture_migrate_apply_old
 test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
@@ -2738,6 +2800,7 @@ test_fixture_frontmatter_valid_names_schemaless
 test_fixture_store_link_blanket_mode
 test_fixture_diff_files_handles_non_ascii_paths
 test_fixture_doc_claims_are_true
+test_fixture_ci_covers_stacked_prs
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
