@@ -4,10 +4,23 @@ name: quality
 #   - gate-rules: runs methodology/gate-rules.sh against origin/main on every PR to main.
 #   - parity-test: runs scripts/parity-test.sh on every PR and every push to main.
 # Either job failing surfaces a red check on the PR. Per ADR-0012 Pillar 5 (warnings, not walls)
-# this REPORTS — it does not hard-block the merge (no branch protection is required, by design;
-# the developer may ship past it, loudly and on the record). See ADR-0005 (gate execution model)
-# and ADR-0006 (frontmatter validator) for why these are executable artifacts rather than
-# orchestrator-internal LLM checks.
+# this REPORTS — a red check does not block the merge, and the developer may ship past it loudly
+# and on the record.
+#
+# WHAT THIS FILE USED TO CLAIM, and why it was wrong (Feynman audit post-v2.11.0, D12): it asserted
+# that branch protection was not required here, "by design". The repo carries an ACTIVE ruleset ("Overwatch",
+# all branches) requiring `pull_request` and `required_signatures`, and every push this session
+# reported "Bypassed rule violations". So protection exists.
+#
+# The distinction Pillar 5 actually draws, and it survives: the pillar rejects **required status
+# checks that gate a merge**, not source hygiene. The ruleset requires a PR and a signature; it
+# does NOT list `required_status_checks`, so neither job below can block anything, and admins
+# bypass it. A PR requirement is a paper trail, not a wall. Verified:
+#   gh api repos/:owner/:repo/rulesets/<id> --jq '[.rules[].type]'
+#     -> ["deletion","non_fast_forward","pull_request","required_signatures"]
+#
+# See ADR-0005 (gate execution model) and ADR-0006 (frontmatter validator) for why these are
+# executable artifacts rather than orchestrator-internal LLM checks.
 
 on:
   pull_request:

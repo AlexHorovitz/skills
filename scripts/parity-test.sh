@@ -2656,6 +2656,30 @@ test_fixture_diff_files_handles_non_ascii_paths() {
 }
 
 
+# D12 + D13a (Feynman audit post-v2.11.0) — two documents asserted things the system contradicted.
+# Both fixes are prose, so they would normally be unpinnable and free to rot. These three assertions
+# make them checkable, which is the whole principle the audit argued for: prefer a dumb check that
+# runs to a paragraph that has to be trusted.
+test_fixture_doc_claims_are_true() {
+  echo "fixture: doc-claims-are-true"
+  local core="$REPO_ROOT/methodology/core.md"
+  local phases="$REPO_ROOT/ssd/chapters/phases.md"
+  local wf="$REPO_ROOT/.github/workflows/quality.yml"
+  # D13a: phases.md quotes a core.md ratchet tooth. Before v2.11.2 it quoted "tag every release" and
+  # `grep -cwi tag methodology/core.md` returned 0 — a quoted phrase attributed to a document that
+  # did not contain it, and the cite for the whole release-tagging obligation.
+  local phrase="Every release is tagged on its merge commit"
+  _assert "doc-claims-are-true" "core.md §4 carries the release-tagging ratchet tooth" \
+    "$(grep -qF "$phrase" "$core" && echo 0 || echo 1)"
+  _assert "doc-claims-are-true" "phases.md quotes that tooth VERBATIM, so the citation resolves" \
+    "$(grep -qF "$phrase" "$phases" && echo 0 || echo 1)"
+  # D12: quality.yml claimed "no branch protection is required, by design" while an active ruleset
+  # required pull_request + required_signatures on every branch.
+  _assert "doc-claims-are-true" "quality.yml no longer claims no branch protection is required" \
+    "$(grep -q "no branch protection is required, by design" "$wf" && echo 1 || echo 0)"
+}
+
+
 test_fixture_migrate_apply_old
 test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
@@ -2713,6 +2737,7 @@ test_fixture_assert_rejects_non_integer
 test_fixture_frontmatter_valid_names_schemaless
 test_fixture_store_link_blanket_mode
 test_fixture_diff_files_handles_non_ascii_paths
+test_fixture_doc_claims_are_true
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
