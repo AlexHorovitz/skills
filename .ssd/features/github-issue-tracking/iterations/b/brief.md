@@ -5,6 +5,10 @@ feature: github-issue-tracking
 iteration: b
 produced_at: 2026-06-14T00:00:00Z
 produced_by: claude-opus-4-8
+version: 2.4.0
+project: InsanelyGreat's SSD Skills Library
+scope: github-issue-tracking#b
+consumed_by: [architect]
 epic: 27
 parent_adr: ADR-0014
 ---

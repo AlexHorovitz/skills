@@ -4,6 +4,7 @@ produced_at: 2026-06-14T00:00:00Z
 produced_by: claude-opus-4-8
 project: InsanelyGreat's SSD Skills Library
 scope: ssd-2.0-cuts#c
+consumed_by: []
 phase: ship
 version: 2.2.0
 gate_pass: true

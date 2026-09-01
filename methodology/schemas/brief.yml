@@ -1,0 +1,27 @@
+# Frontmatter schema — feature brief (00-brief.md / brief.md).
+# v1: structural validation only, matching the other schemas' stance.
+#
+# WHY THIS EXISTS (Feynman audit 2026-09-01, C7): `chapters/state.md` § "Structured Output
+# Requirements" says every sub-skill output MUST carry seven fields. Briefs are ~20 of the tree's
+# artifacts and NO schema had ever matched them, so the MUST was unenforced for the largest
+# unvalidated class in the library. `frontmatter-valid` reported them as "unvalidated" at best and,
+# when a diff contained only artifacts like these, claimed there were no artifacts at all.
+#
+# `skill:` is typed `string`, not an enum, deliberately: the 20 existing briefs carry SIX distinct
+# values (`ssd`, `brief`, `orchestrator`, `ssd (orchestrator, /ssd feature)`, …). Normalising them is
+# a separate change with its own risk; this schema pins the field's PRESENCE now and leaves the value
+# drift recorded rather than silently blessed.
+
+skill: brief
+applies_to:
+  - 00-brief.md
+  - brief.md                 # multi-iteration features use this name in iterations/<iter>/
+
+required:
+  skill: string
+  version: string
+  produced_at: timestamp
+  produced_by: string
+  project: string
+  scope: string
+  consumed_by: list

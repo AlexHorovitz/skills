@@ -459,6 +459,17 @@ test_fixture_base_arg_validation() {
 # Small inline assertion for non-gate-rules scripts (migrate.sh). Args: label condition-desc bool(0/1).
 _assert() {
   local label="$1" desc="$2" ok="$3"
+  # A verdict that is not an integer is a BROKEN assertion, never a passing one. bash arithmetic
+  # coerces both "" and "banana" to 0, so `[[ "$ok" -eq 0 ]]` scored a command substitution that
+  # produced NOTHING — a typo'd path, an errored pipeline, a grep against a missing file — as a PASS,
+  # silently and green (Feynman audit 2026-09-01, H1). Every one of the 211 call sites is currently
+  # guarded by an `echo 0`/`echo 1` fallback, so this changes no result today; it makes the guard
+  # structural instead of conventional, which is the difference between "sound" and "sound so far".
+  if [[ ! "$ok" =~ ^[0-9]+$ ]]; then
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+    FAILURES+=("$label: $desc [BROKEN ASSERTION — verdict '$ok' is not an integer]")
+    return
+  fi
   if [[ "$ok" -eq 0 ]]; then
     PASS_COUNT=$((PASS_COUNT + 1)); [[ $VERBOSE -eq 1 ]] && echo "  ✓ $label / $desc"
   else
@@ -1122,8 +1133,13 @@ test_fixture_store_symlink_is_ignored() {
   # PRIVATE ONLY. selective.gitignore must NOT carry a bare `.ssd` — see
   # selective-artifacts-still-committable for why, and ADR-0018 for the reason the store requires
   # private (git cannot track files through a directory symlink at all).
-  local pat
-  for pat in private; do
+  # PATTERN-FILE MODES ONLY, and `private` is the only one that has a pattern file: `blanket` needs
+  # no allow-list so no blanket.gitignore exists, and `selective` must never carry a bare `.ssd`.
+  # This was a one-iteration `for pat in private` loop until shellcheck (SC2043) flagged it — the
+  # first lint this library ever ran (Feynman audit 2026-09-01, C10). Blanket-mode linking is covered
+  # separately by store-link-blanket-mode.
+  local pat=private
+  {
     local tdir; tdir=$(fixture_setup "store-ign-$pat")
     cd "$tdir" || exit 2
     mkdir -p realstore/proj
@@ -1140,7 +1156,7 @@ test_fixture_store_symlink_is_ignored() {
       "$(git diff --cached --name-only | grep -qx '.ssd' && echo 1 || echo 0)"
     cd "$REPO_ROOT" || exit 2
     fixture_teardown "$tdir"
-  done
+  }
 }
 
 # The gate's SECOND layer was equally blind: no-leaky-state's deny-list uses the same `.ssd/` prefix
@@ -2396,6 +2412,165 @@ test_fixture_skill_version_drift
 test_fixture_base_arg_validation
 test_fixture_migrate_detect_old
 test_fixture_migrate_detect_current
+# =============================================================================
+# Feynman audit 2026-09-01 — findings converted from prose into checks that run.
+# The audit's own conclusion was that a dumb rule which executes beats a smart
+# report that has to be trusted. These are the rules.
+# =============================================================================
+
+# C3 — rails invariant 4 ("at least one code review with gate_pass: true") had NO mechanical check
+# for the library's entire life. PR #43 shipped a release with zero review artifacts while every gate
+# check was green. This pins the new rails-walked rule at both ends: it must fire on the case that
+# shipped, and must NOT fire on ordinary in-progress work.
+test_fixture_rails_walked() {
+  echo "fixture: rails-walked"
+  local tdir out; tdir=$(fixture_setup "rails-walked")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/feat
+  printf 'project:\n  name: t\nssd:\n  gitignore_mode: blanket\n' > .ssd/project.yml
+  echo 1.0.0 > VERSION
+  echo base > a.txt
+  git add -A -f >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+  git checkout -q -b rel
+
+  # 1. NOT a release. A brief lands with no review — the rule must stay quiet. A check that demanded
+  #    a review here would fire on every honest work-in-progress push and be disabled within a week.
+  printf -- '---\nskill: brief\n---\n' > .ssd/features/feat/00-brief.md
+  git add -A -f >/dev/null 2>&1; git commit -qm brief >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
+  _assert "rails-walked" "a non-release change set does not demand a review" \
+    "$(echo "$out" | grep -q 'VERSION unchanged' && echo 0 || echo 1)"
+
+  # 2. A RELEASE touching a feature dir with no passing review. This is PR #43 exactly.
+  echo 1.1.0 > VERSION
+  git add -A -f >/dev/null 2>&1; git commit -qm release >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
+  _assert "rails-walked" "a release with no passing code review FAILs" \
+    "$(echo "$out" | grep -q '^FAIL rails-walked' && echo 0 || echo 1)"
+  _assert "rails-walked" "the FAIL names the offending feature dir" \
+    "$(echo "$out" | grep -q '.ssd/features/feat' && echo 0 || echo 1)"
+
+  # 3. feynman.md also carries `gate_pass:`. A passing epistemic audit is NOT a code review, and
+  #    matching it would let the wrong artifact satisfy the invariant.
+  printf -- '---\nskill: feynman\ngate_pass: true\n---\n' > .ssd/features/feat/feynman.md
+  git add -A -f >/dev/null 2>&1; git commit -qm audit >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
+  _assert "rails-walked" "a passing feynman report does not satisfy invariant 4" \
+    "$(echo "$out" | grep -q '^FAIL rails-walked' && echo 0 || echo 1)"
+
+  # 4. A FAILING review does not satisfy it either.
+  printf -- '---\nskill: code-reviewer\ngate_pass: false\n---\n' > .ssd/features/feat/04-code-review.md
+  git add -A -f >/dev/null 2>&1; git commit -qm review-fail >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
+  _assert "rails-walked" "gate_pass: false does not satisfy invariant 4" \
+    "$(echo "$out" | grep -q '^FAIL rails-walked' && echo 0 || echo 1)"
+
+  # 5. A passing review closes it, including one nested under iterations/<iter>/code-review/.
+  mkdir -p .ssd/features/feat/iterations/b/code-review
+  printf -- '---\nskill: code-reviewer\ngate_pass: true\n---\n' > .ssd/features/feat/iterations/b/code-review/round-2.md
+  git add -A -f >/dev/null 2>&1; git commit -qm review-pass >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
+  _assert "rails-walked" "a passing review (incl. under iterations/) satisfies invariant 4" \
+    "$(echo "$out" | grep -q '^PASS rails-walked' && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# H1 — `[[ "$ok" -eq 0 ]]` coerces both "" and "banana" to 0, so an assertion whose command
+# substitution produced NOTHING scored as a PASS, silently and green. The harness cannot test itself
+# with itself (a genuinely broken assertion would fail the suite), so _assert is extracted and driven
+# inside a probe — the technique deny-list-catches-symlink uses on matches_deny_pattern.
+test_fixture_assert_rejects_non_integer() {
+  echo "fixture: assert-rejects-non-integer"
+  local probe out; probe=$(mktemp "${TMPDIR:-/tmp}/assertprobe.XXXXXX")
+  {
+    echo 'set -uo pipefail'
+    echo 'PASS_COUNT=0; FAIL_COUNT=0; FAILURES=(); VERBOSE=0'
+    awk '/^_assert\(\)/,/^}/' "$REPO_ROOT/scripts/parity-test.sh"
+    cat <<'EOS'
+_assert probe "empty verdict"       ""
+_assert probe "non-numeric verdict" "banana"
+_assert probe "a real pass"         "0"
+_assert probe "a real fail"         "1"
+echo "TALLY PASS=$PASS_COUNT FAIL=$FAIL_COUNT"
+printf '%s\n' "${FAILURES[@]}"
+EOS
+  } > "$probe"
+  out=$(bash "$probe" 2>&1); rm -f "$probe"
+  _assert "assert-rejects-non-integer" "an EMPTY verdict is a broken assertion, not a pass" \
+    "$(echo "$out" | grep -q 'empty verdict \[BROKEN ASSERTION' && echo 0 || echo 1)"
+  _assert "assert-rejects-non-integer" "a NON-NUMERIC verdict is a broken assertion, not a pass" \
+    "$(echo "$out" | grep -q 'non-numeric verdict \[BROKEN ASSERTION' && echo 0 || echo 1)"
+  _assert "assert-rejects-non-integer" "well-formed verdicts still score normally (1 pass, 3 fail)" \
+    "$(echo "$out" | grep -q 'TALLY PASS=1 FAIL=3' && echo 0 || echo 1)"
+}
+
+# C7 — on a change set of only schemaless artifacts the rule said "no SSD artifacts in scope", a
+# false statement about a diff that contained one. It stood for four releases because the prior fix to
+# this block (2026-08-19 audit, C4) corrected the count>0 path and left this one asserting absence.
+# Also pins that a deploy log is now validated rather than waved through.
+test_fixture_frontmatter_valid_names_schemaless() {
+  echo "fixture: frontmatter-valid-names-schemaless"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    echo "  (skipped — PyYAML not installed)"
+    return
+  fi
+  local tdir out; tdir=$(fixture_setup "fm-schemaless")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/milestones/m .ssd/features/f methodology
+  # gate-rules.sh resolves the validator under PROJECT_ROOT, which is this fixture repo — so the
+  # validator and its schemas have to live here, exactly as frontmatter-valid-private-walks-tree does.
+  cp "$VALIDATOR" methodology/
+  cp -R "$SCHEMAS_DIR" methodology/
+  echo base > a.txt; git add -A -f >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+  git checkout -q -b feat
+  printf -- '---\nskill: refactor\nversion: 1.3.0\n---\n' > .ssd/milestones/m/refactor-plan.md
+  git add -A -f >/dev/null 2>&1; git commit -qm plan >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules frontmatter-valid 2>&1)
+  _assert "frontmatter-valid-names-schemaless" "does NOT claim there are no artifacts in scope" \
+    "$(echo "$out" | grep -q 'no SSD artifacts in scope' && echo 1 || echo 0)"
+  _assert "frontmatter-valid-names-schemaless" "states how many were seen and why none was checked" \
+    "$(echo "$out" | grep -q 'in scope, none with a matching schema' && echo 0 || echo 1)"
+  printf -- '---\nskill: deploy\nversion: 2.10.2\nproduced_at: 2026-09-01T00:00:00Z\nproduced_by: t\nproject: t\nscope: f\nconsumed_by: []\n---\n' > .ssd/features/f/05-deploy.md
+  git add -A -f >/dev/null 2>&1; git commit -qm deploy >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules frontmatter-valid 2>&1)
+  _assert "frontmatter-valid-names-schemaless" "a deploy log is now validated against a schema" \
+    "$(echo "$out" | grep -qE '^PASS frontmatter-valid :: 1 artifact\(s\) validated' && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# C10 — ADR-0018 and store.sh:17 document the store as requiring private OR BLANKET. Only private has
+# a pattern file, so store-symlink-is-ignored can cover only private, which left blanket — a
+# documented-supported mode — with no test at all. The gap hid inside a one-iteration
+# `for pat in private` loop until shellcheck SC2043 flagged it, on the first lint this library ever ran.
+test_fixture_store_link_blanket_mode() {
+  echo "fixture: store-link-blanket-mode"
+  local tdir out rc; tdir=$(fixture_setup "store-blanket")
+  cd "$tdir" || exit 2
+  mkdir -p realstore proj/.ssd/features
+  cd proj || exit 2
+  git init -q -b main; git config user.email t@t.l; git config user.name t; git config commit.gpgsign false
+  printf 'project:\n  name: t\nssd:\n  gitignore_mode: blanket\n' > .ssd/project.yml
+  echo x > .ssd/features/brief.md
+  printf '.ssd/\n' > .gitignore
+  echo base > a.txt; git add -A >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+  out=$(bash "$STORE_SCRIPT" link "$tdir/realstore" --confirm 2>&1) && rc=0 || rc=$?
+  _assert "store-link-blanket-mode" "link does NOT refuse under blanket mode" \
+    "$(echo "$out" | grep -q 'refusing to link' && echo 1 || echo 0)"
+  _assert "store-link-blanket-mode" "blanket link succeeds (exit 0)" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  _assert "store-link-blanket-mode" ".ssd became a symlink" \
+    "$([[ -L .ssd ]] && echo 0 || echo 1)"
+  _assert "store-link-blanket-mode" "the artifact is readable through the link" \
+    "$([[ -f .ssd/features/brief.md ]] && echo 0 || echo 1)"
+  _assert "store-link-blanket-mode" "a bare .ssd line keeps the symlink itself out of the index" \
+    "$(git check-ignore -q .ssd && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+
 test_fixture_migrate_apply_old
 test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
@@ -2448,6 +2623,10 @@ test_fixture_frontmatter_valid_private_walks_tree
 test_fixture_feynman_clean_private_worktree
 test_fixture_issue_sync_refuses_private
 test_fixture_migrate_private_na_entries
+test_fixture_rails_walked
+test_fixture_assert_rejects_non_integer
+test_fixture_frontmatter_valid_names_schemaless
+test_fixture_store_link_blanket_mode
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

@@ -6,6 +6,70 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.11.0] — 2026-09-01
+
+### The gate finally checks a rails invariant — and the check falsified the audit that asked for it
+
+A `/feynman` epistemic audit ([report](.ssd/milestones/2026-09-01-feynman-audit/feynman.md), posture
+`drifting`) found that for eleven releases the gate enforced eleven **hygiene** rules and **not one
+rails invariant**. That is why PR #43 shipped v2.10.0 with zero code-review artifacts while every rule
+was green and CI passed. This release converts findings into checks that run.
+
+**New rule: `rails-walked`.** A change set that bumps `VERSION` — i.e. claims to be a release — must
+carry a code review with `gate_pass: true` for every `.ssd/features/<slug>/` directory it touches.
+Deliberately release-scoped: you commit a brief long before a review exists. Only `code-review*.md` /
+`round-*.md` count, because `feynman.md` also carries `gate_pass:` and a passing epistemic audit is
+not a code review.
+
+**The experiment, and it went against the audit.** Run over **all 25 VERSION-bumping commits in
+history**: **1 FAIL · 18 PASS · 6 SKIP.** The audit predicted at least two failures and warned that
+more than four would mean the rails were never walked. Actual compliance was **18 of 19** — the rails
+*were* walked, by hand, for a year. The gap was in **checking**, not in **doing**, and the audit's
+framing said otherwise. It also returned PASS for #41, which **falsifies the "second occurrence in
+this epic (#41 was the first)" line this file carried in the 2.10.1 entry** — #41's touched feature
+dirs each hold a passing review. That claim was repeated from the record three times and graded by
+nobody until a rule did it.
+
+**`_assert` now rejects a non-integer verdict.** bash coerces both `""` and `"banana"` to 0, so an
+assertion whose command substitution produced *nothing* scored as a PASS, silently and green. All 211
+call sites were already guarded, so no result changes — the guard is now structural rather than
+conventional.
+
+**`frontmatter-valid` stops reporting absence when it means "no schema".** On a diff of only
+schemaless artifacts it said *"no SSD artifacts in scope"* — false, and standing for four releases
+because the previous fix to that block corrected the other branch and left this one asserting
+something untrue. New `schemas/brief.yml` and `schemas/deploy.yml` close the coverage gap behind it:
+whole-tree validation goes **90 → 98 PASS**, and the two new schemas surfaced 3 genuine violations in
+older iterations (backfilled here). The deploy log — the artifact recording what shipped — had never
+been validated by anything.
+
+**`/ssd ship --force` is gone from the documentation, because it never existed in the code.** It was
+described as "the logged override" in four places; no script accepts it, and `rail_deviations:` has
+never been written by any tool in 15 workstreams. Corrected in `ssd/SKILL.md`,
+`chapters/enforcement.md`, `chapters/phases.md`, `gate-rules.sh`, and the user-facing `migrations.yml`
+guidance. ADR-0016 reasoned *from* the override's existence and gets an addendum rather than a rewrite.
+What the docs now say is what happens: you merge a red gate deliberately and record why by hand.
+Implementing a real `--force` is a feature with its own ADR, not a refactor.
+
+**shellcheck ran for the first time.** `lint_results:` had recorded `exit_code: 127 — pre-existing
+environment gap` across five artifacts and three features; 5,124 lines of shell had never been linted.
+The gap was `brew install shellcheck`. It found **2 warnings, 9 findings total, and no quoting bug** —
+cleaner than predicted. The one substantive result was a *coverage* gap, not a defect: SC2043 flagged a
+one-iteration loop, and asking why it existed revealed that **blanket mode, documented as supported by
+the artifact store, had no test at all**. New fixture `store-link-blanket-mode`. A `shellcheck` job
+added to CI so the finding cannot silently reopen.
+
+**Parity 264 → 281** (+17), each new fixture verified by reversion. `rails-walked` **SKIPs on the PR
+that ships it** — the change set bumps `VERSION` but touches no `.ssd/features/` directory. The first
+release carrying the rule is one the rule cannot check; that limitation is stated in the rule, in the
+enforcement table, and in the refactor plan rather than left to be discovered.
+
+Deliberately **not** in this release (hard rule 4): writing `rail_deviations:`, a real `--force`,
+tagging the 16 untagged v1.x releases, forking `rails.md` for a step skipped 13 times out of 13, and
+the audit's highest-value item — running SSD on a project that is not this one.
+
+---
+
 ## [2.10.1] — 2026-08-31
 
 ### The artifact store's drift check shipped unreachable (ADR-0018 addendum)

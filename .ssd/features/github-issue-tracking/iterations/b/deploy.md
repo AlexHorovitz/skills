@@ -6,6 +6,9 @@ iteration: b
 produced_at: 2026-06-14T00:00:00Z
 produced_by: claude-opus-4-8
 version: v2.4.0
+project: InsanelyGreat's SSD Skills Library
+scope: github-issue-tracking#b
+consumed_by: []
 gate_pass: true
 gate_rounds: 1
 ---

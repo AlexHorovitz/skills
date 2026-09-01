@@ -197,11 +197,16 @@ The canonical hard rules are defined in `methodology/core.md` (§ "Core Principl
 
 **Enforcement is warnings, not walls** (see [ADR-0012](../docs/decisions/ADR-0012-ssd-2.0-architecture.md)
 Pillar 5). "Hard rule" means *strongly discouraged and loud when broken* — the gate surfaces
-violations unmissably and an override (`/ssd ship --force`) is logged — and, per
-[ADR-0012](../docs/decisions/ADR-0012-ssd-2.0-architecture.md) Pillar 5, is *intended* to leave a
-durable `rail_deviations` trace (that wiring is tracked 2.0 work, not yet shipped) — **not** that
-the system physically blocks the merge. SSD trusts the developer and
-keeps a record; it does not lock the door. The one genuinely silent failure SSD forbids is the
+violations unmissably and exits non-zero — **not** that the system physically blocks the merge. SSD
+trusts the developer; it does not lock the door.
+
+**There is no override mechanism today, and this file used to say there was.** `/ssd ship --force` is
+named in [ADR-0012](../docs/decisions/ADR-0012-ssd-2.0-architecture.md) Pillar 5 as the *intended*
+logged escape hatch, leaving a durable `rail_deviations` trace. Neither half is implemented: no script
+accepts `--force`, and `rail_deviations:` has never been written by any tool in 15 workstreams
+(Feynman audit 2026-09-01, C2 + C4). A developer who ships past a FAILing gate does it by merging
+anyway, and **nothing records that they did.** Until the mechanism exists, do not cite `--force` as
+though it does — that is the claim this paragraph was making, in four files, for eleven releases. The one genuinely silent failure SSD forbids is the
 orchestrator advancing a phase *without surfacing the decision* — that's rule-zero, and it is the
 only thing here that is truly inviolable.
 
@@ -240,7 +245,8 @@ behavior on active entries, and § "Concurrency: one Claude session per project 
 
 **→ Full text: [`chapters/enforcement.md`](chapters/enforcement.md)** ([ADR-0005](../docs/decisions/ADR-0005-gate-execution-model.md)).
 The executable `gate-rules.sh` rule table (`wip-commits`, `tests-pass`, `feature-flag-present`,
-`adr-delta`, `frontmatter-valid`, `no-leaky-state`, `skill-version-sync`, `migration-manifest-current`),
+`adr-delta`, `frontmatter-valid`, `no-leaky-state`, `rails-walked`, `skill-version-sync`,
+`migration-manifest-current`),
 the cross-workstream overlap check, and workstream-aware base detection.
 
 ---
