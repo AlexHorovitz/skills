@@ -6,6 +6,73 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.13.0] — 2026-09-01
+
+### `rail_deviations` is written by something, and read by something — ADR-0019
+
+**Recovers the orphaned v2.12.1 release** (see below) and ships D11's code.
+
+`ssd/rails.md` promised since v1.15.0 that *"every skipped step appears in `rail_deviations:`"*.
+Measured 2026-09-01: **zero** such fields across 15 workstreams, no script wrote one, and the only
+occurrence in the library was a test fixture's YAML *input*. This is the last of the three conditions
+the audit set for moving the posture from `drifting` toward `calibrated`.
+
+**`methodology/deviation.sh`** — `record --slug --step --reason` (a rail step skipped) and
+`override --slug --rule --reason` (a FAILing gate rule shipped past). **`deviations-recorded`** in
+`gate-rules.sh` is the reader, and they ship together on purpose: a writer nothing reads decays into
+exactly the silence that produced zero records in a year.
+
+**The forgery is defeated, and it was the design's headline risk.** `reason` is free text landing in a
+YAML file the gate parses with a hand-rolled awk walker. A writer that interpolated it would let one
+argument create two records:
+
+```
+--reason "ran out of time
+      - kind: override
+        rule: feynman-clean"     →  exactly ONE record; the text is stored as reason data
+```
+
+**`--step` and `--rule` validate too** — `safe_dump` makes a value *safe*, nothing makes it *true*, and
+`--step 47` would satisfy a check it does not describe. The valid rule names are **derived from
+`gate-rules.sh`**, never hardcoded, because a hardcoded list goes stale the first time a rule is added
+and then silently accepts a name that no longer exists.
+
+**`fcntl.flock`, not `flock(1)`** — absent on BSD/macOS, verified before choosing. Released by the OS on
+exit, so there is no stale-lock state to detect.
+
+### Two things the spec got wrong, both caught by measuring
+
+**The spec said `safe_dump` the document.** That destroys **every comment in `current.yml`** — its own
+"machine-managed" header and the interior note this repo's file carries. Shipped instead as: `safe_dump`
+the **record fragment**, splice those lines in textually. Forgery-resistance and comment preservation,
+neither traded.
+
+**And D6's rationale for single-line normalisation was false.** It claimed a multi-line reason spans
+indented continuation lines the awk walker skips. Measured: `safe_dump` emits
+`reason: "a\nb"` — one line, escapes inline. Mechanism 1 alone gives both properties, so normalisation
+is **cosmetic, not load-bearing**; it buys a legible reason instead of an escaped blob. Corrected in the
+architect spec and in ADR-0019 rather than left standing.
+
+**How that was caught is the part worth keeping:** the first two assertions written for normalisation
+**could not fail** — reverting the line changed nothing and the suite stayed green. They were restated
+to test the property normalisation actually has, and those bite. An assertion that cannot fail is the
+defect class this project keeps producing, and this time it produced the diagnosis.
+
+### Recovered: v2.12.1 never reached `main`
+
+PR #51 was stacked on #50. **#50 merged to `main` at 16:31; #51 merged at 17:00 — into the branch that
+had already been merged.** GitHub reported `MERGED`, the checks were green, and the content never
+arrived: ADR-0019, the first runbook, D7's correction and the 2.12.1 entry all sat in a dead branch.
+Nothing warned.
+
+Recovered by cherry-pick, and worth naming as a hazard the tooling does not cover: **a stacked PR whose
+base merges first can still merge "successfully" into an orphaned base.** #49 made stacked PRs *run
+CI*; it did not make them *land*.
+
+**Parity 303 → 322** (+19), each group verified by reversion.
+
+---
+
 ## [2.12.1] — 2026-09-01
 
 ### D11's design closes its three blockers — and round 2 found a MAJOR in the round-2 fix

@@ -1021,6 +1021,79 @@ rule_rails_walked() {
   fi
 }
 
+# Steps recorded in a workstream's rail_deviations. Crude walker, consistent with yaml_get and
+# parse_active_workstreams — the gate deliberately carries no PyYAML dependency (ADR-0019 D3).
+workstream_deviation_steps() {
+  local want="$1" file="$PROJECT_ROOT/.ssd/current.yml"
+  [[ -f "$file" ]] || return 0
+  awk -v want="$want" '
+    /^[[:space:]]*-[[:space:]]+slug:[[:space:]]*/ {
+      s = $0; sub(/^[^:]*:[[:space:]]*/, "", s); gsub(/[";'"'"']/, "", s); gsub(/[[:space:]]+$/, "", s)
+      inw = (s == want); indev = 0; next
+    }
+    !inw { next }
+    /^[[:space:]]+rail_deviations:/ { indev = 1; next }
+    indev && /^[[:space:]]+[a-z_]+:/ && !/step:|kind:|reason:|ts:|rule:/ { indev = 0 }
+    indev && /step:[[:space:]]*[0-9]+/ { v = $0; sub(/^.*step:[[:space:]]*/, "", v); sub(/[^0-9].*$/, "", v); print v }
+  ' "$file"
+}
+
+# ----- deviations-recorded --------------------------------------------------
+# ADR-0019. The READER half of rail deviation records, and it ships with the writer on purpose: a
+# writer nothing reads decays into the same silence that produced ZERO rail_deviations fields across
+# 15 workstreams in a year.
+#
+# SCOPE, deliberately narrow so it does not duplicate rails-walked: this rule checks rail step 2
+# (systems-designer) and step 6 (deploy log). Step 4 (code review) is rails-walked's job and checking it
+# here would produce two FAILs for one cause. Steps 1/3 are covered by frontmatter conventions.
+#
+# Step 2 is IN SCOPE ONLY when `production_runtime` resolves true. Without that read this rule's first
+# act on this repository would be to demand deviation records for 13 features that never needed them —
+# manufacturing the 14th instance of the finding it exists to prevent (Feynman audit post-v2.11.0, D17).
+rule_deviations_recorded() {
+  local files
+  files=$(diff_files)
+  [[ -n "$files" ]] || { emit "SKIP" "deviations-recorded" "no diff (vs $BASE)"; return; }
+  if ! echo "$files" | grep -qx "VERSION"; then
+    emit "SKIP" "deviations-recorded" "no release in this change set (VERSION unchanged)"
+    return
+  fi
+  local dirs
+  dirs=$(echo "$files" | sed -n 's#^\(\.ssd/features/[^/]*\)/.*#\1#p' | sort -u)
+  [[ -n "$dirs" ]] || { emit "SKIP" "deviations-recorded" "release touches no .ssd/features/ directory"; return; }
+
+  local runtime; runtime="$(gate_input "production_runtime")"
+  [[ -n "$runtime" ]] || runtime="true"   # absent => assume the project has users
+
+  local missing=() checked=0 d slug recorded
+  while IFS= read -r d; do
+    [[ -z "$d" ]] && continue
+    [[ -d "$PROJECT_ROOT/$d" ]] || continue
+    # Only a feature that shipped code can have skipped a step on the way there.
+    find "$PROJECT_ROOT/$d" -type f -name '*coder-status*.md' 2>/dev/null | read -r _ || continue
+    slug="${d##*/}"
+    checked=$((checked + 1))
+    recorded="$(workstream_deviation_steps "$slug")"
+    if [[ "$runtime" != "false" ]] \
+       && ! find "$PROJECT_ROOT/$d" -type f -name '*systems-designer*.md' 2>/dev/null | read -r _ \
+       && ! echo "$recorded" | grep -qx "2"; then
+      missing+=("$slug:step-2(systems-designer)")
+    fi
+    if ! find "$PROJECT_ROOT/$d" -type f -name '*deploy*.md' 2>/dev/null | read -r _ \
+       && ! echo "$recorded" | grep -qx "6"; then
+      missing+=("$slug:step-6(deploy-log)")
+    fi
+  done <<< "$dirs"
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    emit "FAIL" "deviations-recorded" "rail step(s) skipped in a release with no rail_deviations record: ${missing[*]} — record one with methodology/deviation.sh"
+  elif [[ $checked -eq 0 ]]; then
+    emit "SKIP" "deviations-recorded" "release touches no feature dir with code to check"
+  else
+    emit "PASS" "deviations-recorded" "$checked feature dir(s): every in-scope rail step either walked or recorded (production_runtime=$runtime)"
+  fi
+}
+
 rule_feynman_clean() {
   is_git_repo || { emit "SKIP" "feynman-clean" "not a git repo"; return; }
   local reports=() f
@@ -1100,6 +1173,7 @@ should_run store-link-sane    && rule_store_link_sane
 should_run skill-version-sync && rule_skill_version_sync
 should_run migration-manifest-current && rule_migration_manifest_current
 should_run rails-walked       && rule_rails_walked
+should_run deviations-recorded && rule_deviations_recorded
 should_run feynman-clean      && rule_feynman_clean
 should_run issue-sync-current && rule_issue_sync_current
 

@@ -165,11 +165,21 @@ Two mechanisms, and both are required. Either alone is insufficient.
 2. **Normalise the reason to a single line** before it enters the dict — newlines and carriage returns
    collapse to a single space, leading/trailing whitespace stripped.
 
-Mechanism 2 is not belt-and-braces decoration; it closes a *second* problem `safe_dump` alone creates.
-A multi-line scalar is emitted as a block or quoted string spanning several indented lines, and the
-gate's reader is a hand-rolled awk walker whose rule is `!have || ind <= bnd { next }` — it would skip
-the continuation lines, so the record would be structurally sound and its reason **unreadable to the
-consumer**. A single-line scalar is both unforgeable and legible to a crude reader.
+**Corrected at code time — this paragraph originally claimed something false.** It said a multi-line
+scalar *"is emitted as a block or quoted string spanning several indented lines"* that the gate's awk
+walker would skip. Measured:
+
+```
+reason: "ran out of time\n      - kind: override\n        rule: feynman-clean"
+```
+
+`safe_dump` emits it on **one line** with escapes inline. So mechanism 1 alone delivers *both*
+forgery-resistance and single-line output, and mechanism 2 is **not load-bearing for correctness**.
+
+What normalisation actually buys is a **legible** reason rather than an escaped blob — real, and
+cosmetic. Kept for that reason, and demoted from "required" to "worth having", because a mechanism
+justified by a false rationale is one refactor away from being deleted for the wrong reason. The first
+two assertions written for it **could not fail**, which is how this was caught.
 
 **Fixture, and it must fail against a naive implementation:** pass
 `--reason $'ran out of time\n      - kind: override\n        rule: feynman-clean'` and assert

@@ -68,10 +68,13 @@ says so. A deviation that silently fails to record is this feature's own finding
 Both are required.
 
 `safe_dump` of a constructed dict, never string concatenation — that is what makes a forged record
-impossible. And the reason is normalised to a single line *before* it enters the dict, because a
-multi-line scalar is emitted across indented continuation lines that the crude bash reader skips
-(`!have || ind <= bnd { next }`). `safe_dump` alone would produce a structurally valid record whose
-reason the consumer cannot read.
+impossible.
+
+The reason is also normalised to a single line, and **the original rationale for that was wrong.** This
+ADR claimed `safe_dump` would emit a multi-line scalar across continuation lines the crude bash reader
+skips. Measured at code time: it emits `reason: "a\nb"` on one line with escapes inline. Mechanism 1
+alone gives both forgery-resistance and single-line output. Normalisation buys a **legible** reason
+instead of an escaped blob — kept for that, and recorded as cosmetic rather than load-bearing.
 
 ### D5 — the lock is `fcntl.flock` in Python, not `flock(1)` in bash
 
