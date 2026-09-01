@@ -6,6 +6,56 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.11.3] — 2026-09-01
+
+### A stacked pull request triggered no CI at all, and the merge button still looked green
+
+Found by running `/ssd gate` on a stacked PR rather than by auditing the workflow. `quality.yml`
+filtered `pull_request` on `branches: [main]`, so a PR whose base is another feature branch matched
+nothing:
+
+```
+gh pr checks 48  → no checks reported on the 'fix-doc-truth-d12-d13a' branch
+gh run list --branch fix-doc-truth-d12-d13a → (empty)
+```
+
+**PR #48 merged into its parent branch with zero checks** — no gate, no parity, no shellcheck. Its
+content was covered afterwards, when the parent's own PR re-ran against `main`, but that is coverage
+*after* the merge decision, and only if the stack is merged bottom-up. A safety net that disappears
+exactly when you split work into a stack is worse than no net, because nothing about the UI says so.
+
+**Two changes, and the second is the one that makes the first useful.**
+
+The `branches:` filter is gone from `pull_request`, so any PR triggers CI regardless of base. `push`
+stays scoped to `main` — a push-triggered gate run has no base to diff against, which is why the gate
+job is already `if: github.event_name == 'pull_request'`.
+
+The gate job no longer hardcodes `--base origin/main`. It resolves **`github.base_ref`**, the PR's own
+base. Without that, a stacked PR would be measured against `main` and report the *whole stack* rather
+than its own delta — inheriting its parent's findings and turning the check into noise. #48 would have
+gone red on `feynman-clean` for a report it did not contain.
+
+`base_ref` reaches bash through **`env:`**, not through `${{ }}` inside the `run:` block. A branch name
+can contain shell metacharacters and the runner expands interpolations before bash sees them; that is
+the standard GitHub Actions script-injection vector, and a workflow that lints other people's shell
+should not model the mistake.
+
+**Parity 294 → 300.** Six structural assertions on the YAML, each verified to fail individually — three
+separate reversions, because unscoping `push` and unfiltering `pull_request` are independent edits and a
+single batch revert would have left two assertions unproven.
+
+They are **structural**, and labelled as such in the fixture: a bash suite cannot exercise a GitHub
+Actions trigger. The proof that a stacked PR now gets checked is a green check on one, which is an
+observation to make rather than an assertion to write. This release's own PR is not stacked, so it does
+not provide that evidence either — the next stacked PR does.
+
+One assertion **failed on its first run against the finished fix**: the regex for *"base_ref is not
+interpolated into a run block"* matched the correct `env:` line. Restated as "the interpolation occurs
+exactly once, and that once is the env assignment." An over-broad regex is a broken assertion, not a
+finding — the third time this session an assertion has caught its own author.
+
+---
+
 ## [2.11.2] — 2026-09-01
 
 ### Two documents asserted things the system contradicted — and prose fixes now carry assertions

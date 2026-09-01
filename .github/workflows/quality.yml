@@ -23,8 +23,13 @@ name: quality
 # executable artifacts rather than orchestrator-internal LLM checks.
 
 on:
+  # NO `branches:` filter on pull_request, deliberately (Feynman audit post-v2.11.0, follow-on).
+  # It used to read `branches: [main]`, so a STACKED pull request — one whose base is another feature
+  # branch — triggered nothing at all: no gate, no parity, no shellcheck. PR #48 merged that way, into
+  # its parent branch, entirely unchecked. Its content was only covered afterwards, when the parent's
+  # own PR re-ran. A safety net that is absent exactly when you split work into a stack is worse than
+  # no net, because the merge button still looks green.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 
@@ -44,10 +49,19 @@ jobs:
           python-version: '3.x'
       - name: Install PyYAML
         run: pip install pyyaml
-      - name: Run gate rules against origin/main
+      - name: Run gate rules against the PR's base
+        # `github.base_ref` — NOT a hardcoded `main`. On a stacked PR the base is the parent feature
+        # branch, and diffing against main would report the whole stack rather than this PR's own
+        # delta, inheriting the parent's findings and making the check unreadable.
+        #
+        # Passed through `env:` rather than interpolated into `run:`. A branch name can contain shell
+        # metacharacters, and `${{ }}` inside a run block is expanded by the runner BEFORE bash sees
+        # it — the standard GitHub Actions script-injection vector.
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          git fetch origin main:refs/remotes/origin/main
-          bash methodology/gate-rules.sh --base origin/main
+          git fetch origin "$BASE_REF":refs/remotes/origin/"$BASE_REF"
+          bash methodology/gate-rules.sh --base origin/"$BASE_REF"
 
   shellcheck:
     name: shellcheck
