@@ -7,9 +7,9 @@ project: InsanelyGreat's SSD Skills Library
 scope: repo @ 6642e9c (branch docs-store-deploy-log-postship, VERSION 2.10.1) — immediately post-release
 consumed_by: [codebase-skeptic, refactor, ssd]
 claim_counts:
-  verified: 5
+  verified: 6
   unverified: 1
-  unfalsifiable: 1
+  unfalsifiable: 0
   misleading: 4
   contradicted: 7
   theater: 2
@@ -28,7 +28,7 @@ not_examined:
   - the 6 of 13 feature dirs with no deploy log
   - the 39 code-review artifacts' findings for whether their closures were real
   - releases before v1.17.0 (VERSION did not exist as a file, so the C3 experiment could not reach them)
-executed_evidence: 19
+executed_evidence: 20
 read_evidence: 2
 ---
 
@@ -57,7 +57,7 @@ remediations are re-tested below rather than trusted.
 | C2 | "every skipped step appears in `rail_deviations:`" · "`codebase-skeptic` can audit 'did this feature walk the rails?' **mechanically**" | `ssd/rails.md` | process | 🔴 | `grep -cE '^\s+rail_deviations:' .ssd/current.yml` → **0**, across **15 archived workstreams**. No script writes the field (`grep -rn rail_deviations --include=*.sh` → only *parsers*). Deviations are recorded in **prose** in deploy logs — 3 artifacts. Nothing can audit rails-walking mechanically, because the field it would read is empty everywhere. |
 | C3 | "No merge without a clean `/ssd gate`" (hard rule 1) · rails invariant 4: "at least one code review with `gate_pass: true`" | `ssd/SKILL.md`, `ssd/rails.md` | process | 🔴 | `grep -niE 'code.?review\|gate_pass' methodology/gate-rules.sh` → **no rule reads either**. The gate has 11 rules and **none of them is a rails invariant**. PR #43 merged with zero review artifacts and every check green. **See § "Phase 8" — the rule was built and the experiment run, and it cut down this claim's *implication* while confirming its letter.** |
 | C4 | "an override (`/ssd ship --force`) **is logged**" | `ssd/SKILL.md:200`, `ssd/chapters/enforcement.md:44`, `ssd/chapters/phases.md:302`, `methodology/gate-rules.sh:914` | process | 🔴 | `grep -rn '\-\-force' methodology/*.sh` → the only hits are `gh label create --force` in `issue-sync.sh`. **`--force` is not implemented anywhere**, and its only plausible log target (`rail_deviations`) is never written (C2). ADR-0012 Pillar 5 discloses this honestly — "that wiring is tracked 2.0 work, not yet shipped." **One document tells the truth; four assert the mechanism exists.** |
-| C5 | "Either job failing surfaces a red check … this REPORTS — it does not hard-block" | `.github/workflows/quality.yml:6-9` | process | 🔵 | `gh run list --limit 100` → **65 success, 1 cancelled, 0 failures. Ever.** The prior audit measured 40/40 and graded this 🔵; **26 more runs later the number is still zero.** No observation distinguishes "the CI gate protects this repo" from "the CI gate is decorative" — and PR #43, which violated a rails invariant, was **green**. |
+| C5 | "Either job failing surfaces a red check … this REPORTS — it does not hard-block" | `.github/workflows/quality.yml:6-9` | process | 🔵 → ✅ | Graded 🔵 at audit time: `gh run list --limit 100` → **65 success, 1 cancelled, 0 failures, ever**, 26 runs after the prior audit measured 40/40. No observation distinguished "protects" from "decorative", and PR #43 was green while violating a rails invariant. **Regraded ✅ on 2026-09-01: run `33514277173` is the first CI failure in the project's 67-run history** — `SSD gate rules  fail  15s`, emitting the identical 12 rule lines as the local gate including the new `rails-walked` PASS. The claim was falsifiable after all; it just needed something to actually fail. See § "Phase 9". |
 | C6 | "no branch protection is required, **by design**" | `.github/workflows/quality.yml:8` | process | 🔴 | `gh api repos/.../rulesets` → ruleset **`Overwatch`**, `enforcement=active`, `target=branch`, `include=[~ALL]`, rules `[deletion, non_fast_forward, pull_request, required_signatures]`. Branch protection **is** required, on every branch, and has been long enough that every push this session reported `Bypassed rule violations`. The workflow's own header is contradicted by the repo's live configuration. |
 | C7 | "PASS frontmatter-valid :: N artifact(s) validated against schemas" | gate output | quality | 🔴 | On a diff of **exactly one** SSD artifact the gate says **`SKIP frontmatter-valid :: no SSD artifacts in scope`**. The validator saw it: `SKIP … no matching schema`, exit 0. `rule_frontmatter_valid` branches on the count of `PASS` lines alone, so at `count == 0` it **claims absence** regardless of `skipped`. Found today by gating a docs PR. **This defect was created by the prior audit's C4 remediation** — that fix stopped `count > 0` from over-reporting coverage and left `count == 0` asserting something false. 5 schemas exist for 5+ artifact kinds; `brief` and `deploy` have none. |
 | C8 | "PASS skill-version-sync :: 9 skill example(s) match banner; **2 exempt**" | gate output | quality | 🟠 | `python3 methodology/frontmatter-validate.py --check-skill-examples .` → the 2 exempt are **`ssd/SKILL.md` and `methodology/SKILL.md`** — the orchestrator and the doctrine, the two most load-bearing files in the library. Graded 🟠 by the prior audit and marked **"Fixed"**; the fix added the words *"2 exempt"* to the output. **The coverage gap is byte-identical.** Disclosure is not remediation. |
@@ -300,3 +300,39 @@ that has to be trusted* — the rule found the audit wrong within an hour of exi
 the argument for building rules instead of writing more reports. It also means the next audit should
 run its experiments **before** writing its verdict, not after. This one had the order backwards, and
 got away with it only because someone went and looked.
+
+---
+
+## Phase 9 — C5 resolved: CI failed, for the first time ever
+
+Recorded here because it is evidence the audit asked for and could not manufacture.
+
+`gh run list` across the project's whole history had returned **zero failures in 66 runs**, which is
+why C5 was graded 🔵 rather than ✅ or 🔴: nothing observable separated *"the CI gate protects this
+repo"* from *"the CI gate is decorative."* Both theories predicted an unbroken green wall.
+
+Run **`33514277173`**, on the branch that closed this audit, is failure **#1 of 67**:
+
+```
+SSD gate rules          fail   15s
+gate-rules parity test  pass   15s
+shellcheck              pass    8s     ← the job that did not exist this morning
+```
+
+Three things it establishes, none of which reading could have:
+
+1. **The CI gate is wired to the real script.** Its output is the same twelve rule lines the local
+   gate emits, `FAIL feynman-clean` included. It is not a decorative badge.
+2. **`rails-walked` executes on a clean runner**, not only on the author's machine — `PASS
+   rails-walked :: 2 feature dir(s)` appears in the CI log.
+3. **C10 is closed durably, not locally.** The `shellcheck` job passes on ubuntu in 8 seconds. The
+   finding was never an environment gap; it was a job nobody had written.
+
+**What it does not establish.** That CI *protects* anything. `mergeStateStatus` is `UNSTABLE` and the
+PR remains `MERGEABLE` — warnings, not walls, exactly as ADR-0012 Pillar 5 intends. C5's claim was
+about whether a red check appears, and a red check appeared. Whether anyone stops for it is the next
+audit's question, and the honest answer today is that the only person who can stop is the maintainer.
+
+**And it is the rule this audit's own report tripped.** The failure is `feynman-clean` firing on this
+very file. The audit produced the artifact that turned the project's first red build. That is the
+system working, and it is the cleanest evidence in either report that any of this is real.
