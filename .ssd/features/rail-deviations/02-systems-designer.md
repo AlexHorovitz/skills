@@ -6,18 +6,19 @@ produced_by: claude-opus-5
 project: InsanelyGreat's SSD Skills Library
 scope: rail-deviations
 consumed_by: [ssd]
+round: 2
 machine_checked:
   tests_exist: false
   indexes_declared: true
   flag_wired: true
-  migration_reversible: false
+  migration_reversible: true
 human_review:
   load_test: waived
-  runbook_accuracy: required
-  security_review: required
-block_conditions_met: false
+  runbook_accuracy: pass
+  security_review: pass
+block_conditions_met: true
 block_conditions:
-  rollback_plan_exists: false
+  rollback_plan_exists: true
   observability_hooks: true
   dependency_failure_modes_documented: true
 ---
@@ -27,8 +28,12 @@ block_conditions:
 **Phase 0: input validated.** `01-architect.md` is present and every Quality Gate section carries real
 content. No send-back required.
 
-> **`block_conditions_met: false`.** Three findings below, two of which the architect spec does not
-> contain. `/ssd ship` should refuse until S1 and S3 are answered.
+> **Round 1: `block_conditions_met: false`** — three findings, two absent from the architect spec.
+> **Round 2 (below): `block_conditions_met: true`** — all three block conditions met, and the runbook
+> exists rather than being promised. **One MAJOR remains**, and it is in the *reasoning* of the fix
+> rather than the mechanism: D7 claims a mitigation pointed in the wrong direction.
+>
+> Round 1's findings are preserved verbatim below. The verdict changed; the record of why should not.
 
 ## The experiment this pass was run to settle
 
@@ -190,3 +195,97 @@ and this feature is the proof.
 
 Recorded here rather than acted on: narrowing the declaration is a change to what v2.12.0 just shipped,
 and it should go through its own cycle with this artifact as the evidence.
+
+---
+
+# Round 2 — do D6, D7 and D8 close S1, S2 and S3, or relocate them?
+
+## S1 → D6: **closed**
+
+Structural `safe_dump` of a constructed dict makes a forged record impossible, and single-line
+normalisation keeps the reason legible to the crude bash reader. Both mechanisms are required and the
+spec now says why — round 1 named only the first, and `safe_dump` alone would have produced a valid
+record whose reason the consumer could not read.
+
+**New MINOR-1: `--step` and `--rule` are also user input and are unvalidated.** `safe_dump` makes them
+*safe*; nothing makes them *true*. A `--step 47` or `--rule feynman-clen` writes a well-formed record
+naming something that does not exist, and the reader would count it as satisfying a deviation it does
+not describe. Validate `step` as an integer in 1–8 against `rails.md`, and `rule` against the rule names
+`gate-rules.sh` actually emits. Not a safety issue; a record-quality one, and this feature's whole value
+is record quality.
+
+## S2 → D8: **closed, and the runbook is written**
+
+Round 1's challenge was that *"a runbook that exists as a promise in a design document is the exact
+shape of the thing this feature is about."* Fair, and answered:
+[`docs/runbooks/ssd-state-recovery.md`](../../../docs/runbooks/ssd-state-recovery.md) exists.
+
+Three things worth crediting because they are what a *useful* runbook does and a template does not:
+
+- It applies **today**, before `deviation.sh` exists, because `migrate.sh` already mutates `.ssd/` state.
+- Step 1 says *"'parses OK' does not mean the content is right"* — the lost-update case produces a
+  **valid** file missing a record, and a runbook that stopped at "does it parse" would send you away
+  satisfied.
+- Step 4 says that if a record is missing and nothing exited 10, **that is a defect to report, not a
+  recovery to perform.** A runbook that distinguishes "fix this" from "this should have been impossible"
+  is doing the job.
+
+`docs/runbooks/` did not exist in this repository at all. Rails invariant 8 has therefore never been
+satisfiable, and this is the first artifact that satisfies it. `runbook_accuracy` moves `required` →
+`pass`; `rollback_plan_exists` → true on the `.bak` plus the recovery procedure.
+
+## 🟠 S3 → D7: mechanism adequate, **stated mitigation aimed the wrong way**
+
+`fcntl.flock` in Python instead of `flock(1)` is the right call, and checking `flock`'s absence on the
+maintainer's machine **before** choosing is exactly the discipline that three prior portability defects
+in this library were missing.
+
+**But D7's central claim does not hold.** It says the in-lock mtime re-check *"converts a silent lost
+update into a loud one."* Trace the scenario D7 itself describes:
+
+```
+T0  orchestrator reads current.yml          (holds a copy)
+T1  deviation.sh takes the lock, re-checks mtime → UNCHANGED since ITS read → writes
+T2  orchestrator writes its `phase` change from the T0 copy → the deviation is gone
+```
+
+The writer's mtime check protects **the writer** against a change landing under it. The loss in this
+scenario happens in the **orchestrator's** write at T2, and nothing in D7 observes that. A reader of
+D7 would believe the direction that actually loses data is covered. It is not.
+
+**The real mitigation already exists elsewhere in the design and D7 does not cite it:** the
+`deviations-recorded` rule (D4/ADR-0019 D6). A lost deviation means the release arrives with a skipped
+step and no record, and the rule FAILs at the release boundary. The loss is not *prevented*; it is
+**detected**, one boundary later, by the paired reader.
+
+That is consistent with this feature's whole thesis — pair a writer with a reader, because a writer
+nothing reads decays into silence — and it is a better answer than the one D7 gives. **It just has to
+be the one the spec says**, because a coder implementing D7 as written would reasonably conclude the
+hazard is handled and not think about the release-boundary catch at all.
+
+**Required before `/ssd code`:** correct D7 to state that (a) the lock and mtime check protect the
+writer, (b) the orchestrator's stale write is **not** prevented, and (c) the detection is
+`deviations-recorded` at the next release. Not a block condition — the mechanism ships correctly either
+way — but a spec that misdescribes its own safety property is how the next audit finds this.
+
+## Block conditions — round 2
+
+| Condition | Round 1 | Round 2 | Why |
+|---|---|---|---|
+| `rollback_plan_exists` | false | **true** | `.bak` before mutating + a written recovery runbook |
+| `observability_hooks` | true | true | the gate rule is the hook, and S3 shows it is load-bearing rather than decorative |
+| `dependency_failure_modes_documented` | true | true | PyYAML exit 3, plus the two preconditions round 1 flagged as unstated, now specified |
+
+`migration_reversible` false → **true** (the `.bak`). `security_review` `required` → **pass**: S1 was
+the security finding and D6 closes it structurally, with MINOR-1 as a record-quality follow-on rather
+than an exposure.
+
+**`block_conditions_met: true`. `/ssd ship` no longer refuses.** `tests_exist` stays **false** and
+correctly so — no code exists yet, and the fixtures named in D6/D8 are the coder's first obligation.
+
+## Send back to the architect — round 2
+
+1. **Correct D7's stated mitigation** (above). Required before code; not blocking the phase.
+2. **MINOR-1 — validate `--step` and `--rule`.** Cheap, and it protects the thing this feature is for.
+
+Nothing else. The design is implementable.
