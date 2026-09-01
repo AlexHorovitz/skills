@@ -6,6 +6,105 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.11.2] — 2026-09-01
+
+### Two documents asserted things the system contradicted — and prose fixes now carry assertions
+
+Closes **D12** and **D13a** from the [post-v2.11.0 audit](.ssd/milestones/2026-09-01-post-v2.11.0-audit/feynman.md).
+Both were documentation-truth defects, the kind that normally get fixed and then rot again because
+nothing checks them. Each fix ships with a parity assertion.
+
+**D12 — `quality.yml` claimed there was no branch protection here.** There is: an active `Overwatch`
+ruleset on every branch requiring `pull_request` and `required_signatures`, which is why every push
+this session reported *"Bypassed rule violations"*.
+
+The reconciliation matters more than the correction, because ADR-0012 Pillar 5 explicitly rejects
+branch-protection walls and three other files repeat that doctrine. **The doctrine survives intact:**
+Pillar 5 rejects *required status checks that gate a merge*, and the ruleset does not list
+`required_status_checks` — so neither CI job can block anything, and admins bypass it anyway.
+A PR requirement is a paper trail, not a wall. The header now says that, and cites the `gh api`
+invocation that proves it.
+
+**D13a — `phases.md` quoted a `core.md` line that did not exist.** It put *"tag every release"* in
+quotation marks and attributed it to `core.md` §4. `grep -cwi tag methodology/core.md` returned **0**,
+and §4 is the Ratchet Principle — tests, types, lint, coverage. The entire release-tagging obligation
+cited a phrase from a document that had never contained it.
+
+Fixed at the source rather than by deleting the claim: `core.md` §4's ratchet-mechanism list gains the
+tooth **"Every release is tagged on its merge commit"** — an untagged release is a version you cannot
+navigate back to, which is precisely the ratchet slipping backward. `phases.md` now quotes that tooth
+verbatim, so the citation resolves.
+
+**Two more things the same sentence was getting wrong.** It claimed the post-v1.19 milestone *fixed*
+the missing-tags drift; that milestone closed it for **v1.16.0 and later**, and 16 releases below that
+line remain untagged. The text now says the fix was scoped, not finished. And the copyable `git tag`
+example used `-m` with a double-quoted summary — backticks inside which the shell command-substitutes
+before git sees them, exactly what mangled the `v2.10.0` annotation in this repo. The example now uses
+`-F` with a heredoc, and says why.
+
+**Parity 291 → 294.** Three assertions, each verified to fail against the unfixed text: the tooth
+present in `core.md`, the quote verbatim in `phases.md`, and `quality.yml` no longer asserting the
+false claim. The third one **failed on its first run against the fix** — the new header quoted the old
+claim verbatim while explaining it, and a grep cannot tell an assertion from a quotation. The
+correction was reworded rather than the assertion weakened.
+
+No `migrations.yml` entry: the tagging obligation already existed in `phases.md`, so nothing a project
+must do has changed — only whether the citation for it resolves.
+
+---
+
+## [2.11.1] — 2026-09-01
+
+### The leak detector returned PASS on a leaked file, if the filename was not ASCII
+
+A post-release `/feynman` audit ([report](.ssd/milestones/2026-09-01-post-v2.11.0-audit/feynman.md))
+control-tested `no-leaky-state` with one variable changed — the filename:
+
+```
+.ssd/archive/plain.md   →  FAIL no-leaky-state :: 1 file(s) gitignored by policy but tracked
+.ssd/archive/café.md    →  PASS no-leaky-state :: no gitignored-by-policy files in diff
+                           git's own view: ".ssd/archive/caf\303\251.md"   ·   the file IS tracked
+```
+
+`diff_files()` ran `git diff --name-only` without `core.quotepath=false`, so git C-quoted every
+non-ASCII path — wrapping it in double quotes and octal-escaping the bytes — and every downstream path
+comparison missed. **Six of the twelve rules read that function**, and the worst affected is the one
+ADR-0017 and the published guide both call *the primary enforcement of the privacy boundary*.
+
+Present since **v1.5.0 (`ee3b897`), 27 releases.** Not a v2.11.0 regression — v2.11.0 is where someone
+finally looked. `rails-walked`, added in v2.11.0, inherited it: a release whose only feature directory
+was accented and carried no review returned `SKIP :: release touches no .ssd/features/ directory`, a
+reassuring sentence for a check that did not run.
+
+**The fix is one line, and the audit had the shape wrong.** It assumed `-z`, copying `migrate.sh`'s
+fix. Tested first: `-c core.quotepath=false` returns raw UTF-8 for accents, spaces, apostrophes and
+umlauts alike, while `-z` would change the function's contract from newline- to NUL-delimited and force
+all six consumers to move together. Taken, with the residual recorded in the function: a path
+containing a literal newline still breaks a newline-delimited pipeline. A newline in a path under
+`.ssd/` is pathological; an accent is a Tuesday in a French codebase.
+
+**The sweep, which shrank the audit's own finding.** The audit graded the under-swept class on
+`grep -c '\-z'` across four scripts — a measure of a missing flag, not of an exposure. The real sweep
+found the library enumerates git paths in exactly **two** places: `migrate.sh` (fixed in iteration B)
+and `diff_files()` (this defect). `store.sh` and `issue-sync.sh` never enumerate paths at all. The
+audit was right that the class was under-swept and wrong about how far it spread — wrong in the
+direction that made the finding sound worse, which is the harder bias to notice.
+
+**The process change matters more than the one-liner.** `code-reviewer` → **1.8.0**: Phase 3.5 gains
+step 8, *"Was the CLASS swept, or only the instance?"* — before accepting a fix as closed, grep the
+project for the pattern it addresses. Three findings inside two weeks were closed at the wrong
+granularity, and each time the reviewer read the diff carefully and the diff was not where the rest of
+the defect lived. Step 8 also requires the adversarial probe list to be derived from *this project's*
+defect history: round 1 of v2.11.0 ran seven probes against the new rule and non-ASCII paths was not
+one of them, in a repo whose own epic had already produced a MAJOR of exactly that class.
+
+**Parity 281 → 291** (+10). Five assertions red against the unfixed enumerator, verified by reversion,
+plus a live control outside the fixture. One of the ten passed for the wrong reason on the first red
+run — the accented case was masked by the ASCII control still sitting in the diff — and the fixture now
+removes the control from the index and asserts that it is gone.
+
+---
+
 ## [2.11.0] — 2026-09-01
 
 ### The gate finally checks a rails invariant — and the check falsified the audit that asked for it

@@ -2571,6 +2571,115 @@ test_fixture_store_link_blanket_mode() {
 }
 
 
+# D1 (Feynman audit, post-v2.11.0) — `git diff --name-only` C-QUOTES any path containing non-ASCII
+# bytes: it wraps the path in double quotes and octal-escapes the bytes. Every downstream path
+# comparison in gate-rules.sh then misses, so SIX of the twelve rules go silently blind — including
+# `no-leaky-state`, which ADR-0017 and the published guide both call the primary enforcement of the
+# privacy boundary. Present since v1.5.0 (ee3b897), 27 releases.
+#
+# The identical class was found and fixed in migrate.sh in this same epic (iteration B, MAJOR-1) with
+# `-z`, and the sweep stopped at that one file. THIS fixture is the sweep. It pins the behaviour, not
+# the implementation, so a future change from core.quotepath=false to -z stays free.
+test_fixture_diff_files_handles_non_ascii_paths() {
+  echo "fixture: diff-files-handles-non-ascii-paths"
+  local tdir out; tdir=$(fixture_setup "diff-nonascii")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/archive .ssd/features methodology
+  printf 'project:\n  name: t\nssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  echo 1.0.0 > VERSION
+  echo base > a.txt
+  git add -A -f >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+  git checkout -q -b feat
+
+  # --- 1. CONTROL. An ascii machine-state file, force-added. The rule must FAIL, or nothing below
+  #        proves anything about encoding.
+  printf 'x\n' > .ssd/archive/plain.md
+  git add -A -f >/dev/null 2>&1; git commit -qm "ascii leak" >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules no-leaky-state 2>&1)
+  _assert "diff-files-handles-non-ascii-paths" "CONTROL: an ascii policy-ignored file is caught" \
+    "$(echo "$out" | grep -q '^FAIL no-leaky-state' && echo 0 || echo 1)"
+
+  # --- 2. THE DEFECT. Same directory, same policy, same force-add. Only the filename differs.
+  #        The ascii control is REMOVED FROM THE INDEX first: with it still in the diff the rule FAILs
+  #        anyway and this assertion passes for the wrong reason. Caught on the red run — an assertion
+  #        that cannot fail for its stated reason is the defect class this suite keeps producing.
+  git rm -q --cached .ssd/archive/plain.md >/dev/null 2>&1; rm -f .ssd/archive/plain.md
+  printf 'x\n' > .ssd/archive/café.md
+  git add -A -f >/dev/null 2>&1; git commit -qm "accented leak, ascii control removed" >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules no-leaky-state 2>&1)
+  _assert "diff-files-handles-non-ascii-paths" "the ascii control really is out of the diff" \
+    "$(echo "$out" | grep -q 'plain.md' && echo 1 || echo 0)"
+  _assert "diff-files-handles-non-ascii-paths" "an ACCENTED policy-ignored file is caught too" \
+    "$(echo "$out" | grep -q '^FAIL no-leaky-state' && echo 0 || echo 1)"
+  _assert "diff-files-handles-non-ascii-paths" "the FAIL names the accented path, unquoted" \
+    "$(echo "$out" | grep -q 'café' && echo 0 || echo 1)"
+
+  # --- 3. Spaces and apostrophes survive today and must keep surviving.
+  printf 'x\n' > ".ssd/archive/with space.md"
+  printf 'x\n' > ".ssd/archive/quote'name.md"
+  git add -A -f >/dev/null 2>&1; git commit -qm "space + apostrophe" >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules no-leaky-state 2>&1)
+  _assert "diff-files-handles-non-ascii-paths" "a space in the path is still caught" \
+    "$(echo "$out" | grep -q 'with space' && echo 0 || echo 1)"
+  _assert "diff-files-handles-non-ascii-paths" "an apostrophe in the path is still caught" \
+    "$(echo "$out" | grep -q "quote'name" && echo 0 || echo 1)"
+
+  # --- 4. rails-walked reads the same enumerator. A release whose ONLY feature dir is accented and
+  #        carries no review returned `SKIP :: release touches no .ssd/features/ directory` — a
+  #        reassuring sentence for a check that did not run.
+  mkdir -p .ssd/features/café-auth
+  printf -- '---\nskill: brief\n---\n' > .ssd/features/café-auth/00-brief.md
+  echo 1.1.0 > VERSION
+  git add -A -f >/dev/null 2>&1; git commit -qm "release, accented dir, unreviewed" >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
+  _assert "diff-files-handles-non-ascii-paths" "rails-walked sees an accented feature dir" \
+    "$(echo "$out" | grep -q '^FAIL rails-walked' && echo 0 || echo 1)"
+  _assert "diff-files-handles-non-ascii-paths" "rails-walked does NOT claim the release touched no feature dir" \
+    "$(echo "$out" | grep -q 'touches no .ssd/features/ directory' && echo 1 || echo 0)"
+
+  # --- 5. frontmatter-valid: a MIXED diff. It validated the ascii artifact and silently skipped the
+  #        accented one, so the FAIL was real but the coverage was partial and unreportable.
+  if python3 -c "import yaml" >/dev/null 2>&1; then
+    cp "$VALIDATOR" methodology/; cp -R "$SCHEMAS_DIR" methodology/
+    mkdir -p .ssd/features/plain-auth
+    printf -- '---\nskill: brief\n---\nmissing every other required field\n' > .ssd/features/plain-auth/00-brief.md
+    printf -- '---\nskill: brief\n---\nmissing every other required field\n' > .ssd/features/café-auth/00-brief.md
+    git add -A -f >/dev/null 2>&1; git commit -qm "two invalid briefs, one accented" >/dev/null 2>&1
+    out=$(bash "$GATE_SCRIPT" --base main --rules frontmatter-valid 2>&1)
+    _assert "diff-files-handles-non-ascii-paths" "frontmatter-valid reports the ascii artifact" \
+      "$(echo "$out" | grep -q 'plain-auth' && echo 0 || echo 1)"
+    _assert "diff-files-handles-non-ascii-paths" "frontmatter-valid reports the accented one in the SAME diff" \
+      "$(echo "$out" | grep -q 'café-auth' && echo 0 || echo 1)"
+  fi
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+
+# D12 + D13a (Feynman audit post-v2.11.0) — two documents asserted things the system contradicted.
+# Both fixes are prose, so they would normally be unpinnable and free to rot. These three assertions
+# make them checkable, which is the whole principle the audit argued for: prefer a dumb check that
+# runs to a paragraph that has to be trusted.
+test_fixture_doc_claims_are_true() {
+  echo "fixture: doc-claims-are-true"
+  local core="$REPO_ROOT/methodology/core.md"
+  local phases="$REPO_ROOT/ssd/chapters/phases.md"
+  local wf="$REPO_ROOT/.github/workflows/quality.yml"
+  # D13a: phases.md quotes a core.md ratchet tooth. Before v2.11.2 it quoted "tag every release" and
+  # `grep -cwi tag methodology/core.md` returned 0 — a quoted phrase attributed to a document that
+  # did not contain it, and the cite for the whole release-tagging obligation.
+  local phrase="Every release is tagged on its merge commit"
+  _assert "doc-claims-are-true" "core.md §4 carries the release-tagging ratchet tooth" \
+    "$(grep -qF "$phrase" "$core" && echo 0 || echo 1)"
+  _assert "doc-claims-are-true" "phases.md quotes that tooth VERBATIM, so the citation resolves" \
+    "$(grep -qF "$phrase" "$phases" && echo 0 || echo 1)"
+  # D12: quality.yml claimed "no branch protection is required, by design" while an active ruleset
+  # required pull_request + required_signatures on every branch.
+  _assert "doc-claims-are-true" "quality.yml no longer claims no branch protection is required" \
+    "$(grep -q "no branch protection is required, by design" "$wf" && echo 1 || echo 0)"
+}
+
+
 test_fixture_migrate_apply_old
 test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
@@ -2627,6 +2736,8 @@ test_fixture_rails_walked
 test_fixture_assert_rejects_non_integer
 test_fixture_frontmatter_valid_names_schemaless
 test_fixture_store_link_blanket_mode
+test_fixture_diff_files_handles_non_ascii_paths
+test_fixture_doc_claims_are_true
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

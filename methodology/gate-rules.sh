@@ -295,11 +295,27 @@ is_git_repo() {
 diff_files() {
   # Files changed in HEAD vs BASE (default mode), or staged vs HEAD (--staged mode).
   # Empty if not a git repo.
+  #
+  # `core.quotepath=false` IS LOAD-BEARING, not hygiene (Feynman audit post-v2.11.0, D1). By default
+  # git C-QUOTES any path containing non-ASCII bytes — it wraps the path in double quotes and
+  # octal-escapes the bytes, so `.ssd/archive/café.md` arrives as `".ssd/archive/caf\303\251.md"`.
+  # Every downstream path comparison then misses, and SIX of the twelve rules read this function:
+  # no-leaky-state, rails-walked, frontmatter-valid, feature-flag-present, adr-delta, feynman-clean.
+  # Verified by control test: an ascii policy-ignored file FAILed no-leaky-state and an accented one
+  # in the same directory PASSed while genuinely tracked — the privacy boundary going quiet on a leak.
+  # Present since v1.5.0 (ee3b897), 27 releases, and the identical class had already been found and
+  # fixed in migrate.sh's `ls-files -z` in this same epic. The sweep stopped at one file.
+  #
+  # Why not `-z`: it also survives a path containing a literal NEWLINE, which quotepath=false does not
+  # — but it changes this function's contract from newline- to NUL-delimited and forces all six
+  # consumers to move together. A newline in a path under .ssd/ is pathological; an accent is a
+  # Tuesday in a French codebase. That residual gap is a known, narrower one and is recorded here
+  # rather than left for the next reader to rediscover.
   is_git_repo || { echo ""; return; }
   if [[ "$MODE" == "staged" ]]; then
-    git -C "$PROJECT_ROOT" diff --cached --name-only 2>/dev/null
+    git -C "$PROJECT_ROOT" -c core.quotepath=false diff --cached --name-only 2>/dev/null
   else
-    git -C "$PROJECT_ROOT" diff --name-only "$BASE"...HEAD 2>/dev/null
+    git -C "$PROJECT_ROOT" -c core.quotepath=false diff --name-only "$BASE"...HEAD 2>/dev/null
   fi
 }
 
