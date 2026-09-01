@@ -6,6 +6,58 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.11.1] — 2026-09-01
+
+### The leak detector returned PASS on a leaked file, if the filename was not ASCII
+
+A post-release `/feynman` audit ([report](.ssd/milestones/2026-09-01-post-v2.11.0-audit/feynman.md))
+control-tested `no-leaky-state` with one variable changed — the filename:
+
+```
+.ssd/archive/plain.md   →  FAIL no-leaky-state :: 1 file(s) gitignored by policy but tracked
+.ssd/archive/café.md    →  PASS no-leaky-state :: no gitignored-by-policy files in diff
+                           git's own view: ".ssd/archive/caf\303\251.md"   ·   the file IS tracked
+```
+
+`diff_files()` ran `git diff --name-only` without `core.quotepath=false`, so git C-quoted every
+non-ASCII path — wrapping it in double quotes and octal-escaping the bytes — and every downstream path
+comparison missed. **Six of the twelve rules read that function**, and the worst affected is the one
+ADR-0017 and the published guide both call *the primary enforcement of the privacy boundary*.
+
+Present since **v1.5.0 (`ee3b897`), 27 releases.** Not a v2.11.0 regression — v2.11.0 is where someone
+finally looked. `rails-walked`, added in v2.11.0, inherited it: a release whose only feature directory
+was accented and carried no review returned `SKIP :: release touches no .ssd/features/ directory`, a
+reassuring sentence for a check that did not run.
+
+**The fix is one line, and the audit had the shape wrong.** It assumed `-z`, copying `migrate.sh`'s
+fix. Tested first: `-c core.quotepath=false` returns raw UTF-8 for accents, spaces, apostrophes and
+umlauts alike, while `-z` would change the function's contract from newline- to NUL-delimited and force
+all six consumers to move together. Taken, with the residual recorded in the function: a path
+containing a literal newline still breaks a newline-delimited pipeline. A newline in a path under
+`.ssd/` is pathological; an accent is a Tuesday in a French codebase.
+
+**The sweep, which shrank the audit's own finding.** The audit graded the under-swept class on
+`grep -c '\-z'` across four scripts — a measure of a missing flag, not of an exposure. The real sweep
+found the library enumerates git paths in exactly **two** places: `migrate.sh` (fixed in iteration B)
+and `diff_files()` (this defect). `store.sh` and `issue-sync.sh` never enumerate paths at all. The
+audit was right that the class was under-swept and wrong about how far it spread — wrong in the
+direction that made the finding sound worse, which is the harder bias to notice.
+
+**The process change matters more than the one-liner.** `code-reviewer` → **1.8.0**: Phase 3.5 gains
+step 8, *"Was the CLASS swept, or only the instance?"* — before accepting a fix as closed, grep the
+project for the pattern it addresses. Three findings inside two weeks were closed at the wrong
+granularity, and each time the reviewer read the diff carefully and the diff was not where the rest of
+the defect lived. Step 8 also requires the adversarial probe list to be derived from *this project's*
+defect history: round 1 of v2.11.0 ran seven probes against the new rule and non-ASCII paths was not
+one of them, in a repo whose own epic had already produced a MAJOR of exactly that class.
+
+**Parity 281 → 291** (+10). Five assertions red against the unfixed enumerator, verified by reversion,
+plus a live control outside the fixture. One of the ten passed for the wrong reason on the first red
+run — the accented case was masked by the ASCII control still sitting in the diff — and the fixture now
+removes the control from the index and asserts that it is gone.
+
+---
+
 ## [2.11.0] — 2026-09-01
 
 ### The gate finally checks a rails invariant — and the check falsified the audit that asked for it

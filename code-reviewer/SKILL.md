@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.7.0
+**Version:** 1.8.0
 
 ## Purpose
 Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabilities, performance issues, and maintainability problems before they reach production. Be ruthless but constructive—the goal is better code, not crushed developers.
@@ -27,7 +27,7 @@ Conduct rigorous, adversarial code reviews that catch bugs, security vulnerabili
 ```yaml
 ---
 skill: code-reviewer
-version: 1.7.0
+version: 1.8.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>
@@ -169,6 +169,22 @@ For each added defensive branch, enumerate the states it can enter:
    post-save, sender filter, race with other signals).
 7. **New configuration knob:** If the fix adds a setting / env var, what's the default behavior if it's
    missing? Does the default break existing users?
+8. **Was the CLASS swept, or only the instance?** Before accepting a fix as closed, grep the whole
+   project for the pattern it addresses. If the fix appears in exactly one file and the pattern appears
+   in several, the finding was closed at the wrong granularity and the review is not done.
+
+   > **Why this step exists.** Three findings inside two weeks came from fixing an instance and leaving
+   > the class: `git ls-files -z` went into `migrate.sh` and nowhere else, so `gate-rules.sh` stayed
+   > blind to non-ASCII paths for 27 releases and took the leak detector with it; a
+   > `frontmatter-valid` remediation fixed one branch of a conditional and left the other asserting
+   > something false for four releases; and `rails-walked` shipped carrying a defect its own author had
+   > fixed in a neighbouring file the same day. In each case the reviewer read the diff carefully and
+   > the diff was not where the rest of the defect lived. *(Feynman audit post-v2.11.0, D1/D3.)*
+
+**Derive the probe list from the project's own defect history, not from this list alone.** Round 1 of
+v2.11.0 ran seven adversarial probes against a new gate rule and non-ASCII paths was not among them —
+in a repo whose own epic had already produced a MAJOR of exactly that class. A review whose attack
+surface ignores what has already bitten this codebase is thorough in the wrong direction.
 
 Each bullet that applies gets its own finding if the code doesn't address it. A PR that "fixes a race
 condition by adding an IntegrityError handler" that silently drops records under a secondary race is not
@@ -566,6 +582,14 @@ small fix-ups where producing a second file is overkill.
 
 ## Changelog
 
+- **1.8.0** (2026-09-01) — Phase 3.5 gains step 8, **"Was the CLASS swept, or only the instance?"**:
+  before accepting a fix as closed, grep the project for the pattern it addresses. Added because three
+  findings inside two weeks were closed at the wrong granularity — `-z` went into one of four scripts
+  and left the leak detector blind to non-ASCII paths for 27 releases; a `frontmatter-valid` fix
+  corrected one branch of a conditional and left the other asserting something false for four
+  releases; and a new gate rule shipped carrying a defect its own author had fixed next door the same
+  day. Also: derive the adversarial probe list from the project's own defect history, not from the
+  static list alone (Feynman audit post-v2.11.0, D1/D3).
 - **1.7.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the `## Profile-Aware
   Behavior` section. The profile *concept* is gone library-wide; finding-severity reporting collapses
   to the former `standard` default — **MINOR inline, NIT summarized** (new § "Finding-Severity
