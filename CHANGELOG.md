@@ -6,6 +6,148 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.13.0] — 2026-09-01
+
+### `rail_deviations` is written by something, and read by something — ADR-0019
+
+**Recovers the orphaned v2.12.1 release** (see below) and ships D11's code.
+
+`ssd/rails.md` promised since v1.15.0 that *"every skipped step appears in `rail_deviations:`"*.
+Measured 2026-09-01: **zero** such fields across 15 workstreams, no script wrote one, and the only
+occurrence in the library was a test fixture's YAML *input*. This is the last of the three conditions
+the audit set for moving the posture from `drifting` toward `calibrated`.
+
+**`methodology/deviation.sh`** — `record --slug --step --reason` (a rail step skipped) and
+`override --slug --rule --reason` (a FAILing gate rule shipped past). **`deviations-recorded`** in
+`gate-rules.sh` is the reader, and they ship together on purpose: a writer nothing reads decays into
+exactly the silence that produced zero records in a year.
+
+**The forgery is defeated, and it was the design's headline risk.** `reason` is free text landing in a
+YAML file the gate parses with a hand-rolled awk walker. A writer that interpolated it would let one
+argument create two records:
+
+```
+--reason "ran out of time
+      - kind: override
+        rule: feynman-clean"     →  exactly ONE record; the text is stored as reason data
+```
+
+**`--step` and `--rule` validate too** — `safe_dump` makes a value *safe*, nothing makes it *true*, and
+`--step 47` would satisfy a check it does not describe. The valid rule names are **derived from
+`gate-rules.sh`**, never hardcoded, because a hardcoded list goes stale the first time a rule is added
+and then silently accepts a name that no longer exists.
+
+**`fcntl.flock`, not `flock(1)`** — absent on BSD/macOS, verified before choosing. Released by the OS on
+exit, so there is no stale-lock state to detect.
+
+### Two things the spec got wrong, both caught by measuring
+
+**The spec said `safe_dump` the document.** That destroys **every comment in `current.yml`** — its own
+"machine-managed" header and the interior note this repo's file carries. Shipped instead as: `safe_dump`
+the **record fragment**, splice those lines in textually. Forgery-resistance and comment preservation,
+neither traded.
+
+**And D6's rationale for single-line normalisation was false.** It claimed a multi-line reason spans
+indented continuation lines the awk walker skips. Measured: `safe_dump` emits
+`reason: "a\nb"` — one line, escapes inline. Mechanism 1 alone gives both properties, so normalisation
+is **cosmetic, not load-bearing**; it buys a legible reason instead of an escaped blob. Corrected in the
+architect spec and in ADR-0019 rather than left standing.
+
+**How that was caught is the part worth keeping:** the first two assertions written for normalisation
+**could not fail** — reverting the line changed nothing and the suite stayed green. They were restated
+to test the property normalisation actually has, and those bite. An assertion that cannot fail is the
+defect class this project keeps producing, and this time it produced the diagnosis.
+
+### Recovered: v2.12.1 never reached `main`
+
+PR #51 was stacked on #50. **#50 merged to `main` at 16:31; #51 merged at 17:00 — into the branch that
+had already been merged.** GitHub reported `MERGED`, the checks were green, and the content never
+arrived: ADR-0019, the first runbook, D7's correction and the 2.12.1 entry all sat in a dead branch.
+Nothing warned.
+
+Recovered by cherry-pick, and worth naming as a hazard the tooling does not cover: **a stacked PR whose
+base merges first can still merge "successfully" into an orphaned base.** #49 made stacked PRs *run
+CI*; it did not make them *land*.
+
+### CI caught a portability defect macOS could not — in the test, not the code
+
+`quality / gate-rules parity test` went red on ubuntu with **1 of 324** failing, green on macOS. The
+assertion for the file-mode fix read `stat -f %Lp … || stat -c %a …` — **BSD first**. On GNU `-f` is
+`--file-system`: the call *succeeds* with something else entirely, so the `||` fallback is unreachable.
+
+**That is the exact defect `file_mtime()` in `gate-rules.sh` was written to fix** — GNU form first, each
+branch integer-validated — reproduced one release after Phase 3.5 step 8 ("was the CLASS swept?") was
+added to catch it. There was a fixture pinning that *one function* and nothing stopping the next `stat`
+call in the library from repeating the mistake.
+
+Fixed by reading the mode with `python3`, which the fixture already requires and which has no BSD/GNU
+surface at all — better than getting the flags right. And the class is now closed:
+**`no-unsanctioned-stat`** asserts that shipped scripts invoke `stat` only inside `file_mtime()`.
+Verified by planting one in `store.sh`.
+
+**Parity 303 → 329** (+26), each group verified by reversion.
+
+---
+
+## [2.12.1] — 2026-09-01
+
+### D11's design closes its three blockers — and round 2 found a MAJOR in the round-2 fix
+
+Design-only. No code, no behaviour change. `block_conditions_met` moves **false → true**.
+
+**S1 — the `reason` string is untrusted input.** Closed by two mechanisms, both required. Structural
+`yaml.safe_dump` of a constructed dict makes a forged record impossible; **single-line normalisation**
+closes a second problem `safe_dump` alone creates — a multi-line scalar is emitted across indented
+continuation lines that the gate's hand-rolled awk reader skips, so the record would be structurally
+valid and its reason *unreadable to the consumer*.
+
+**S2 — no recovery path.** Closed by `.bak` before mutating (matching `migrate.sh`'s existing
+`backup_pj()` rather than inventing a second convention) and by
+**[`docs/runbooks/ssd-state-recovery.md`](docs/runbooks/ssd-state-recovery.md) — the library's first
+runbook.** `docs/runbooks/` did not exist in this repository at all, so **rails invariant 8 has never
+been satisfiable until now.** It applies today, before `deviation.sh` exists, because `migrate.sh`
+already mutates `.ssd/` state.
+
+**S3 — the lost-update race.** systems-designer said *"prefer the lock"*. Taken literally as `flock(1)`
+that would have been a portability defect on the maintainer's own machine — **`command -v flock` is
+absent on macOS**, the same family as `stat -f`/`stat -c` and `sed -i ''`, which have produced three
+defects here. The writer is already `python3`, where `fcntl.flock` exists, is atomic, and is released
+by the OS on process exit — **no stale-lock state to detect**, which is strictly better than the
+portable `mkdir`-lock alternative that needs both.
+
+### The round-2 pass found a MAJOR in the round-2 fix
+
+D7 originally claimed the in-lock mtime re-check *"converts a silent lost update into a loud one."*
+**It does not:**
+
+```
+T0  orchestrator reads current.yml          (holds a copy)
+T1  deviation.sh locks, re-checks mtime → unchanged since ITS read → writes
+T2  orchestrator writes `phase` from the T0 copy → the deviation is gone
+```
+
+The lock protects **the writer**. The loss happens in the **orchestrator's** write, which nothing there
+observes — and a coder reading the original paragraph would have concluded the hazard was handled.
+
+The real mitigation was already in the design and D7 failed to cite it: **`deviations-recorded` detects
+it one boundary later.** A lost deviation means the release arrives with a skipped step and no record,
+and the rule FAILs. Not prevention — detection, by the paired reader, which is this feature's whole
+thesis rather than an exception to it. D7 now states precisely what is prevented, what is not, and what
+catches it.
+
+**Also from round 2:** `--step` and `--rule` are user input too. `safe_dump` makes them *safe*; nothing
+made them *true*. `--step 47` or `--rule feynman-clen` would write a well-formed record naming
+something that does not exist and satisfy a check it does not describe. Both now validate and exit 2.
+
+**ADR-0019** written — the record schema is a public contract that lands in `current.yml`, is parsed by
+the gate, and is what a future `/ssd ship --force` writes. ADR-0012 Pillar 5 and ADR-0016's addendum
+both reasoned from this trace existing; this is the missing half.
+
+`tests_exist` stays **false**, correctly: no code exists, and the fixtures named in D6 and D8 are the
+coder's first obligation.
+
+---
+
 ## [2.12.0] — 2026-09-01
 
 ### Rail step 2 was never a deviation — and running it once proved the fix half wrong

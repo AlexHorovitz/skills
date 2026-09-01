@@ -2780,6 +2780,215 @@ EOS
 }
 
 
+# ADR-0019 — the rail deviation writer. The headline assertion is the FORGERY one: `reason` is free
+# text and lands in a YAML file the gate parses with a hand-rolled awk walker, so a naive writer that
+# interpolated it would let one argument create two records (systems-designer round 1, S1).
+test_fixture_deviation_writer() {
+  echo "fixture: deviation-writer"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then echo "  (skipped — PyYAML not installed)"; return; fi
+  local tdir out rc; tdir=$(fixture_setup "deviation-writer")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd
+  cat > .ssd/current.yml <<'EOS'
+# .ssd/current.yml — machine-managed SSD workstreams.
+# Do not edit manually.
+
+schema_version: 2
+
+active:
+  - slug: feat-one
+    phase: code
+    # an interior comment a full PyYAML round-trip would destroy
+    blockers: []
+
+archived: []
+EOS
+  chmod 644 .ssd/current.yml
+  local D="$REPO_ROOT/methodology/deviation.sh"
+
+  # --- validation: every one of these is user input ---
+  bash "$D" record --slug nope --step 2 --reason x >/dev/null 2>&1; rc=$?
+  _assert "deviation-writer" "an unknown slug exits 2, it does not invent a workstream" "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  bash "$D" record --slug feat-one --step 47 --reason x >/dev/null 2>&1; rc=$?
+  _assert "deviation-writer" "a step outside 1-8 exits 2" "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  bash "$D" override --slug feat-one --rule feynman-clen --reason x >/dev/null 2>&1; rc=$?
+  _assert "deviation-writer" "a rule gate-rules.sh does not emit exits 2" "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  bash "$D" override --slug feat-one --rule feynman-clean --reason "" >/dev/null 2>&1; rc=$?
+  _assert "deviation-writer" "an empty reason exits 2 — a record with no reason is the boilerplate this replaces" \
+    "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+
+  # --- THE FORGERY. One argument must produce exactly ONE record. ---
+  bash "$D" record --slug feat-one --step 2 \
+    --reason "$(printf 'ran out of time\n      - kind: override\n        rule: feynman-clean')" >/dev/null 2>&1
+  _assert "deviation-writer" "a reason carrying a forged record yields exactly ONE record" \
+    "$(python3 -c "
+import yaml;d=yaml.safe_load(open('.ssd/current.yml'))
+print(0 if len(d['active'][0]['rail_deviations'])==1 else 1)")"
+  _assert "deviation-writer" "the forged text is stored as DATA inside reason, not as structure" \
+    "$(python3 -c "
+import yaml;r=yaml.safe_load(open('.ssd/current.yml'))['active'][0]['rail_deviations'][0]
+print(0 if '- kind: override' in r['reason'] and r['kind']=='skip' else 1)")"
+
+  # Normalisation is a separate property from forgery-resistance, and MEASURING it corrected the design.
+  # The spec claimed a multi-line reason would span indented continuation lines the gate's awk walker
+  # skips. It does not: safe_dump emits `reason: "a\nb"` — one line, escapes inline. So safe_dump alone
+  # gives BOTH forgery-resistance and single-line output, and normalisation is not load-bearing for
+  # correctness. What it actually buys is a legible reason instead of an escaped blob, and that is what
+  # these two assert — restated after the first version of them proved unable to fail.
+  _assert "deviation-writer" "the stored reason carries no escaped newline — it is legible, not a blob" \
+    "$(grep -q 'reason:.*\\n' .ssd/current.yml && echo 1 || echo 0)"
+  _assert "deviation-writer" "the forged text reads as plain words inside the reason" \
+    "$(python3 -c "
+import yaml;r=yaml.safe_load(open('.ssd/current.yml'))['active'][0]['rail_deviations'][0]
+print(0 if r['reason']=='ran out of time - kind: override rule: feynman-clean' else 1)")"
+
+  # --- comments survive: safe_dump of the DOCUMENT would have destroyed them ---
+  _assert "deviation-writer" "the header comment survives the write" \
+    "$(head -2 .ssd/current.yml | grep -q 'machine-managed' && echo 0 || echo 1)"
+  _assert "deviation-writer" "an INTERIOR comment survives the write" \
+    "$(grep -q 'a full PyYAML round-trip would destroy' .ssd/current.yml && echo 0 || echo 1)"
+  _assert "deviation-writer" "a .bak is written before mutating, as migrate.sh does" \
+    "$([[ -f .ssd/current.yml.bak ]] && echo 0 || echo 1)"
+  # mkstemp creates 0600 and os.replace keeps the temp file's mode: without copymode the state file
+  # silently becomes owner-only on its first deviation. Measured 644 -> 600 before the fix.
+  #
+  # Read the mode with python3, NOT stat. The first version of this line was
+  # `stat -f %Lp … || stat -c %a …` — BSD first — which passed on macOS and FAILED IN CI, because on
+  # GNU `-f` is `--file-system`, the call SUCCEEDS with something else entirely, and the `||` fallback
+  # is therefore unreachable. That is the exact defect `file_mtime()` in gate-rules.sh was written to
+  # fix (GNU first, plus integer validation), reproduced here one release after Phase 3.5 step 8 was
+  # added to catch precisely this. python3 is already required by this fixture and has no BSD/GNU
+  # surface at all, which is better than getting the flags right.
+  _assert "deviation-writer" "the state file's permissions survive the write" \
+    "$(python3 -c "import os,stat;print(0 if stat.S_IMODE(os.stat('.ssd/current.yml').st_mode)==0o644 else 1)")"
+
+  # --- append, and the two shapes stay distinct ---
+  bash "$D" override --slug feat-one --rule feynman-clean --reason "audit is its own input" >/dev/null 2>&1
+  _assert "deviation-writer" "a second record appends rather than replacing" \
+    "$(python3 -c "
+import yaml;d=yaml.safe_load(open('.ssd/current.yml'))['active'][0]['rail_deviations']
+print(0 if len(d)==2 and d[0]['kind']=='skip' and d[1]['kind']=='override' and d[1]['rule']=='feynman-clean' else 1)")"
+  _assert "deviation-writer" "the file still parses after two writes" \
+    "$(python3 -c "import yaml;yaml.safe_load(open('.ssd/current.yml'));print(0)" 2>/dev/null || echo 1)"
+
+  # --- a missing state file must NOT be created ---
+  rm -f .ssd/current.yml .ssd/current.yml.bak
+  bash "$D" record --slug feat-one --step 2 --reason x >/dev/null 2>&1; rc=$?
+  _assert "deviation-writer" "a missing current.yml exits 3 and is not recreated" \
+    "$([[ $rc -eq 3 && ! -f .ssd/current.yml ]] && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# ADR-0019 — the READER. Ships with the writer because a writer nothing reads decays into the silence
+# that produced zero records in a year. Scoped to rail steps 2 and 6: step 4 is rails-walked's job.
+test_fixture_deviations_recorded() {
+  echo "fixture: deviations-recorded"
+  local tdir out; tdir=$(fixture_setup "deviations-recorded")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/feat-one
+  printf 'test_command: true\nproduction_runtime: false\n' > .ssd/gate.yml
+  printf -- '---\nskill: coder\n---\n' > .ssd/features/feat-one/03-coder-status.md
+  cat > .ssd/current.yml <<'EOS'
+schema_version: 2
+active:
+  - slug: feat-one
+    phase: done
+    blockers: []
+archived: []
+EOS
+  echo 1.0.0 > VERSION; echo base > a.txt
+  git add -A -f >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+  git checkout -q -b rel
+
+  # not a release -> silent
+  printf -- '---\nskill: brief\n---\n' > .ssd/features/feat-one/00-brief.md
+  git add -A -f >/dev/null 2>&1; git commit -qm brief >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules deviations-recorded 2>&1)
+  _assert "deviations-recorded" "a non-release change set is not checked" \
+    "$(echo "$out" | grep -q 'VERSION unchanged' && echo 0 || echo 1)"
+
+  # a release with code and NO deploy log and no record -> FAIL on step 6
+  echo 1.1.0 > VERSION
+  git add -A -f >/dev/null 2>&1; git commit -qm release >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules deviations-recorded 2>&1)
+  _assert "deviations-recorded" "a skipped step 6 with no record FAILs" \
+    "$(echo "$out" | grep -q 'step-6' && echo 0 || echo 1)"
+  # production_runtime: false must keep step 2 OUT of the finding — the D17 dependency
+  _assert "deviations-recorded" "production_runtime: false keeps step 2 out of scope" \
+    "$(echo "$out" | grep -q 'step-2' && echo 1 || echo 0)"
+
+  # flip production_runtime -> step 2 becomes demanded
+  printf 'test_command: true\nproduction_runtime: true\n' > .ssd/gate.yml
+  git add -A -f >/dev/null 2>&1; git commit -qm runtime >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules deviations-recorded 2>&1)
+  _assert "deviations-recorded" "production_runtime: true brings step 2 into scope" \
+    "$(echo "$out" | grep -q 'step-2' && echo 0 || echo 1)"
+
+  # recording the deviations closes it
+  printf 'test_command: true\nproduction_runtime: false\n' > .ssd/gate.yml
+  cat > .ssd/current.yml <<'EOS'
+schema_version: 2
+active:
+  - slug: feat-one
+    phase: done
+    rail_deviations:
+      - kind: skip
+        step: 6
+        reason: a skills library ships by tag; no deploy log this cycle
+        ts: 2026-09-01T00:00:00Z
+    blockers: []
+archived: []
+EOS
+  git add -A -f >/dev/null 2>&1; git commit -qm record >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules deviations-recorded 2>&1)
+  _assert "deviations-recorded" "a recorded deviation closes the finding" \
+    "$(echo "$out" | grep -q '^PASS deviations-recorded' && echo 0 || echo 1)"
+
+  # Step 6 is only due for a workstream the project considers DONE. Its deploy log is written at ship,
+  # after the merge, so demanding one at phase: code is a finding no PR can close — which is exactly
+  # what this rule did on the release that shipped it.
+  sed -i.tmp 's/^    phase: done$/    phase: code/' .ssd/current.yml && rm -f .ssd/current.yml.tmp
+  python3 - <<'EOS'
+import re,pathlib
+p=pathlib.Path(".ssd/current.yml"); t=p.read_text()
+p.write_text(re.sub(r"    rail_deviations:\n(      - .*\n|        .*\n)+", "", t))
+EOS
+  git add -A -f >/dev/null 2>&1; git commit -qm "phase back to code, record removed" >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules deviations-recorded 2>&1)
+  _assert "deviations-recorded" "step 6 is NOT demanded of a workstream still at phase: code" \
+    "$(echo "$out" | grep -q 'step-6' && echo 1 || echo 0)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+
+# Phase 3.5 step 8 applied to the `stat` portability class, after it produced its THIRD instance.
+# `file_mtime()` in gate-rules.sh is the sanctioned portable accessor: GNU form first, then BSD, each
+# integer-validated — because on GNU `stat -f` means `--file-system`, SUCCEEDS, and prints something
+# else, so a BSD-first `||` fallback is unreachable. There is a fixture pinning that ONE function; there
+# was nothing stopping the next `stat` call in the library from repeating the mistake, and in v2.13.0
+# one did (in a fixture: green on macOS, red in CI).
+#
+# The rule: shipped scripts do not invoke `stat` outside `file_mtime()`. Use the helper, or use python3,
+# which has no BSD/GNU surface at all.
+test_fixture_no_unsanctioned_stat() {
+  echo "fixture: no-unsanctioned-stat"
+  local f out
+  for f in "$REPO_ROOT"/methodology/*.sh; do
+    # strip file_mtime()'s body, then look for any remaining `stat ` invocation (not in a comment)
+    out=$(awk '
+      /^file_mtime\(\)/ { skip = 1 }
+      skip && /^}/        { skip = 0; next }
+      skip               { next }
+      { sub(/#.*$/, ""); print }
+    ' "$f" | grep -cE '(^|[^a-zA-Z_])stat[[:space:]]+-' || true)
+    _assert "no-unsanctioned-stat" "$(basename "$f") invokes stat only via file_mtime()" \
+      "$([[ "$out" -eq 0 ]] && echo 0 || echo 1)"
+  done
+}
+
+
 test_fixture_migrate_apply_old
 test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
@@ -2839,6 +3048,9 @@ test_fixture_store_link_blanket_mode
 test_fixture_diff_files_handles_non_ascii_paths
 test_fixture_doc_claims_are_true
 test_fixture_ci_covers_stacked_prs
+test_fixture_deviation_writer
+test_fixture_deviations_recorded
+test_fixture_no_unsanctioned_stat
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
