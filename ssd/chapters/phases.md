@@ -299,7 +299,9 @@ Invoke `systems-designer` deploy checklist for the feature about to ship.
 **At the gate boundary,** `feynman-clean` (ADR-0016) FAILs if a `feynman.md` in this change set
 reports `contradicted` or `theater` claims — the project's own account of itself failed against
 evidence, and shipping on it means shipping on a belief already falsified. Surface the rule's detail
-verbatim; the override is the ordinary logged `/ssd ship --force`, never a silent pass. The rule SKIPs
+verbatim, and never pass silently. **There is no `--force` to reach for** — the flag ADR-0012
+Pillar 5 describes is not built (Feynman audit 2026-09-01, C4), so overriding this rule means merging
+a red gate on purpose and recording the reason by hand in the deploy log. The rule SKIPs
 when no audit is in scope: **not running `/feynman` is not a violation**, so a SKIP or PASS here means
 "no failing audit in this change set", not "the beliefs are calibrated." Say that when you report it.
 

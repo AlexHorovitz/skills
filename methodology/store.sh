@@ -34,7 +34,6 @@
 
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 PROJECT_YML="$ROOT/.ssd/project.yml"
 CONFIRM=0

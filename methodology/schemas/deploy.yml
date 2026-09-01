@@ -1,0 +1,24 @@
+# Frontmatter schema — deploy log (05-deploy.md / deploy.md).
+# v1: structural validation only, matching the other schemas' stance.
+#
+# WHY THIS EXISTS (Feynman audit 2026-09-01, C7): the deploy log is the artifact that records what
+# actually shipped, and nothing validated it — including the deploy log written for this very
+# release. Rail step 6's output was the least-checked artifact in the library.
+#
+# `skill:` is typed `string`: the 11 existing deploy logs split between `ssd` (5) and
+# `systems-designer` (6), reflecting that rail step 6 has been produced by the orchestrator in a
+# skills library and by systems-designer elsewhere. Both are legitimate; the field records which.
+
+skill: deploy
+applies_to:
+  - 05-deploy.md
+  - deploy.md                # multi-iteration features use this name in iterations/<iter>/
+
+required:
+  skill: string
+  version: string
+  produced_at: timestamp
+  produced_by: string
+  project: string
+  scope: string
+  consumed_by: list

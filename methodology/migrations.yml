@@ -149,7 +149,7 @@ migrations:
     adr: ADR-0016
     title: "feynman-clean gate rule + /feynman proposed at milestone, verify, audit, pre-ship"
     detect: null
-    guidance: "The gate gained a `feynman-clean` rule: any .ssd/**/feynman.md in a change set must report zero `contradicted` and zero `theater` claims, or the gate FAILs (logged `/ssd ship --force` override, as with any FAILable rule). Nothing to install — the rule ships in gate-rules.sh and SKIPs in every project with no audit in scope, so a project that never runs /feynman is unaffected. What changed for you: /ssd milestone now offers the audit at Step 0.5 (declining is recorded, not silent), and /ssd verify re-proposes it. Run /feynman before your next release to see what it says."
+    guidance: "The gate gained a `feynman-clean` rule: any .ssd/**/feynman.md in a change set must report zero `contradicted` and zero `theater` claims, or the gate FAILs (like any FAILable rule it is loud, not a wall — but note there is no `--force` flag: overriding means merging a red gate on purpose and recording why by hand). Nothing to install — the rule ships in gate-rules.sh and SKIPs in every project with no audit in scope, so a project that never runs /feynman is unaffected. What changed for you: /ssd milestone now offers the audit at Step 0.5 (declining is recorded, not silent), and /ssd verify re-proposes it. Run /feynman before your next release to see what it says."
 
   - id: private-mode
     introduced_in: "2.9.0"
@@ -163,3 +163,12 @@ migrations:
     title: "private mode retrofit (gitignore_mode: private + untrack tracked SSD artifacts)"
     detect: "project.yml.ssd.gitignore_mode is `private` AND .gitignore carries the `# ssd:gitignore-mode=private` sentinel (executable probe: detect_private_mode() in migrate.sh)"
     apply: "DRY-RUN BY DEFAULT. `--elect private-mode` enumerates every tracked path under .ssd/ and docs/{decisions,runbooks,architecture}, prints the complete list (flagging any docs/ file SSD did not create), prints the history-is-not-rewritten warning, and exits 10 having mutated nothing. With `--confirm`: writes methodology/private.gitignore verbatim, sets gitignore_mode/branch_pattern/issue_tracking, promotes gate inputs into project.yml, then `git rm --cached` the enumerated paths. Idempotent: an already-private project is a no-op."
+
+  - id: rails-walked-gate-rule
+    introduced_in: "2.11.0"
+    applies_to: project
+    kind: guided
+    adr: ADR-0003
+    title: "rails-walked gate rule — the first mechanical check of a rails invariant"
+    detect: null
+    guidance: "The gate gained a `rails-walked` rule. When a change set bumps VERSION — i.e. claims to be a release — every .ssd/features/<slug>/ directory it touches must contain a code review whose frontmatter says `gate_pass: true` (rails invariant 4). Nothing to install: the rule ships in gate-rules.sh, SKIPs on every non-release change set, and SKIPs for any project that keeps no .ssd/features/ artifacts. Why it exists: for eleven releases the gate enforced eleven hygiene rules and NOT ONE rails invariant, and a release shipped with no code review at all while every check was green. If this rule FAILs on your next release, the honest reading is that a feature shipped unreviewed — not that the rule is too strict."

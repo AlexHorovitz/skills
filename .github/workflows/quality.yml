@@ -36,6 +36,18 @@ jobs:
           git fetch origin main:refs/remotes/origin/main
           bash methodology/gate-rules.sh --base origin/main
 
+  shellcheck:
+    name: shellcheck
+    # C10 of the 2026-09-01 Feynman audit: 5,124 lines of shell had NEVER been linted, and
+    # `lint_results:` recorded "shellcheck exit 127 — pre-existing environment gap" in five artifacts
+    # across three features. The gap was `brew install shellcheck`. Running it in CI is what stops the
+    # finding from silently reopening the next time a local environment lacks the tool.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run shellcheck
+        run: shellcheck -S warning methodology/*.sh scripts/*.sh
+
   parity-test:
     name: gate-rules parity test
     runs-on: ubuntu-latest

@@ -518,6 +518,13 @@ rule_frontmatter_valid() {
       detail="$count artifact(s) validated against schemas"
       [[ "$skipped" -gt 0 ]] && detail="$detail; $skipped unvalidated (no matching schema)"
       emit "PASS" "frontmatter-valid" "$detail"
+    elif [[ "$skipped" -gt 0 ]]; then
+      # NOT "no SSD artifacts in scope" (Feynman audit 2026-09-01, C7). This branch fires when the
+      # change set contains artifacts the validator SAW and had no schema for. Reporting absence there
+      # is a false statement, and it stood for four releases because the previous fix to this block
+      # (Feynman audit 2026-08-19, C4) corrected the `count > 0` path and left this one asserting
+      # something untrue. A SKIP still means "nothing was checked" — it now says WHY.
+      emit "SKIP" "frontmatter-valid" "$skipped artifact(s) in scope, none with a matching schema"
     else
       emit "SKIP" "frontmatter-valid" "no SSD artifacts in scope"
     fi
@@ -911,7 +918,9 @@ rule_issue_sync_current() {
 # against evidence the audit produced — shipping on that is shipping on a belief that has already
 # been falsified, which is the one thing the gate exists to make loud.
 #
-# This is a FAILable rule with the standard logged `/ssd ship --force` override, exactly like
+# This is a FAILable rule. The override is NOT `/ssd ship --force` — that flag does not exist
+# (Feynman audit 2026-09-01, C4); overriding means merging a red gate deliberately and writing the
+# reason into the deploy log by hand. Structurally it FAILs exactly like
 # `wip-commits`. It is NOT hard enforcement in the ADR-0012 Pillar 5 sense — that pillar rejects
 # branch-protection walls and required merge checks, not loud gate signals.
 #
@@ -920,6 +929,60 @@ rule_issue_sync_current() {
 # it every cycle is precisely the ritualization its own Phase 3 exists to catch — so "no report" is a
 # SKIP, never a FAIL. Stated limitation: an audit committed on an earlier branch is not re-read here,
 # so a PASS means "no failing audit in this change set", not "this project's beliefs are calibrated".
+# ----- rails-walked ----------------------------------------------------------
+# Rails invariant 4 ("at least one code review with `gate_pass: true`") had NO mechanical check for
+# the library's entire life. PR #41 and PR #43 each shipped a release with ZERO review artifacts while
+# every gate check was green and CI passed (Feynman audit 2026-09-01, C3 — "the single most likely
+# self-deception: that the gate enforces the rails"). Eleven rules existed and not one of them was a
+# rails invariant. This is the first.
+#
+# TRIGGER: the change set bumps VERSION — i.e. it claims to be a release. Deliberately NOT every
+# commit: you commit a brief long before a review exists, and a rule that demanded one would fire on
+# every honest work-in-progress push and be disabled within a week.
+#
+# SCOPE LIMITATION, stated rather than implied: the review may live anywhere under the feature
+# directory, including `iterations/<iter>/code-review/`. The rule does NOT verify the review belongs
+# to the iteration being shipped — that needs iteration resolution and is not built. A PASS here means
+# "this feature has been reviewed at some point," not "this iteration was reviewed."
+rule_rails_walked() {
+  local files
+  files=$(diff_files)
+  if [[ -z "$files" ]]; then
+    emit "SKIP" "rails-walked" "no diff (vs $BASE)"
+    return
+  fi
+  if ! echo "$files" | grep -qx "VERSION"; then
+    emit "SKIP" "rails-walked" "no release in this change set (VERSION unchanged) — invariant 4 is checked at release boundaries"
+    return
+  fi
+  local dirs
+  dirs=$(echo "$files" | sed -n 's#^\(\.ssd/features/[^/]*\)/.*#\1#p' | sort -u)
+  if [[ -z "$dirs" ]]; then
+    emit "SKIP" "rails-walked" "release touches no .ssd/features/ directory"
+    return
+  fi
+  local missing=() checked=0 d rev found
+  while IFS= read -r d; do
+    [[ -z "$d" ]] && continue
+    [[ -d "$PROJECT_ROOT/$d" ]] || continue
+    checked=$((checked + 1))
+    found=0
+    # Only code-reviewer artifacts count. `gate_pass:` also appears in feynman.md frontmatter, and a
+    # passing epistemic audit is not a code review — matching it would let the wrong artifact satisfy
+    # the invariant.
+    while IFS= read -r rev; do
+      [[ -z "$rev" ]] && continue
+      if grep -q "^gate_pass: true" "$rev" 2>/dev/null; then found=1; break; fi
+    done < <(find "$PROJECT_ROOT/$d" -type f \( -name '*code-review*.md' -o -name 'round-*.md' \) 2>/dev/null)
+    [[ $found -eq 1 ]] || missing+=("$d")
+  done <<< "$dirs"
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    emit "FAIL" "rails-walked" "release with no code review carrying gate_pass: true for: ${missing[*]} — rails invariant 4"
+  else
+    emit "PASS" "rails-walked" "$checked feature dir(s) in this release each carry a code review with gate_pass: true"
+  fi
+}
+
 rule_feynman_clean() {
   is_git_repo || { emit "SKIP" "feynman-clean" "not a git repo"; return; }
   local reports=() f
@@ -998,6 +1061,7 @@ should_run no-leaky-state     && rule_no_leaky_state
 should_run store-link-sane    && rule_store_link_sane
 should_run skill-version-sync && rule_skill_version_sync
 should_run migration-manifest-current && rule_migration_manifest_current
+should_run rails-walked       && rule_rails_walked
 should_run feynman-clean      && rule_feynman_clean
 should_run issue-sync-current && rule_issue_sync_current
 

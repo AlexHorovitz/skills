@@ -168,3 +168,29 @@ suggests running the audit once before the next release.
 - **Pillar 5 read** → if a future rule genuinely needs to *prevent* a merge rather than fail loudly,
   that is a real Pillar 5 exception and needs its own ADR. This one is not that, and should not be
   cited as precedent for it.
+
+---
+
+## Addendum — 2026-09-01: the override this ADR reasoned from does not exist
+
+This ADR's § "Why this is not a Pillar 5 violation" rests on the premise that a FAILing rule has a
+sanctioned escape: *"`ssd/chapters/enforcement.md` has always documented the escape as 'use
+`/ssd ship --force` (logged)'"*, and the decision table above lists `/ssd ship --force` as the
+override for a failing audit.
+
+**Neither the flag nor the log exists.** A Feynman audit on 2026-09-01 (claims C2 and C4) established
+by execution that no script in the library accepts `--force`, and that `rail_deviations:` — the
+durable trace ADR-0012 Pillar 5 says the override would leave — has never been written by any tool
+across 15 workstreams. The premise was true about the *documentation* and false about the *system*.
+
+**What this does and does not change.** The decision stands: `feynman-clean` is a loud FAILable rule,
+not a wall, and it exits 1 rather than blocking a merge. What changes is the reasoning's honesty — the
+rule is *less* gated than this ADR claimed, not more, because a developer overriding it leaves no
+machine-readable trace at all. The four documents that asserted the override have been corrected to
+say what actually happens: you merge a red gate deliberately and write the reason into the deploy
+log's rail-deviations table by hand.
+
+**Consequence for the Pillar 5 argument.** "Keep the override, keep the trace" was the load-bearing
+clause. The trace is the half that was never built, so implementing it — a real `--force` that writes
+`rail_deviations:` — is now a *feature* with its own ADR, deliberately not folded into the refactor
+that found this (hard rule 4).
