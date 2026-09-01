@@ -138,6 +138,8 @@ Banned commits:
 - Every commit must pass CI/CD
 - Every commit must maintain or improve code coverage
 - Every commit must be deployable
+- **Every release is tagged on its merge commit** — an untagged release is a version you cannot
+  navigate back to, which is the ratchet slipping backward
 - No "we'll fix it in the next commit" mentality
 
 Like a ratchet, you can only move forward, never backward. If you need to save work that's not ready, use:

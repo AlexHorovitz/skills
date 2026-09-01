@@ -308,16 +308,25 @@ when no audit is in scope: **not running `/feynman` is not a violation**, so a S
 Invoke `systems-designer` to produce the platform-appropriate deploy checklist. The checklist is defined and maintained by that skill — do not duplicate it here. The systems-designer skill covers web, mobile (iOS/Android), and macOS desktop deployment readiness.
 
 **Tag the release (after PR merge).** Once the release PR merges to `main`, tag the merge commit
-so the release history stays navigable (the missing-tags drift the post-v1.19 milestone fixed):
+so the release history stays navigable. The post-v1.19 milestone closed this drift **for v1.16.0
+and later**; releases below that line are still untagged, so treat "the drift was fixed" as scoped,
+not finished (Feynman audit post-v2.11.0, D13):
 
 ```bash
-git tag -a v<version> <merge-sha> -m "v<version> — <one-line summary>"
+git tag -a v<version> <merge-sha> -F - <<'MSG'
+v<version> — <one-line summary>
+MSG
 git push origin v<version>
 ```
 
+**Use `-F`, not `-m`.** Backticks inside a double-quoted `-m` string are command-substituted by the
+shell before git ever sees them, which mangled the `v2.10.0` annotation in this very repo. A release
+summary is exactly the kind of text that contains a backticked identifier.
+
 This should be done by hand or via a release script; the orchestrator does **not** auto-tag,
 because tagging pushes to the remote and outward-facing actions stay under explicit human
-control. This step closes the post-merge half of the `core.md` §4 ratchet ("tag every release").
+control. This step closes the post-merge half of the `core.md` §4 ratchet — the tooth that reads
+**"Every release is tagged on its merge commit"**, quoted verbatim so the citation is checkable.
 (Refactor R7, post-v1.19 milestone.)
 
 ---

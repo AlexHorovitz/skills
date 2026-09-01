@@ -6,6 +6,53 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.11.2] — 2026-09-01
+
+### Two documents asserted things the system contradicted — and prose fixes now carry assertions
+
+Closes **D12** and **D13a** from the [post-v2.11.0 audit](.ssd/milestones/2026-09-01-post-v2.11.0-audit/feynman.md).
+Both were documentation-truth defects, the kind that normally get fixed and then rot again because
+nothing checks them. Each fix ships with a parity assertion.
+
+**D12 — `quality.yml` claimed there was no branch protection here.** There is: an active `Overwatch`
+ruleset on every branch requiring `pull_request` and `required_signatures`, which is why every push
+this session reported *"Bypassed rule violations"*.
+
+The reconciliation matters more than the correction, because ADR-0012 Pillar 5 explicitly rejects
+branch-protection walls and three other files repeat that doctrine. **The doctrine survives intact:**
+Pillar 5 rejects *required status checks that gate a merge*, and the ruleset does not list
+`required_status_checks` — so neither CI job can block anything, and admins bypass it anyway.
+A PR requirement is a paper trail, not a wall. The header now says that, and cites the `gh api`
+invocation that proves it.
+
+**D13a — `phases.md` quoted a `core.md` line that did not exist.** It put *"tag every release"* in
+quotation marks and attributed it to `core.md` §4. `grep -cwi tag methodology/core.md` returned **0**,
+and §4 is the Ratchet Principle — tests, types, lint, coverage. The entire release-tagging obligation
+cited a phrase from a document that had never contained it.
+
+Fixed at the source rather than by deleting the claim: `core.md` §4's ratchet-mechanism list gains the
+tooth **"Every release is tagged on its merge commit"** — an untagged release is a version you cannot
+navigate back to, which is precisely the ratchet slipping backward. `phases.md` now quotes that tooth
+verbatim, so the citation resolves.
+
+**Two more things the same sentence was getting wrong.** It claimed the post-v1.19 milestone *fixed*
+the missing-tags drift; that milestone closed it for **v1.16.0 and later**, and 16 releases below that
+line remain untagged. The text now says the fix was scoped, not finished. And the copyable `git tag`
+example used `-m` with a double-quoted summary — backticks inside which the shell command-substitutes
+before git sees them, exactly what mangled the `v2.10.0` annotation in this repo. The example now uses
+`-F` with a heredoc, and says why.
+
+**Parity 291 → 294.** Three assertions, each verified to fail against the unfixed text: the tooth
+present in `core.md`, the quote verbatim in `phases.md`, and `quality.yml` no longer asserting the
+false claim. The third one **failed on its first run against the fix** — the new header quoted the old
+claim verbatim while explaining it, and a grep cannot tell an assertion from a quotation. The
+correction was reworded rather than the assertion weakened.
+
+No `migrations.yml` entry: the tagging obligation already existed in `phases.md`, so nothing a project
+must do has changed — only whether the citation for it resolves.
+
+---
+
 ## [2.11.1] — 2026-09-01
 
 ### The leak detector returned PASS on a leaked file, if the filename was not ASCII
