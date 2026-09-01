@@ -192,6 +192,10 @@ with open(lock_path, "w") as lock:
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".current.yml.")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(out)
+    # mkstemp creates 0600 and os.replace keeps the TEMP file's mode, so without this the state file
+    # silently becomes owner-only on its first deviation (measured: 644 -> 600). Copy the original's
+    # mode across before replacing.
+    shutil.copymode(path, tmp)
     os.replace(tmp, path)                 # atomic; R4
 
 print(f"DEVIATION recorded :: {slug} :: {record.get('step') or record.get('rule')} :: {reason[:60]}")

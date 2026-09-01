@@ -1021,6 +1021,22 @@ rule_rails_walked() {
   fi
 }
 
+# A workstream's declared phase, from current.yml. Crude walker, consistent with the rest of this file.
+workstream_phase() {
+  local want="$1" file="$PROJECT_ROOT/.ssd/current.yml"
+  [[ -f "$file" ]] || return 0
+  awk -v want="$want" '
+    /^[[:space:]]*-[[:space:]]+slug:[[:space:]]*/ {
+      s = $0; sub(/^[^:]*:[[:space:]]*/, "", s); gsub(/["'"'"']/, "", s); gsub(/[[:space:]]+$/, "", s)
+      inw = (s == want); next
+    }
+    inw && /^[[:space:]]+phase:[[:space:]]*/ {
+      v = $0; sub(/^[^:]*:[[:space:]]*/, "", v); gsub(/["'"'"']/, "", v); gsub(/[[:space:]]+$/, "", v)
+      print v; exit
+    }
+  ' "$file"
+}
+
 # Steps recorded in a workstream's rail_deviations. Crude walker, consistent with yaml_get and
 # parse_active_workstreams — the gate deliberately carries no PyYAML dependency (ADR-0019 D3).
 workstream_deviation_steps() {
@@ -1079,7 +1095,13 @@ rule_deviations_recorded() {
        && ! echo "$recorded" | grep -qx "2"; then
       missing+=("$slug:step-2(systems-designer)")
     fi
-    if ! find "$PROJECT_ROOT/$d" -type f -name '*deploy*.md' 2>/dev/null | read -r _ \
+    # Step 6 (deploy log) is checked ONLY for a workstream the project considers done. Found by this
+    # rule's first run, on the release that shipped it: the deploy log is written AT SHIP, after the
+    # merge (`phases.md` § "Tag the release (after PR merge)"), so demanding one from a feature at
+    # `phase: code` is a finding no PR can ever close. Measured across three past releases — v2.10.0
+    # added none, v2.9.0 and v2.8.0 each added one, and those were for the PRECEDING iteration.
+    if [[ "$(workstream_phase "$slug")" == "done" ]] \
+       && ! find "$PROJECT_ROOT/$d" -type f -name '*deploy*.md' 2>/dev/null | read -r _ \
        && ! echo "$recorded" | grep -qx "6"; then
       missing+=("$slug:step-6(deploy-log)")
     fi

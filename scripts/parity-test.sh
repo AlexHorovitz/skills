@@ -2803,6 +2803,7 @@ active:
 
 archived: []
 EOS
+  chmod 644 .ssd/current.yml
   local D="$REPO_ROOT/methodology/deviation.sh"
 
   # --- validation: every one of these is user input ---
@@ -2848,6 +2849,10 @@ print(0 if r['reason']=='ran out of time - kind: override rule: feynman-clean' e
     "$(grep -q 'a full PyYAML round-trip would destroy' .ssd/current.yml && echo 0 || echo 1)"
   _assert "deviation-writer" "a .bak is written before mutating, as migrate.sh does" \
     "$([[ -f .ssd/current.yml.bak ]] && echo 0 || echo 1)"
+  # mkstemp creates 0600 and os.replace keeps the temp file's mode: without copymode the state file
+  # silently becomes owner-only on its first deviation. Measured 644 -> 600 before the fix.
+  _assert "deviation-writer" "the state file's permissions survive the write" \
+    "$([[ "$(stat -f %Lp .ssd/current.yml 2>/dev/null || stat -c %a .ssd/current.yml)" == "644" ]] && echo 0 || echo 1)"
 
   # --- append, and the two shapes stay distinct ---
   bash "$D" override --slug feat-one --rule feynman-clean --reason "audit is its own input" >/dev/null 2>&1
@@ -2880,7 +2885,7 @@ test_fixture_deviations_recorded() {
 schema_version: 2
 active:
   - slug: feat-one
-    phase: code
+    phase: done
     blockers: []
 archived: []
 EOS
@@ -2918,7 +2923,7 @@ EOS
 schema_version: 2
 active:
   - slug: feat-one
-    phase: code
+    phase: done
     rail_deviations:
       - kind: skip
         step: 6
@@ -2931,6 +2936,20 @@ EOS
   out=$(bash "$GATE_SCRIPT" --base main --rules deviations-recorded 2>&1)
   _assert "deviations-recorded" "a recorded deviation closes the finding" \
     "$(echo "$out" | grep -q '^PASS deviations-recorded' && echo 0 || echo 1)"
+
+  # Step 6 is only due for a workstream the project considers DONE. Its deploy log is written at ship,
+  # after the merge, so demanding one at phase: code is a finding no PR can close — which is exactly
+  # what this rule did on the release that shipped it.
+  sed -i.tmp 's/^    phase: done$/    phase: code/' .ssd/current.yml && rm -f .ssd/current.yml.tmp
+  python3 - <<'EOS'
+import re,pathlib
+p=pathlib.Path(".ssd/current.yml"); t=p.read_text()
+p.write_text(re.sub(r"    rail_deviations:\n(      - .*\n|        .*\n)+", "", t))
+EOS
+  git add -A -f >/dev/null 2>&1; git commit -qm "phase back to code, record removed" >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules deviations-recorded 2>&1)
+  _assert "deviations-recorded" "step 6 is NOT demanded of a workstream still at phase: code" \
+    "$(echo "$out" | grep -q 'step-6' && echo 1 || echo 0)"
   cd "$REPO_ROOT" || exit 2
   fixture_teardown "$tdir"
 }
