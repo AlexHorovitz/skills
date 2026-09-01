@@ -6,6 +6,92 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.12.0] — 2026-09-01
+
+### Rail step 2 was never a deviation — and running it once proved the fix half wrong
+
+Two things, and the second contradicts the first in a way worth reading.
+
+**D17 closed: `production_runtime` is now declared, not inferred.** The audit graded rail step 2 as
+theatre — `systems-designer` had run **0 times in 13 features** while 13 deploy logs filed the skip
+under `## Rail deviations`. Reading the rails settled it: step 2 says *"for projects with real
+production runtime"* and invariant 2 says *"where applicable"*. **The rails were correct the whole
+time.** The theatre was the paperwork — thirteen near-identical deviation paragraphs, each citing the
+document that sanctioned the skip.
+
+`production_runtime` now lives in the **committed** `.ssd/gate.yml`, resolved through the existing
+ADR-0015 `gate_input()` chain, because `.ssd/project.yml` is gitignored under selective mode and never
+reaches a second clone or CI — the exact problem that file exists to solve. `rails.md` and
+`phases.md` read it, and `phases.md` states the consequence that actually matters: **do not file an
+out-of-scope step under `## Rail deviations`.** A step that never applied is scope, not a deviation.
+
+**Then we ran `/ssd systems-designer` on the next real feature to test the declaration — and it
+returned `block_conditions_met: false` with three findings, two of which the architect spec did not
+contain.**
+
+The declaration held for **half** its reach. Deployment checklists, load tests, capacity models and
+cost dashboards were correctly N/A. These were not:
+
+- **S1 — the `reason` string is untrusted input reaching a YAML writer.** A reason containing a newline
+  and a plausible key **forges records** if the writer ever interpolates rather than `yaml.safe_dump`s.
+  Third occurrence in this library of *a value that looks like a key being treated as one*.
+- **S3 — a lost-update race.** The orchestrator reads `current.yml` to advance `phase`; the writer
+  appends and `mv`s; the orchestrator writes from its stale copy. The deviation vanishes with no error.
+  `chapters/state.md`'s "one session per project" is a **convention, not a lock**, and does not
+  constrain a script and an LLM writing the same file inside one session.
+- **S2 — no recovery path.** `migrate.sh` writes `current.yml.bak` before mutating; this design does
+  not, and `docs/runbooks/` has nothing about state files.
+
+**The condition is on the wrong axis.** *"Does this project serve users?"* is not what determines
+whether the pass is worth running. *"Does this change touch state that can be corrupted, or input that
+can be forged?"* is. A skills library answers **no** to the first and **yes** to the second. Narrowing
+the declaration is recorded as follow-on work with this artifact as its evidence, not folded in here.
+
+**So rail step 2 has now run exactly once in the library's history, and it blocked a ship.** That is
+the strongest available evidence that the step is not theatre — and it arrived immediately after the
+step was declared out of scope.
+
+### `rails-walked` fired in anger for the first time — on this release, wrongly
+
+The rule shipped in v2.11.0 FAILed this very PR:
+
+```
+FAIL rails-walked :: release with no code review carrying gate_pass: true
+                     for: .ssd/features/rail-deviations — rails invariant 4
+```
+
+**A false positive, and a real design defect.** The rule had conflated *"a feature directory appears in
+this release"* with *"this feature shipped code"*. `rail-deviations` is at `phase: design` — brief,
+architect spec, systems-designer pass, **no code** — so invariant 4 was not yet due. Its previous fires
+had all been fixtures and the historical sweep; nothing had exercised a release that also opens a new
+workstream.
+
+**The discriminator took two attempts, and the first one was measured before it shipped.** Testing for
+a `coder-status` alone flipped **v1.25.1** from PASS to SKIP — its `ssd-2.0-greenlight` directory holds
+`00-brief.md` + `04-code-review.md` and no coder-status, and exempting a directory that *contains a
+review* trades a false positive for a false negative. The test is now **coder-status OR review**:
+
+| Case | Verdict |
+|---|---|
+| `rail-deviations` — brief + architect + systems-designer | SKIP, not due ✓ |
+| v1.25.1 `ssd-2.0-greenlight` — brief + review | PASS, checked ✓ |
+| **#43 `ssd-store`** — brief + architect + coder-status, no review | **FAIL** ✓ the case the rule exists for |
+
+Both flips were caught by re-running the rule over **all 25 VERSION-bumping commits in history**, not by
+reasoning. A known remaining gap, stated rather than left to be found: a feature shipping code with no
+coder-status at all violates invariant **3**, and this rule does not check invariant 3.
+
+**Parity 300 → 303.** Three assertions, each verified by reversion — including one pinning the v1.25.1
+case specifically, because that is the flip that would silently weaken the rule.
+
+**Also in this release:** the `rail-deviations` (D11) workstream opens at `phase: design` with a brief,
+an architect spec, ADR-0019 named, and one blocker carrying all three findings. **No code ships** —
+`block_conditions_met: false` means `/ssd ship` refuses, which is the gate working rather than a
+setback. Its `rail_deviations` field is deliberately **empty**: nothing was skipped, and it is the first
+workstream that can say so truthfully.
+
+---
+
 ## [2.11.3] — 2026-09-01
 
 ### A stacked pull request triggered no CI at all, and the merge button still looked green

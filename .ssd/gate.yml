@@ -3,6 +3,18 @@
 # first (local override), then this file (the committed floor).
 test_command: bash scripts/parity-test.sh
 
+# Does this project have a production runtime? (v2.12.0 — Feynman audit post-v2.11.0, D17)
+#
+# Committed HERE and not only in project.yml, because project.yml is gitignored under selective mode
+# and therefore never reaches a second clone or a CI runner (ADR-0015 P2, the problem this file exists
+# to solve). Resolution follows the existing gate_input() chain: project.yml first as a local
+# override, then this committed floor.
+#
+# false  -> the systems-designer half of rail step 2 is OUT OF SCOPE. Nothing to deviate from, and
+#           nothing to file under `## Rail deviations` in a deploy log.
+# absent -> assume true. A project that has not said otherwise is assumed to have users.
+production_runtime: false
+
 # feature_flag_marker is intentionally unset. This repo ships markdown skills and bash/python
 # enforcement — it has no runtime feature-flag system to grep for, so `feature-flag-present` SKIPs
 # by design rather than by omission. Documented here so the SKIP is a recorded decision and not a

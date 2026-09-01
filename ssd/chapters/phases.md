@@ -166,6 +166,16 @@ it does not gate or change either skill's contract.
 **Skip `/ssd design` when systems-designer is N/A** (e.g., a markdown-only documentation project,
 a skills library, an ADR-only PR). The user can invoke `architect` directly.
 
+**Declare it once instead of deciding it every cycle** (v2.12.0). Set `production_runtime: false` in
+`.ssd/gate.yml` — the **committed** floor, so it travels to every clone and CI runner; `.ssd/project.yml`
+is gitignored and can only override it locally (the ADR-0015 `gate_input()` chain). The
+`systems-designer` half of rail step 2 is then **out of scope** for the project. The consequence that matters is what you then *do not* write: **do not file it
+under `## Rail deviations` in the deploy log.** A deviation is a step that applied and was skipped; a
+step that never applied is scope, and recording it as a deviation is how thirteen deploy logs came to
+carry near-identical paragraphs citing the very sanction that made them unnecessary (Feynman audit
+post-v2.11.0, D17). If a deploy log needs to say anything, the honest heading is
+**`## Rail steps out of scope for this project`**, written once and cross-referenced thereafter.
+
 ---
 
 ### `/ssd milestone` — Milestone Audit

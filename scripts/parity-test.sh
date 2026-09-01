@@ -2441,7 +2441,9 @@ test_fixture_rails_walked() {
   _assert "rails-walked" "a non-release change set does not demand a review" \
     "$(echo "$out" | grep -q 'VERSION unchanged' && echo 0 || echo 1)"
 
-  # 2. A RELEASE touching a feature dir with no passing review. This is PR #43 exactly.
+  # 2. A RELEASE touching a feature dir with no passing review. This is PR #43 exactly — including its
+  #    03-coder-status.md, without which the dir is design-only and invariant 4 is not yet due.
+  printf -- '---\nskill: coder\n---\n' > .ssd/features/feat/03-coder-status.md
   echo 1.1.0 > VERSION
   git add -A -f >/dev/null 2>&1; git commit -qm release >/dev/null 2>&1
   out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
@@ -2464,6 +2466,40 @@ test_fixture_rails_walked() {
   out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
   _assert "rails-walked" "gate_pass: false does not satisfy invariant 4" \
     "$(echo "$out" | grep -q '^FAIL rails-walked' && echo 0 || echo 1)"
+
+  # 4b. A feature dir with NO coder-status has shipped no CODE, so invariant 4 is not yet due. The
+  #     rule FAILED on exactly this in v2.12.0 — its first fire in anger, on a release that opened a
+  #     new workstream at phase: design. It conflated "a feature dir appears in this release" with
+  #     "this feature shipped code". A design-only dir must not be demanded a code review.
+  mkdir -p .ssd/features/design-only
+  printf -- '---\nskill: brief\n---\n' > .ssd/features/design-only/00-brief.md
+  printf -- '---\nskill: architect\n---\n' > .ssd/features/design-only/01-architect.md
+  git add -A -f >/dev/null 2>&1; git commit -qm "a design-only feature dir in a release" >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
+  _assert "rails-walked" "a design-only feature dir (no coder-status) is not demanded a review" \
+    "$(echo "$out" | grep -q 'design-only' && echo 1 || echo 0)"
+  # And the discriminator must be the coder-status, not the absence of files: add one and it counts.
+  printf -- '---\nskill: coder\n---\n' > .ssd/features/design-only/03-coder-status.md
+  git add -A -f >/dev/null 2>&1; git commit -qm "code was written" >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
+  _assert "rails-walked" "once a coder-status exists, the review IS demanded" \
+    "$(echo "$out" | grep -q 'design-only' && echo 0 || echo 1)"
+  rm -rf .ssd/features/design-only
+  git add -A -f >/dev/null 2>&1; git commit -qm "drop the design-only probe" >/dev/null 2>&1
+
+  # 4c. A dir holding a REVIEW but no coder-status must still be CHECKED, not exempted. The first
+  #     version of the discriminator tested for coder-status alone and flipped v1.25.1's
+  #     ssd-2.0-greenlight (00-brief + 04-code-review) from PASS to SKIP — trading a false positive for
+  #     a false negative. A directory holding a review plainly had something reviewed.
+  mkdir -p .ssd/features/review-no-coder
+  printf -- '---\nskill: brief\n---\n' > .ssd/features/review-no-coder/00-brief.md
+  printf -- '---\nskill: code-reviewer\ngate_pass: false\n---\n' > .ssd/features/review-no-coder/04-code-review.md
+  git add -A -f >/dev/null 2>&1; git commit -qm "a review with no coder-status" >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
+  _assert "rails-walked" "a dir with a review but no coder-status is checked, not exempted" \
+    "$(echo "$out" | grep -q 'review-no-coder' && echo 0 || echo 1)"
+  rm -rf .ssd/features/review-no-coder
+  git add -A -f >/dev/null 2>&1; git commit -qm "drop the review-no-coder probe" >/dev/null 2>&1
 
   # 5. A passing review closes it, including one nested under iterations/<iter>/code-review/.
   mkdir -p .ssd/features/feat/iterations/b/code-review
@@ -2629,6 +2665,8 @@ test_fixture_diff_files_handles_non_ascii_paths() {
   #        reassuring sentence for a check that did not run.
   mkdir -p .ssd/features/café-auth
   printf -- '---\nskill: brief\n---\n' > .ssd/features/café-auth/00-brief.md
+  # coder-status: the dir must have shipped code, or rails-walked correctly treats it as design-only
+  printf -- '---\nskill: coder\n---\n' > .ssd/features/café-auth/03-coder-status.md
   echo 1.1.0 > VERSION
   git add -A -f >/dev/null 2>&1; git commit -qm "release, accented dir, unreviewed" >/dev/null 2>&1
   out=$(bash "$GATE_SCRIPT" --base main --rules rails-walked 2>&1)
