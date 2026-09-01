@@ -977,10 +977,28 @@ rule_rails_walked() {
     emit "SKIP" "rails-walked" "release touches no .ssd/features/ directory"
     return
   fi
-  local missing=() checked=0 d rev found
+  local missing=() checked=0 skipped_design=0 d rev found
   while IFS= read -r d; do
     [[ -z "$d" ]] && continue
     [[ -d "$PROJECT_ROOT/$d" ]] || continue
+    # "Not yet due" = the feature has NEITHER a coder-status NOR a review. Found by this rule's FIRST
+    # FIRE IN ANGER, on v2.12.0 — a release that also opened a new workstream at `phase: design`. The
+    # rule had conflated "a feature dir appears in this release" with "this feature shipped code", and
+    # demanded a code review for a design that had no code to review.
+    #
+    # BOTH halves of the test are load-bearing, and the second was added after the first was measured:
+    #   - coder-status only  ->  v1.25.1's ssd-2.0-greenlight (00-brief + 04-code-review, no
+    #     coder-status) flipped PASS -> SKIP. A directory holding a REVIEW plainly had something
+    #     reviewed; exempting it traded a false positive for a false negative.
+    #   - either artifact present  ->  PR #43's ssd-store (00-brief + 01-architect + coder-status, no
+    #     review) still FAILs, which is the case this rule exists for.
+    #
+    # A feature that ships code with no coder-status at all violates invariant 3 rather than 4, and
+    # this rule does not check invariant 3. Stated so the gap is known, not discovered.
+    if ! find "$PROJECT_ROOT/$d" -type f \( -name '*coder-status*.md' -o -name '*code-review*.md' -o -name 'round-*.md' \) 2>/dev/null | read -r _; then
+      skipped_design=$((skipped_design + 1))
+      continue
+    fi
     checked=$((checked + 1))
     found=0
     # Only code-reviewer artifacts count. `gate_pass:` also appears in feynman.md frontmatter, and a
@@ -994,8 +1012,12 @@ rule_rails_walked() {
   done <<< "$dirs"
   if [[ ${#missing[@]} -gt 0 ]]; then
     emit "FAIL" "rails-walked" "release with no code review carrying gate_pass: true for: ${missing[*]} — rails invariant 4"
+  elif [[ $checked -eq 0 ]]; then
+    emit "SKIP" "rails-walked" "release touches $skipped_design feature dir(s), none with code to review yet"
   else
-    emit "PASS" "rails-walked" "$checked feature dir(s) in this release each carry a code review with gate_pass: true"
+    local detail="$checked feature dir(s) in this release each carry a code review with gate_pass: true"
+    [[ $skipped_design -gt 0 ]] && detail="$detail; $skipped_design design-only dir(s) not yet due"
+    emit "PASS" "rails-walked" "$detail"
   fi
 }
 

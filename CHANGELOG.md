@@ -51,6 +51,39 @@ the declaration is recorded as follow-on work with this artifact as its evidence
 the strongest available evidence that the step is not theatre — and it arrived immediately after the
 step was declared out of scope.
 
+### `rails-walked` fired in anger for the first time — on this release, wrongly
+
+The rule shipped in v2.11.0 FAILed this very PR:
+
+```
+FAIL rails-walked :: release with no code review carrying gate_pass: true
+                     for: .ssd/features/rail-deviations — rails invariant 4
+```
+
+**A false positive, and a real design defect.** The rule had conflated *"a feature directory appears in
+this release"* with *"this feature shipped code"*. `rail-deviations` is at `phase: design` — brief,
+architect spec, systems-designer pass, **no code** — so invariant 4 was not yet due. Its previous fires
+had all been fixtures and the historical sweep; nothing had exercised a release that also opens a new
+workstream.
+
+**The discriminator took two attempts, and the first one was measured before it shipped.** Testing for
+a `coder-status` alone flipped **v1.25.1** from PASS to SKIP — its `ssd-2.0-greenlight` directory holds
+`00-brief.md` + `04-code-review.md` and no coder-status, and exempting a directory that *contains a
+review* trades a false positive for a false negative. The test is now **coder-status OR review**:
+
+| Case | Verdict |
+|---|---|
+| `rail-deviations` — brief + architect + systems-designer | SKIP, not due ✓ |
+| v1.25.1 `ssd-2.0-greenlight` — brief + review | PASS, checked ✓ |
+| **#43 `ssd-store`** — brief + architect + coder-status, no review | **FAIL** ✓ the case the rule exists for |
+
+Both flips were caught by re-running the rule over **all 25 VERSION-bumping commits in history**, not by
+reasoning. A known remaining gap, stated rather than left to be found: a feature shipping code with no
+coder-status at all violates invariant **3**, and this rule does not check invariant 3.
+
+**Parity 300 → 303.** Three assertions, each verified by reversion — including one pinning the v1.25.1
+case specifically, because that is the flip that would silently weaken the rule.
+
 **Also in this release:** the `rail-deviations` (D11) workstream opens at `phase: design` with a brief,
 an architect spec, ADR-0019 named, and one blocker carrying all three findings. **No code ships** —
 `block_conditions_met: false` means `/ssd ship` refuses, which is the gate working rather than a
