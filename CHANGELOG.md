@@ -59,10 +59,15 @@ one-iteration loop, and asking why it existed revealed that **blanket mode, docu
 the artifact store, had no test at all**. New fixture `store-link-blanket-mode`. A `shellcheck` job
 added to CI so the finding cannot silently reopen.
 
-**Parity 264 → 281** (+17), each new fixture verified by reversion. `rails-walked` **SKIPs on the PR
-that ships it** — the change set bumps `VERSION` but touches no `.ssd/features/` directory. The first
-release carrying the rule is one the rule cannot check; that limitation is stated in the rule, in the
-enforcement table, and in the refactor plan rather than left to be discovered.
+**Parity 264 → 281** (+17), each new fixture verified by reversion.
+
+**One more correction, earned the hard way.** The plan, the review and this entry all first claimed
+`rails-walked` would SKIP on the PR that ships it, since a refactor touches no feature directory.
+Running the gate returned **`PASS rails-walked :: 2 feature dir(s)`** — R3's metadata backfill touched
+two `iterations/` directories that both carry passing reviews. Three documents in a release dedicated
+to deleting unchecked claims made the same unchecked claim from reasoning alone, and the new rule
+refuted them on its first real run. The blind spot is real and sized at **6 of 25** historical
+releases; this PR is simply not an instance of it.
 
 Deliberately **not** in this release (hard rule 4): writing `rail_deviations:`, a real `--force`,
 tagging the 16 untagged v1.x releases, forking `rails.md` for a step skipped 13 times out of 13, and

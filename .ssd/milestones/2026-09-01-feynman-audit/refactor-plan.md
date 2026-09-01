@@ -180,10 +180,23 @@ Five independent concerns, each revertable alone. R1 is the only behavioural add
 `rails-walked` proves noisy, unregistering one line in the runner disables it and the fixture will say
 so loudly rather than passing vacuously.
 
-## The blind spot this PR demonstrates on itself
+## The blind spot — and a correction, because I got this wrong in this very file
 
-`rails-walked` will **SKIP** on the very PR that ships it: this change set bumps `VERSION` but touches
-no `.ssd/features/` directory — its artifacts live under `.ssd/milestones/`. The first release to
-carry the rule is one the rule cannot check. That is a real limitation, it is stated in the rule's
-comment and in the enforcement table, and it is written here rather than discovered later by someone
-who trusted a green line.
+This section first claimed `rails-walked` would **SKIP** on the PR that ships it, since a refactor's
+artifacts live under `.ssd/milestones/`. **Then I ran the gate, and it PASSed:**
+
+```
+PASS rails-walked :: 2 feature dir(s) in this release each carry a code review with gate_pass: true
+```
+
+It checked, because R3's backfill touched
+`.ssd/features/github-issue-tracking/iterations/b/` and `.ssd/features/ssd-2.0-cuts/iterations/c/` —
+both of which carry passing reviews. The rule found real feature dirs in the diff **by accident of an
+unrelated item in the same PR.**
+
+The blind spot is still real, and the experiment sizes it: **6 of 25** historical releases SKIP for
+touching no feature directory, including v2.6.0 and v2.7.0 — the two remediation releases from the
+*previous* Feynman audit. A reader who sees `SKIP rails-walked` must not read it as "invariant 4
+held." What is *not* true is that this PR demonstrates it. Three files asserted that it did, on
+reasoning alone, in a change set whose entire purpose is deleting claims nobody checked. The gate
+caught it in one run.

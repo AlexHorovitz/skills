@@ -53,12 +53,20 @@ ways it fires wrongly:
 | Empty `missing` array under `set -u` | guarded by `${#missing[@]} -gt 0` before `${missing[*]}` |
 | `grep -qx "VERSION"` vs a path like `docs/VERSION.md` | `-x` anchors the whole line, so only a top-level `VERSION` triggers |
 
-## 🟡 MINOR-1 — the rule SKIPs on the release that ships it, and 6 of 25 historical releases
+## 🟡 MINOR-1 — a release touching no feature directory is unchecked (6 of 25 in history)
 
-`rails-walked` keys on `.ssd/features/<slug>/` paths in the diff. A release whose artifacts live under
-`.ssd/milestones/` — every refactor and remediation release, including **this one** — is unchecked.
-The experiment shows the real rate: **6 of 25** releases SKIP for this reason, among them v2.6.0 and
-v2.7.0, the two remediation releases from the *previous* Feynman audit.
+`rails-walked` keys on `.ssd/features/<slug>/` paths in the diff, so a release whose artifacts live
+only under `.ssd/milestones/` — the shape of every refactor and remediation release — is unchecked.
+The experiment sizes it: **6 of 25** releases SKIP for this reason, among them v2.6.0 and v2.7.0, the
+two remediation releases from the *previous* Feynman audit.
+
+**Correction, and it is the sharpest finding of this review.** The plan, this section, and the
+CHANGELOG all originally asserted that *this PR* would be an instance — a refactor, therefore no
+feature dir, therefore SKIP. Running the gate returned **PASS: 2 feature dir(s)**, because R3's
+metadata backfill touched two `iterations/` directories that both carry passing reviews. Three
+documents in a change set dedicated to deleting unchecked claims made the same unchecked claim, from
+reasoning, and the rule they were describing refuted them on its first real run. All three are
+corrected. That is the argument for the rule stated better than the rule's own commit message managed.
 
 Not a MAJOR: the rule is strictly better than the nothing it replaces, it states this limitation in
 its own comment, in the enforcement table, and in the refactor plan, and the alternative (require an
