@@ -28,6 +28,16 @@ A feature on the rails passes through these eight steps in order:
    real production runtime, `systems-designer` produces `02-systems-designer.md` immediately
    after, sharing the architect's input. Bundle invocation: `/ssd design <slug>`.
 
+   **The condition is declared, not inferred** (v2.12.0). Resolve `production_runtime` through the
+   ADR-0015 chain — `.ssd/project.yml` first as a local override, then the committed `.ssd/gate.yml`,
+   because `project.yml` is gitignored under selective mode and never reaches CI. `false` puts the
+   `systems-designer` half of this step
+   **out of scope** — there is nothing to deviate from and nothing to record. `true` or absent means
+   it applies, and skipping it *is* a deviation belonging in `rail_deviations`. Before v2.12.0 the
+   condition lived only in this sentence, and a skills library filed the sanctioned N/A as a rail
+   deviation thirteen times, each entry citing the document that sanctioned it (Feynman audit
+   post-v2.11.0, D17). **A step that is out of scope is not a step you skipped.**
+
 3. **Code** — `coder` implements from the architect spec. Output: `03-coder-status.md`
    (frontmatter with files_touched, tests_added, test/lint/typecheck results, feature flag name,
    spec_drift). New code goes behind a feature flag unless it's infrastructure. For
@@ -77,7 +87,8 @@ extend `gate-rules.sh` to read this field.)
 A feature that walks all eight steps produces:
 
 1. A brief (`00-brief.md` or per-iteration equivalent)
-2. A design (`01-architect.md` and, where applicable, `02-systems-designer.md`)
+2. A design (`01-architect.md` and, where applicable, `02-systems-designer.md`) — *"where
+   applicable"* is resolved by `project.yml.ssd.production_runtime`, not by judgment at ship time
 3. A coder status (`03-coder-status.md` or `iterations/<iter>/coder-status.md`)
 4. At least one code review with `gate_pass: true` in frontmatter
 5. A passed methodology gate (`gate-rules.sh` exit 0)
