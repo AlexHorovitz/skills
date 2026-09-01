@@ -6,6 +6,65 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.12.1] — 2026-09-01
+
+### D11's design closes its three blockers — and round 2 found a MAJOR in the round-2 fix
+
+Design-only. No code, no behaviour change. `block_conditions_met` moves **false → true**.
+
+**S1 — the `reason` string is untrusted input.** Closed by two mechanisms, both required. Structural
+`yaml.safe_dump` of a constructed dict makes a forged record impossible; **single-line normalisation**
+closes a second problem `safe_dump` alone creates — a multi-line scalar is emitted across indented
+continuation lines that the gate's hand-rolled awk reader skips, so the record would be structurally
+valid and its reason *unreadable to the consumer*.
+
+**S2 — no recovery path.** Closed by `.bak` before mutating (matching `migrate.sh`'s existing
+`backup_pj()` rather than inventing a second convention) and by
+**[`docs/runbooks/ssd-state-recovery.md`](docs/runbooks/ssd-state-recovery.md) — the library's first
+runbook.** `docs/runbooks/` did not exist in this repository at all, so **rails invariant 8 has never
+been satisfiable until now.** It applies today, before `deviation.sh` exists, because `migrate.sh`
+already mutates `.ssd/` state.
+
+**S3 — the lost-update race.** systems-designer said *"prefer the lock"*. Taken literally as `flock(1)`
+that would have been a portability defect on the maintainer's own machine — **`command -v flock` is
+absent on macOS**, the same family as `stat -f`/`stat -c` and `sed -i ''`, which have produced three
+defects here. The writer is already `python3`, where `fcntl.flock` exists, is atomic, and is released
+by the OS on process exit — **no stale-lock state to detect**, which is strictly better than the
+portable `mkdir`-lock alternative that needs both.
+
+### The round-2 pass found a MAJOR in the round-2 fix
+
+D7 originally claimed the in-lock mtime re-check *"converts a silent lost update into a loud one."*
+**It does not:**
+
+```
+T0  orchestrator reads current.yml          (holds a copy)
+T1  deviation.sh locks, re-checks mtime → unchanged since ITS read → writes
+T2  orchestrator writes `phase` from the T0 copy → the deviation is gone
+```
+
+The lock protects **the writer**. The loss happens in the **orchestrator's** write, which nothing there
+observes — and a coder reading the original paragraph would have concluded the hazard was handled.
+
+The real mitigation was already in the design and D7 failed to cite it: **`deviations-recorded` detects
+it one boundary later.** A lost deviation means the release arrives with a skipped step and no record,
+and the rule FAILs. Not prevention — detection, by the paired reader, which is this feature's whole
+thesis rather than an exception to it. D7 now states precisely what is prevented, what is not, and what
+catches it.
+
+**Also from round 2:** `--step` and `--rule` are user input too. `safe_dump` makes them *safe*; nothing
+made them *true*. `--step 47` or `--rule feynman-clen` would write a well-formed record naming
+something that does not exist and satisfy a check it does not describe. Both now validate and exit 2.
+
+**ADR-0019** written — the record schema is a public contract that lands in `current.yml`, is parsed by
+the gate, and is what a future `/ssd ship --force` writes. ADR-0012 Pillar 5 and ADR-0016's addendum
+both reasoned from this trace existing; this is the missing half.
+
+`tests_exist` stays **false**, correctly: no code exists, and the fixtures named in D6 and D8 are the
+coder's first obligation.
+
+---
+
 ## [2.12.0] — 2026-09-01
 
 ### Rail step 2 was never a deviation — and running it once proved the fix half wrong
