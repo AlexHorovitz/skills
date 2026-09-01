@@ -2851,8 +2851,16 @@ print(0 if r['reason']=='ran out of time - kind: override rule: feynman-clean' e
     "$([[ -f .ssd/current.yml.bak ]] && echo 0 || echo 1)"
   # mkstemp creates 0600 and os.replace keeps the temp file's mode: without copymode the state file
   # silently becomes owner-only on its first deviation. Measured 644 -> 600 before the fix.
+  #
+  # Read the mode with python3, NOT stat. The first version of this line was
+  # `stat -f %Lp … || stat -c %a …` — BSD first — which passed on macOS and FAILED IN CI, because on
+  # GNU `-f` is `--file-system`, the call SUCCEEDS with something else entirely, and the `||` fallback
+  # is therefore unreachable. That is the exact defect `file_mtime()` in gate-rules.sh was written to
+  # fix (GNU first, plus integer validation), reproduced here one release after Phase 3.5 step 8 was
+  # added to catch precisely this. python3 is already required by this fixture and has no BSD/GNU
+  # surface at all, which is better than getting the flags right.
   _assert "deviation-writer" "the state file's permissions survive the write" \
-    "$([[ "$(stat -f %Lp .ssd/current.yml 2>/dev/null || stat -c %a .ssd/current.yml)" == "644" ]] && echo 0 || echo 1)"
+    "$(python3 -c "import os,stat;print(0 if stat.S_IMODE(os.stat('.ssd/current.yml').st_mode)==0o644 else 1)")"
 
   # --- append, and the two shapes stay distinct ---
   bash "$D" override --slug feat-one --rule feynman-clean --reason "audit is its own input" >/dev/null 2>&1
@@ -2955,6 +2963,32 @@ EOS
 }
 
 
+# Phase 3.5 step 8 applied to the `stat` portability class, after it produced its THIRD instance.
+# `file_mtime()` in gate-rules.sh is the sanctioned portable accessor: GNU form first, then BSD, each
+# integer-validated — because on GNU `stat -f` means `--file-system`, SUCCEEDS, and prints something
+# else, so a BSD-first `||` fallback is unreachable. There is a fixture pinning that ONE function; there
+# was nothing stopping the next `stat` call in the library from repeating the mistake, and in v2.13.0
+# one did (in a fixture: green on macOS, red in CI).
+#
+# The rule: shipped scripts do not invoke `stat` outside `file_mtime()`. Use the helper, or use python3,
+# which has no BSD/GNU surface at all.
+test_fixture_no_unsanctioned_stat() {
+  echo "fixture: no-unsanctioned-stat"
+  local f out
+  for f in "$REPO_ROOT"/methodology/*.sh; do
+    # strip file_mtime()'s body, then look for any remaining `stat ` invocation (not in a comment)
+    out=$(awk '
+      /^file_mtime\(\)/ { skip = 1 }
+      skip && /^}/        { skip = 0; next }
+      skip               { next }
+      { sub(/#.*$/, ""); print }
+    ' "$f" | grep -cE '(^|[^a-zA-Z_])stat[[:space:]]+-' || true)
+    _assert "no-unsanctioned-stat" "$(basename "$f") invokes stat only via file_mtime()" \
+      "$([[ "$out" -eq 0 ]] && echo 0 || echo 1)"
+  done
+}
+
+
 test_fixture_migrate_apply_old
 test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
@@ -3016,6 +3050,7 @@ test_fixture_doc_claims_are_true
 test_fixture_ci_covers_stacked_prs
 test_fixture_deviation_writer
 test_fixture_deviations_recorded
+test_fixture_no_unsanctioned_stat
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

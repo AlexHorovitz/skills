@@ -69,7 +69,23 @@ Recovered by cherry-pick, and worth naming as a hazard the tooling does not cove
 base merges first can still merge "successfully" into an orphaned base.** #49 made stacked PRs *run
 CI*; it did not make them *land*.
 
-**Parity 303 → 322** (+19), each group verified by reversion.
+### CI caught a portability defect macOS could not — in the test, not the code
+
+`quality / gate-rules parity test` went red on ubuntu with **1 of 324** failing, green on macOS. The
+assertion for the file-mode fix read `stat -f %Lp … || stat -c %a …` — **BSD first**. On GNU `-f` is
+`--file-system`: the call *succeeds* with something else entirely, so the `||` fallback is unreachable.
+
+**That is the exact defect `file_mtime()` in `gate-rules.sh` was written to fix** — GNU form first, each
+branch integer-validated — reproduced one release after Phase 3.5 step 8 ("was the CLASS swept?") was
+added to catch it. There was a fixture pinning that *one function* and nothing stopping the next `stat`
+call in the library from repeating the mistake.
+
+Fixed by reading the mode with `python3`, which the fixture already requires and which has no BSD/GNU
+surface at all — better than getting the flags right. And the class is now closed:
+**`no-unsanctioned-stat`** asserts that shipped scripts invoke `stat` only inside `file_mtime()`.
+Verified by planting one in `store.sh`.
+
+**Parity 303 → 329** (+26), each group verified by reversion.
 
 ---
 
