@@ -487,6 +487,10 @@ ssd:
   # gate-rules.sh reads project.yml first, then gate.yml.
   # test_command: <cmd>          # local override of gate.yml's test_command
   # feature_flag_marker: <regex> # local override of gate.yml's feature_flag_marker
+  # adr_dir: <path>              # where ADRs live; default docs/decisions/. Set this when the
+  #                              # project keeps TRACKED ADRs elsewhere — under private mode
+  #                              # docs/decisions/ is gitignored, so a project whose spec
+  #                              # requires tracked ADRs must point adr-delta at the real home.
   #
   # UNDER PRIVATE MODE these two are NOT optional and NOT commented: private mode has no committed
   # .ssd/gate.yml, so project.yml is the only place the gate can read them from. Leaving them

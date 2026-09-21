@@ -2208,6 +2208,87 @@ test_fixture_unrecognized_gitignore_mode() {
 # Under private mode docs/decisions/ is gitignored, so an ADR can never appear in a diff. Naive
 # diff-scoping makes adr-delta FAIL demanding a committed ADR delta while no-leaky-state FAILs if
 # one is force-added: both branches FAIL and the gate is UNPASSABLE on any >200-line change.
+test_fixture_adr_delta_custom_dir() {
+  echo "fixture: adr-delta-custom-dir"
+  local tdir out
+  tdir=$(fixture_setup "adr-custom")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd docs/decisions pluto/greens/decisions
+  # The default directory EXISTS and is empty throughout, so a rule still reading the hardcoded
+  # path would probe it and FAIL — which is exactly the defect this fixture pins.
+  printf 'ssd:\n  adr_dir: pluto/greens/decisions\n' > .ssd/project.yml
+  echo "base" > app.py
+  git add -A app.py && git commit -qm "initial"
+  git checkout -qb feat
+
+  yes "x" | head -250 > big_arch.py
+  git add -A big_arch.py && git commit -qm "large architectural change"
+
+  # (a) No ADR anywhere → FAIL. The rule keeps its teeth when the directory is configurable.
+  assert_rule "adr-delta-custom-dir" "adr-delta" "FAIL"
+
+  # (b) An ADR in the DEFAULT directory does not count — the project said where its ADRs live.
+  cat > docs/decisions/ADR-0001-wrong-home.md <<'ADREOF'
+# ADR-0001: in the default directory, which this project does not use
+ADREOF
+  git add -A docs/decisions && git commit -qm "ADR in the wrong directory"
+  assert_rule "adr-delta-custom-dir" "adr-delta" "FAIL"
+
+  # (c) An ADR in the CONFIGURED directory does → PASS, and via the diff.
+  cat > pluto/greens/decisions/ADR-0002-right-home.md <<'ADREOF'
+# ADR-0002: in the configured directory
+ADREOF
+  git add -A pluto/greens/decisions && git commit -qm "ADR in the configured directory"
+  assert_rule "adr-delta-custom-dir" "adr-delta" "PASS"
+
+  # (d) ...and it is the DIFF branch, not the mtime fallback. The distinction matters: the diff is
+  #     the real attestation and the message has to say which one was used.
+  #
+  # TWO things were wrong here and each hid the other. The verdict was INVERTED — this suite's
+  # convention is `&& echo 1 || echo 0` only when the grep MATCHING is the failure (see
+  # "stray file is committable", "does NOT report bogus DRIFT"), and here matching is the pass. And
+  # the gate was piped straight into `grep -q`: under `set -o pipefail`, grep exiting on the first
+  # match SIGPIPEs the still-writing producer, so the pipeline returns non-zero *because the match
+  # succeeded*. On macOS that produced `0` and a green assertion; on Linux CI the gate's output fit
+  # the pipe buffer, no SIGPIPE, `1`, red. Capture first, then grep — the shape the rest of the
+  # suite already uses.
+  out=$(bash "$GATE_SCRIPT" --base main 2>&1)
+  _assert "adr-delta-custom-dir" "PASS came from the diff, naming the configured directory" \
+    "$(echo "$out" | grep -q 'ADR file(s) changed in pluto/greens/decisions/' && echo 0 || echo 1)"
+
+  fixture_teardown "$tdir"
+}
+
+test_fixture_adr_delta_custom_dir_private() {
+  echo "fixture: adr-delta-custom-dir-private"
+  local tdir out
+  tdir=$(fixture_setup "adr-custom-private")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd team/decisions
+  printf 'ssd:\n  gitignore_mode: private\n  adr_dir: team/decisions\n' > .ssd/project.yml
+  echo "base" > app.py
+  git add -A app.py && git commit -qm "initial"
+  git checkout -qb feat
+  yes "x" | head -250 > big_arch.py
+  git add -A big_arch.py && git commit -qm "large architectural change"
+
+  # Private mode AND a custom directory: the worktree probe must look in the configured place.
+  assert_rule "adr-delta-custom-dir-private" "adr-delta" "FAIL"
+  cat > team/decisions/ADR-0001-untracked.md <<'ADREOF'
+# ADR-0001: untracked, under a configured directory, private mode
+ADREOF
+  touch team/decisions/ADR-0001-untracked.md
+  assert_rule "adr-delta-custom-dir-private" "adr-delta" "PASS"
+
+  # The fallback must announce itself as the weaker check, and name the configured directory.
+  # Same inverted verdict and the same pipefail/SIGPIPE mask as the sibling fixture above.
+  out=$(bash "$GATE_SCRIPT" --base main 2>&1)
+  _assert "adr-delta-custom-dir-private" "PASS announces the mtime probe over the configured dir" \
+    "$(echo "$out" | grep -q 'under team/decisions/ modified since base.*worktree mtime probe' && echo 0 || echo 1)"
+
+  fixture_teardown "$tdir"
+}
+
 test_fixture_adr_delta_private_no_deadlock() {
   echo "fixture: adr-delta-private-no-deadlock"
   local tdir
@@ -3036,6 +3117,8 @@ test_fixture_private_gitignore_sentinel
 test_fixture_private_deny_list_mirrors_pattern
 test_fixture_private_no_leaky_state
 test_fixture_unrecognized_gitignore_mode
+test_fixture_adr_delta_custom_dir
+test_fixture_adr_delta_custom_dir_private
 test_fixture_adr_delta_private_no_deadlock
 test_fixture_frontmatter_valid_private_walks_tree
 test_fixture_feynman_clean_private_worktree
