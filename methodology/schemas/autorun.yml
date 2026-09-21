@@ -1,0 +1,20 @@
+# Frontmatter schema — auto-run record (.ssd/features/<slug>/auto-runs/<ts>-run.md).
+# ADR-0020. v1: structural validation only, matching every other schema here.
+#
+# `skill: ssd` because the ORCHESTRATOR produces this artifact, not a sub-skill. It is the first
+# artifact in the tree written by a script rather than by an agent narrating its own work, which is
+# the whole point: a record the agent cannot forget to write.
+
+skill: ssd
+applies_to:
+  - auto-runs/*-run.md       # path-tail match; fnmatch's `*` crosses `/` (see match_schema)
+
+required:
+  skill: string
+  version: string
+  produced_at: timestamp
+  produced_by: string
+  project: string
+  scope: string
+  consumed_by: list
+  run: dict

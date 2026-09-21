@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 2.10.0
+**Version:** 2.14.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -65,6 +65,7 @@ is still directly invokable, just documented in the chapters rather than taught 
 | migrate a project to the latest SSD conventions | `upgrade` | [`chapters/upgrade.md`](chapters/upgrade.md) |
 | run parallel workstreams | `feature new` · `switch` · `worktree` | [`chapters/workstreams.md`](chapters/workstreams.md) |
 | keep `.ssd/` in a separate private repo | `store` | [`chapters/phases.md`](chapters/phases.md) |
+| delegate consecutive rail phases to the orchestrator | `run` | [`chapters/autonomy.md`](chapters/autonomy.md) |
 
 The command path is a **thin alias** that lowers into the conversational path — a power-user
 shorthand, **not** a co-equal surface with its own state. Everything a command does, `/ssd` can
@@ -134,6 +135,9 @@ Lifecycle Commands" (v1.16.0+) — those commands write `branch:` and `worktree:
 
 **Never silently advances a phase.** The orchestrator proposes; the user accepts or redirects.
 The proposal text always names the explicit command being proposed so a power user can copy it.
+Under an opt-in autonomy rung the orchestrator may *execute* that proposal — never silently: it
+announces the transition and writes it to a durable record **before** acting
+(§ [`chapters/autonomy.md`](chapters/autonomy.md)).
 
 **Falls back to "ask"** for ambiguous states. If `current.yml` exists but is malformed, surface
 the parse error and refuse to guess.
@@ -210,6 +214,12 @@ though it does — that is the claim this paragraph was making, in four files, f
 orchestrator advancing a phase *without surfacing the decision* — that's rule-zero, and it is the
 only thing here that is truly inviolable.
 
+**Rule-zero forbids silence, not autonomy** (v2.14.0, [ADR-0020](../docs/decisions/ADR-0020-autonomy-ladder.md)).
+Under an opt-in autonomy rung, "surfaced" means **announce → log → act**: the transition is narrated,
+then written to a durable record on disk, and only then executed — so state lags reality by at most
+one announced step even when nobody is watching. The default posture remains propose-and-wait, an
+absent `autonomy:` block is byte-identical to v2.13.0, and no rung reaches ship or beyond.
+
 ---
 
 ## The SSD Artifact Tree
@@ -285,6 +295,7 @@ lives in `ssd/chapters/` and loads when the relevant work begins:
 | [`chapters/artifacts.md`](chapters/artifacts.md) | the `.ssd/` artifact tree + selective-commit split |
 | [`chapters/state.md`](chapters/state.md) | structured output + iterations + session continuity |
 | [`chapters/enforcement.md`](chapters/enforcement.md) | `gate-rules.sh` enforcement table |
+| [`chapters/autonomy.md`](chapters/autonomy.md) | the autonomy ladder — `advance` mode · `/ssd run` |
 | [`chapters/skills.md`](chapters/skills.md) | sub-skill reference + review tiers + overlap |
 | [`rails.md`](rails.md) | the eight-step canonical path + critic-grade invariants |
 

@@ -2,7 +2,7 @@
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.13.0
+**Version:** 1.14.0
 
 ## Purpose
 
@@ -469,6 +469,20 @@ ssd:
   # disable leak detection without saying so (ADR-0017).
   gitignore_mode: selective      # selective | blanket | private
 
+  # ssd:autonomy-block=v2.14.0
+  # Autonomy ladder (v2.14.0, ADR-0020). ABSENT => propose => behavior identical to v2.13.0.
+  # Written commented out on purpose: an absent block is the inert default, and a written-out
+  # `mode: propose` invites a one-word edit to `run` without reading chapters/autonomy.md.
+  #
+  # Exactly three literals are recognized. A typo is NOT a silent default — autorun.sh preflight
+  # refuses and quotes the value, the same stance gitignore_mode takes (ADR-0017).
+  # autonomy:
+  #   mode: propose              # propose | advance | run
+  #   max_review_loops: 3        # coder<->reviewer rounds per gate attempt before STOP-1
+  #   budget_transitions: 12     # phase transitions per invocation before STOP-3
+  #   budget_wall_minutes: 30    # wall-clock cap per invocation; 0 = uncapped
+  #   announce: full             # full | compact
+
   # Private artifact store (v2.10.0, ADR-0018). Absent ⇒ feature inert; .ssd/ is a normal directory.
   # Requires private or blanket — git cannot track files through a directory symlink, so a selective
   # project with a linked .ssd would commit NOTHING under it.
@@ -729,7 +743,7 @@ Record what was done and what was found. This is the primary output artifact of 
 ```markdown
 ---
 skill: ssd-init
-version: 1.13.0
+version: 1.14.0
 produced_at: <ISO-8601>
 project: <name>
 ---
