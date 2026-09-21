@@ -152,7 +152,7 @@ more than one feature at once:
 | `/architect` | Design: models, services, API contracts. Platform-adaptive (web, iOS, Android, macOS, headless) |
 | `/systems-designer` | Production readiness: reliability, observability, deployment safety |
 | `/coder` | Implementation from spec (Python, TypeScript, Swift, Ruby, Java, C#, PHP, Go, Rust, C/C++, Obj-C) |
-| `/code-reviewer` | PR gate: BLOCKER or MAJOR findings send the work back to the coder. **Loud, not a wall** — nothing in this repo physically blocks a merge (see [Hard Rules](#hard-rules)) |
+| `/code-reviewer` | PR gate: BLOCKER or MAJOR findings send the work back to the coder. **Loud, not a wall** — no status check is required to merge, so a red gate does not stop the button (see [Hard Rules](#hard-rules)) |
 | `/codebase-skeptic` | Deep architectural critique through fifteen expert lenses |
 | `/feynman` | Epistemic audit: builds a claim ledger and grades what the project believes about itself against evidence. Proposed at `/ssd milestone` Step 0.5, `verify`, `audit`, and pre-`ship`; gated by the `feynman-clean` rule ([ADR-0016](docs/decisions/ADR-0016-feynman-orchestrator-integration.md)) |
 | `/software-standards` | Adversarial comparative audit |
@@ -405,9 +405,14 @@ letting SSD write into nothing.
 "No exceptions." It has exceptions, and pretending otherwise misdescribes the system:
 [ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) Pillar 5 is explicit that enforcement is
 *warnings, not walls* — the gate surfaces violations unmissably and exits non-zero, and **it does not
-lock the door**. `main` in this repo carries no branch protection; a developer who merges past a
-failing gate simply merges. This repo has done it: PR #43 shipped v2.10.0 with **zero review
-artifacts** while all eleven checks were green, which is what produced the `rails-walked` rule.
+lock the door**.
+
+Precisely, as of 2026-09-21: a repository ruleset (`Overwatch`, all branches) *does* require pull
+requests, signed commits, and no force-push or deletion. It does **not** require status checks — so
+CI and the gate can be red and the merge button still works, and a repository-role bypass exists.
+The wall that is absent is the one on *quality*, which is the intended design, not an oversight. This
+repo has merged past it: PR #43 shipped v2.10.0 with **zero review artifacts** while all eleven checks
+were green, which is what produced the `rails-walked` rule.
 
 There is also **no override mechanism**. `/ssd ship --force` was described in four documents for
 eleven releases and implemented by nothing; v2.11.0 struck the claim. Overriding a red gate means
