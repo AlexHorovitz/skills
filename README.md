@@ -11,7 +11,13 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 
 **Core invariant:** If you can't ship it right now, you don't have a product — you have a construction site.
 
-**Dogfood.** As of v1.19.0 (per [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)) this repo tracks its own SSD artifacts under [`.ssd/features/`](.ssd/features/) — briefs, architect specs, coder-status reports, and code-reviews for every epic shipped in v1.5.0+. Read the history of how the methodology was built using the methodology itself. The epics so far:
+**Dogfood.** As of v1.19.0 (per [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)) this repo tracks its own SSD artifacts under [`.ssd/features/`](.ssd/features/) — briefs, architect specs, coder-status reports and code-reviews. Read the history of how the methodology
+was built using the methodology itself.
+
+Not uniformly: of the 15 feature directories, **four are missing at least one of those four artifact
+classes** — `recorded-defect-fixes` has only a code review, `ssd-2.0-greenlight` and
+`ssd-init-gate-readiness` and `ssd-skill-chapter-split` have no architect spec. The record is a record
+of what happened, including the steps that were skipped. The epics so far:
 
 - [`ssd-skill-upgrades`](.ssd/features/ssd-skill-upgrades/01-architect.md) — 9-iteration epic implementing v1.5–v1.14 (5 ADRs: iterations, `current.yml` split, rails, profiles, gate execution).
 - [`parallel-features`](.ssd/features/parallel-features/01-architect.md) — concurrent feature workstreams (3 iterations, v1.15–v1.17; [ADR-0007](docs/decisions/ADR-0007-parallel-features.md)).
@@ -23,6 +29,9 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 - [`ssd-private-mode`](.ssd/features/ssd-private-mode/01-architect.md) — `gitignore_mode: private`: run SSD with **no paper trail in git** ([ADR-0017](docs/decisions/ADR-0017-private-mode.md)). Nothing SSD produces is tracked — `.ssd/` plus the `docs/decisions/`, `docs/runbooks/`, `docs/architecture/` trees — while every rail step and gate rule still runs. Iteration A ships the mode (v2.8.0); iteration B adds the `/ssd upgrade` retrofit. Opt-in at `ssd-init --private`; absent ⇒ byte-identical behavior. See [Private mode](#private-mode-optional) below.
 - [`ssd-store`](.ssd/features/ssd-store/01-architect.md) — the private artifact store ([ADR-0018](docs/decisions/ADR-0018-ssd-artifact-store.md)): `.ssd` becomes a symlink into a separate private git repo, so the methodology record is version-controlled **outside** the project that keeps it private (v2.10.0). Found and fixed the leak the naive version would have shipped — a symlinked `.ssd` was ignored by neither `.gitignore` nor `no-leaky-state`.
 - [`github-issue-tracking`](.ssd/features/github-issue-tracking/01-architect.md) — opt-in, one-way mirror of workstream state to GitHub issues (ADR=epic, workstream=feature issue, `ssd:phase/*` labels; [ADR-0014](docs/decisions/ADR-0014-github-issue-state-tracking.md)). Two iterations: (A) the additive mirror — `ensure-epic`/`ensure-feature`/`set-phase` + auto-sync on phase advance, v2.3.0; (B) the close lifecycle (`close-feature`/`close-epic` behind `auto_close`) + the informational `issue-sync-current` gate rule, v2.4.0. Default-off — zero behavior change until a project opts in. See [GitHub Issue Tracking](#github-issue-tracking-optional) below.
+- [`ssd-init-gate-readiness`](.ssd/features/ssd-init-gate-readiness/00-brief.md) — the committed [`.ssd/gate.yml`](.ssd/gate.yml): gate inputs (`test_command`, `feature_flag_marker`) that travel to every clone and CI runner instead of living in a gitignored `project.yml` (v2.5.0; [ADR-0015](docs/decisions/ADR-0015-ssd-init-gate-readiness.md)).
+- [`rail-deviations`](.ssd/features/rail-deviations/01-architect.md) — `rail_deviations` is **written** by something and **read** by something ([ADR-0019](docs/decisions/ADR-0019-rail-deviation-records.md), v2.13.0). `rails.md` had promised since v1.15.0 that "every skipped step appears in `rail_deviations:`"; measured on 2026-09-01 there were **zero** such fields across 15 workstreams and no script wrote one. `methodology/deviation.sh` is the writer, the `deviations-recorded` gate rule is the reader, and they shipped together on purpose.
+- [`ssd-autonomy`](.ssd/features/ssd-autonomy/01-architect.md) — the **autonomy ladder** ([ADR-0020](docs/decisions/ADR-0020-autonomy-ladder.md), v2.14.0): two opt-in rungs above propose-and-wait, with `methodology/autorun.sh` as an executable referee and a durable record written *before* each phase runs. See [Autonomy ladder](#autonomy-ladder-optional) below.
 
 ## Methodology
 
@@ -76,7 +85,8 @@ so you never have to memorize the verb set.
 /ssd start  ← bootstrap a new project (Walking Skeleton) when there's no state to detect yet
 ```
 
-The full verb set (`feature`, `design`, `gate`, `milestone`, `verify`, `ship`, `audit`, `upgrade`)
+The full verb set (`start`, `feature`, `design`, `gate`, `milestone`, `verify`, `ship`, `audit`,
+`upgrade`, `run`)
 stays a first-class escape hatch — every phase is still directly invokable. The command path is a
 **thin alias** that lowers into the conversational path, not a co-equal surface. See
 [The Meta-Skill](#ssd--the-meta-skill) below for the full set.
@@ -142,7 +152,7 @@ more than one feature at once:
 | `/architect` | Design: models, services, API contracts. Platform-adaptive (web, iOS, Android, macOS, headless) |
 | `/systems-designer` | Production readiness: reliability, observability, deployment safety |
 | `/coder` | Implementation from spec (Python, TypeScript, Swift, Ruby, Java, C#, PHP, Go, Rust, C/C++, Obj-C) |
-| `/code-reviewer` | PR gate: BLOCKER/MAJOR findings block merge |
+| `/code-reviewer` | PR gate: BLOCKER or MAJOR findings send the work back to the coder. **Loud, not a wall** — no status check is required to merge, so a red gate does not stop the button (see [Hard Rules](#hard-rules)) |
 | `/codebase-skeptic` | Deep architectural critique through fifteen expert lenses |
 | `/feynman` | Epistemic audit: builds a claim ledger and grades what the project believes about itself against evidence. Proposed at `/ssd milestone` Step 0.5, `verify`, `audit`, and pre-`ship`; gated by the `feynman-clean` rule ([ADR-0016](docs/decisions/ADR-0016-feynman-orchestrator-integration.md)) |
 | `/software-standards` | Adversarial comparative audit |
@@ -181,6 +191,55 @@ Or call a sub-skill directly when working outside the SSD workflow:
 /codebase-skeptic
 /feynman
 ```
+
+---
+
+## Autonomy ladder (optional)
+
+*v2.14.0+ · [ADR-0020](docs/decisions/ADR-0020-autonomy-ladder.md)*
+
+By default `/ssd` **proposes** the next action and waits. Two opt-in rungs sit above that, for
+delegating the mechanical middle of a feature — the coder → reviewer → coder loop until the gate
+passes.
+
+| Rung | What bare `/ssd` does | Phases per invocation |
+|---|---|---|
+| `propose` | proposes; waits | 0 — **the default, and the default is absence** |
+| `advance` | executes its own top proposal when it is unambiguous | ≤ 1, unconditionally |
+| `run` | offers `/ssd run <slug>`, which walks the rails to a ceiling | ≤ `budget_transitions` |
+
+```yaml
+# .ssd/project.yml, under ssd:
+  autonomy:
+    mode: propose              # propose | advance | run
+    max_review_loops: 3        # coder<->reviewer rounds before the run stops
+    budget_transitions: 12     # phase transitions per invocation
+    budget_wall_minutes: 30    # 0 = uncapped
+```
+
+With no `autonomy:` block the orchestrator makes **no additional call at all**, so behavior is
+identical to v2.13.0. An unrecognized `mode:` is a refusal that quotes the value, never a silent
+default.
+
+**Rule-zero forbids silence, not autonomy.** Under a rung, "surfaced" means **announce → log → act**:
+the transition is narrated, written to a durable record on disk, and only then executed — so state
+lags reality by at most one announced step even when nobody is watching.
+
+**The ceiling is `gate`, and it is not configurable.** A feature is bounded by two human decisions —
+the brief before and the ship after — and no rung reaches ship, deploy, rollout, or flag removal.
+`--until ship` exits non-zero. That is not a retreat from "SSD trusts the developer": your door is
+untouched, and `/ssd ship <slug>` typed by a human works exactly as before.
+
+[`methodology/autorun.sh`](methodology/autorun.sh) is the referee. The orchestrator still executes
+phases; the script decides whether it may, and the mode literal, the ceiling, the rails successor
+table, the budgets and record-before-act are all **exit codes** rather than prose. An auto-run writes
+zero `rail_deviations` **by construction** — it cannot express an off-rails transition, so it cannot
+log one, and it cannot act without logging.
+
+Every run leaves `.ssd/features/<slug>/auto-runs/<ts>-run.md`, committed under `selective` mode,
+recording each transition, the executable gate's verdict, and an `outcome` of `green`, `red` or
+`incomplete`. Full playbook — stop conditions, refusals, the threat model, and stale-lock recovery —
+in [`ssd/chapters/autonomy.md`](ssd/chapters/autonomy.md).
 
 ---
 
@@ -243,9 +302,14 @@ Sets `project.yml.ssd.gitignore_mode: private` and writes
 | Also suppressed | `add-` branch prefix (branches become plain `{slug}`), GitHub issue tracking (forced off), the `CLAUDE.md` SSD section |
 | **Kept** | the `🛠️ Crafted with SSD` commit/PR footer |
 
-**Every rail step and every gate rule still runs.** Privacy is a *storage and visibility* posture, never
-a reduction in rigor — `no-leaky-state` in fact becomes *more* load-bearing here than in any other mode,
-since it is what enforces the boundary.
+**Every rail step and every gate rule is still invoked, and rigor is not reduced** — `no-leaky-state` in
+fact becomes *more* load-bearing here than in any other mode, since it is what enforces the boundary.
+Privacy is a *storage and visibility* posture.
+
+Two rules can nonetheless **SKIP** under private mode where they would have run elsewhere: `adr-delta`
+when the base commit time is unresolvable or ADR mtimes are unreadable, and `feynman-clean` when no
+report is on disk. The gate's own footer defines a skip as *"a check that did not run"*, so "still
+runs" would be the wrong word for those two. See [Trade-offs](#trade-offs-stated-plainly).
 
 ### What "private" does and does not mean
 
@@ -330,18 +394,54 @@ letting SSD write into nothing.
 
 ## Hard Rules
 
-1. **No merge without a clean `/ssd gate`** — No BLOCKER or MAJOR findings. No exceptions.
+1. **No merge without a clean `/ssd gate`** — No BLOCKER or MAJOR findings.
 2. **No incomplete work on main without a feature flag** — WIP commits on main are banned.
 3. **Tests must pass before and after every change** — "I'll fix the tests tomorrow" is not a shippable state.
 4. **Refactor only after shipping** — Separate PRs, never mixed with feature work.
 5. **Deploy beats perfection** — Reduce scope rather than delay a deploy.
 6. **Production parity from day one** — If you haven't deployed to production yet, that is your next task.
 
+**"Hard rule" means loud when broken, not physically prevented.** This list used to end rule 1 with
+"No exceptions." It has exceptions, and pretending otherwise misdescribes the system:
+[ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) Pillar 5 is explicit that enforcement is
+*warnings, not walls* — the gate surfaces violations unmissably and exits non-zero, and **it does not
+lock the door**.
+
+Precisely, as of 2026-09-21: a repository ruleset (`Overwatch`, all branches) *does* require pull
+requests, signed commits, and no force-push or deletion. It does **not** require status checks — so
+CI and the gate can be red and the merge button still works, and a repository-role bypass exists.
+The wall that is absent is the one on *quality*, which is the intended design, not an oversight. This
+repo has merged past it: PR #43 shipped v2.10.0 with **zero review artifacts** while all eleven checks
+were green, which is what produced the `rails-walked` rule.
+
+There is also **no override mechanism**. `/ssd ship --force` was described in four documents for
+eleven releases and implemented by nothing; v2.11.0 struck the claim. Overriding a red gate means
+merging it on purpose and writing down why — by hand, or with
+[`methodology/deviation.sh`](methodology/deviation.sh) since v2.13.0.
+
 ---
 
 ## Contributing
 
-Contributions are welcome. All content in this repo is Markdown — there is no code to compile or test suite to run. The bar for a good contribution is whether Claude follows the guidance accurately and produces better outcomes than it would without it.
+Contributions are welcome. Most of this repo is Markdown, and for a guidance-only change the intended
+bar is whether Claude follows it accurately and produces better outcomes than it would without it.
+**Nothing measures that** — there is no eval harness in this repo and no before/after comparison, so
+treat it as the author's judgement rather than a test you can run. What you *can* run is below.
+
+**There is executable code, and there is a test suite — run it.** The repo ships seven shell scripts
+and one Python validator under [`methodology/`](methodology/), and
+[`scripts/parity-test.sh`](scripts/parity-test.sh) is 82 fixtures / 375 assertions that
+[CI](.github/workflows/quality.yml) runs on every pull request alongside `shellcheck` and the gate
+itself:
+
+```bash
+bash scripts/parity-test.sh
+shellcheck -S warning methodology/*.sh scripts/*.sh
+bash methodology/gate-rules.sh --base main
+```
+
+A change to anything under `methodology/` or `scripts/` without a fixture is a change the next release
+can silently revert.
 
 ### What to contribute
 
@@ -392,26 +492,41 @@ architect/
 
 ## Skill Hygiene Contract
 
-Every skill in this directory MUST conform to these conventions. Skills that violate them are flagged
-by the skill linter (when present) and block `/ssd start` in strict mode.
+Conventions every skill in this directory aims at. **Nothing enforces them.** This section used to say
+violations were "flagged by the skill linter (when present) and block `/ssd start` in strict mode" —
+there is no linter in this repo and no strict mode anywhere in it. That sentence was the same shape as
+the `/ssd ship --force` claim struck in v2.11.0: a mechanism that existed only in the document
+describing it. What *is* enforced is listed under [Enforcement](#hard-rules) and runs in
+`methodology/gate-rules.sh`.
 
-**File structure:**
-- `SKILL.md` begins with `# Skill Name` as the first line. The license pointer (`<!-- License: See /LICENSE -->`)
-  and `**Version:** X.Y.Z` follow the title, not precede it. License is a single-line pointer — not
-  an inlined 13-line preamble.
-- Skills whose `SKILL.md` exceeds **400 lines** MUST split into `SKILL.md` (philosophy + workflow +
-  pointers) plus one or more `references/*.md` (or topically-named sibling files) with detailed
-  patterns, checklists, and examples.
+So the rules below are split by whether the repo currently meets them, measured rather than asserted.
+
+**Held today (11/11 skills):**
+- `SKILL.md` begins with `# Skill Name` as the first line. The license pointer
+  (`<!-- License: See /LICENSE -->`) and `**Version:** X.Y.Z` follow the title, not precede it.
 - Every `SKILL.md` ends with a `## Changelog` section. Each version bump adds a dated entry describing
-  what changed and why.
+  what changed and why. Checked by no script; true by habit.
+- Every skill has an `## Interface` table. **Ten of eleven** declare explicit input/output *paths*
+  (e.g. `.ssd/features/<slug>/01-architect.md`); `ssd/SKILL.md`, the orchestrator, declares a phase
+  argument and "an orchestrated session" instead.
+- Output frontmatter is the one rule here with an executable check —
+  `frontmatter-valid` against [`methodology/schemas/`](methodology/schemas/). Its reach is partial:
+  **eight schemas for eleven skills**, so `codebase-skeptic`, `refactor` and `/ssd verify` primary
+  outputs match nothing and the rule SKIPs them. At the last run, 111 artifacts validated and **13
+  were unvalidated for want of a schema**. A rule that skips what it has no schema for reports PASS
+  on silence, so the count matters more than the verdict.
 
-**Interface discipline:**
-- Every skill's `## Interface` table declares explicit input/output *paths* (e.g.,
-  `.ssd/features/<slug>/01-architect.md`) — not just downstream skill names.
-- Every primary output artifact has YAML frontmatter conforming to the shared schema documented in
-  `ssd/chapters/state.md` § "Structured Output Requirements."
-- Every skill's Purpose contains a "When NOT to use" clause disambiguating it from any overlapping
-  skill (see `ssd/chapters/skills.md` § "Resolving Skill Overlap").
+**Aspirations the repo does not currently meet:**
+- *Split any `SKILL.md` over 400 lines* into a spine plus `references/*.md`. **Five of eleven exceed
+  it**: `ssd-init` (987), `systems-designer` (677), `code-reviewer` (632), `feynman` (490),
+  `software-standards` (429). The `ssd/SKILL.md` chapter-split (v1.25.0) is the pattern the rest have
+  not followed.
+- *Every skill's Purpose carries a "When NOT to use" clause* disambiguating it from overlapping skills.
+  **Two of eleven have one.** Until that changes, the working disambiguation is
+  [`ssd/chapters/skills.md`](ssd/chapters/skills.md) § "Resolving Skill Overlap", which is complete.
+
+Listing the gap is the point. A contract nothing checks drifts, and the honest version of an unmet
+rule is the count of how far it is from being met.
 
 **Header / license ordering:**
 - Title-first: `# Skill Name` is line 1.
