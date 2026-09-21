@@ -163,6 +163,12 @@ detect() {
     # allow-list load-bearing. Private mode has no allow-list to harden (ADR-0017).
     strict-selective-gitignore) is_private_mode && return 0
                             grep -qxF '.ssd/features/**' "$ROOT/.gitignore" 2>/dev/null ;;
+    # ADR-0020. The probe is a SENTINEL COMMENT, not a key — deliberately, and it is the one place
+    # the "a comment must not false-positive" rule above is inverted on purpose. The block this entry
+    # writes is COMMENTED OUT: an absent or inert autonomy block is the byte-identical default, so
+    # there is no live key to probe and a key-form probe would report PENDING forever after --apply.
+    # Precedent: private-mode's `# ssd:gitignore-mode=private` sentinel.
+    autonomy-block)         grep -qE '^[[:space:]]*# ssd:autonomy-block=' "$ROOT/.ssd/project.yml" 2>/dev/null ;;
     *) return 1 ;;
   esac
 }
@@ -246,6 +252,26 @@ apply_parallel_features_keys() {  # ADR-0007 — four ssd.* keys nested under ss
   worktree_root: "../"
   worktree_name_pattern: "{repo}-{slug}"
   switch_note_default: prompt
+EOF
+}
+
+apply_autonomy_block() {          # ADR-0020 — commented autonomy: block nested under ssd:.
+  local pj="$ROOT/.ssd/project.yml"
+  [[ -f "$pj" ]] || return 1
+  grep -qE '^ssd:' "$pj" || return 1
+  backup_pj
+  insert_under_ssd "$pj" <<'EOF'
+  # ssd:autonomy-block=v2.14.0
+  # Autonomy ladder (added by /ssd upgrade --apply, ADR-0020). ABSENT or COMMENTED => propose =>
+  # behavior identical to v2.13.0. Uncommenting is the opt-in; read ssd/chapters/autonomy.md first.
+  # Exactly three literals are recognized for mode. A typo is NOT a silent default — autorun.sh
+  # preflight refuses and quotes the value (the ADR-0017 gitignore_mode stance).
+  # autonomy:
+  #   mode: propose              # propose | advance | run
+  #   max_review_loops: 3        # coder<->reviewer rounds per gate attempt before STOP-1
+  #   budget_transitions: 12     # phase transitions per invocation before STOP-3
+  #   budget_wall_minutes: 30    # wall-clock cap per invocation; 0 = uncapped
+  #   announce: full             # full | compact
 EOF
 }
 
@@ -684,6 +710,7 @@ apply_dispatch() {
     gate-inputs-present)    apply_gate_inputs_present ;;
     committed-gate-yml)     apply_committed_gate_yml ;;
     strict-selective-gitignore) apply_strict_selective_gitignore ;;
+    autonomy-block)         apply_autonomy_block ;;
     *)                      return 1 ;;   # unknown mechanical id
   esac
 }

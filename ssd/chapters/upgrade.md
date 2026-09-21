@@ -89,8 +89,17 @@ just don't advance the recorded version yet. Re-running `--apply` is therefore i
 already-present conventions report `SKIP-present`, guided items re-surface.
 
 `--apply` honors `--to <version>` (apply only entries `introduced_in <= <version>`, staged upgrade)
-and `--json`. As of v1.23.0 **all four** mechanical migrations have executable apply functions in the
-shared engine — `current-yml-v2`, `dev-profile-keys`, `parallel-features-keys`, `selective-gitignore`.
+and `--json`. Every mechanical migration has an executable apply function in the
+shared engine — `current-yml-v2`, `dev-profile-keys`, `parallel-features-keys`, `selective-gitignore`
+(all four since v1.23.0), plus `gate-inputs-present`, `committed-gate-yml`,
+`strict-selective-gitignore`, and `autonomy-block` (v2.14.0).
+
+**`autonomy-block` is an additive no-op** ([ADR-0020](../../docs/decisions/ADR-0020-autonomy-ladder.md)):
+`--apply` appends a **commented** `autonomy:` block to `project.yml` and changes no behavior at all,
+because nothing reads a commented key. Uncommenting it is the opt-in. Its `detect` probe is a
+**sentinel comment** (`# ssd:autonomy-block=`) rather than the usual key form — deliberately, and it is
+the one entry where a comment is allowed to satisfy a probe: the convention *is* an inert block, so
+there is no live key to look for. Same shape as private-mode's `# ssd:gitignore-mode=private` sentinel.
 The `current-yml-v2` apply uses the **conservative-safe** v1→v2 form (back up to `current.yml.bak`,
 write a fresh v2 skeleton, preserve the *entire* original under `current.notes.yml` `legacy_v1_import:`
 for reconciliation) rather than a field-classifying heuristic — so R1 stays airtight. The selective

@@ -132,6 +132,9 @@ active:
                                      #   on cross-workstream file overlap — see code-reviewer/SKILL.md
                                      #   § "Cross-Workstream Overlap Check".
 
+    # Autonomy-ladder field (v2.14.0, ADR-0020). Additive and nullable; absence is valid.
+    auto_run: null                   # null, or {started, until, record} WHILE a run is in flight
+
     # GitHub issue-tracking fields (ADR-0014). All optional; present only when
     # project.yml integrations.github.issue_tracking is on. Lazy-cached on first sync.
     epic: null                       # parent epic issue number (the workstream's ADR, via adrs_authored)
@@ -163,6 +166,29 @@ the first sync exactly like `branch:`. Absence is valid and means "not yet synce
 The cache lets steady-state sync be a single `gh issue edit` with no search. See
 [ADR-0014](../../docs/decisions/ADR-0014-github-issue-state-tracking.md) and
 `methodology/issue-sync.sh`.
+
+The `auto_run` field (v2.14.0, [ADR-0020](../../docs/decisions/ADR-0020-autonomy-ladder.md)) is the
+autonomy ladder's lock **and** its crash-recovery marker. It is written by
+`methodology/autorun.sh start` and cleared by `finish`; while non-null it carries the run's start
+time, its ceiling, and the path to the auto-run record:
+
+```yaml
+    auto_run:
+      started: 2026-09-21T20:02:30Z
+      until: gate
+      record: .ssd/features/auth-flow/auto-runs/2026-09-21T200230Z-run.md
+```
+
+**A non-null `auto_run` with no live run is a stale lock**, and every subsequent `/ssd run` refuses
+with FM-2 naming it. That is deliberate: an age-based auto-expiry would silently resume a run whose
+working tree nobody checked. Recovery is `autorun.sh status` → read the record (its last transition
+names the last phase that was announced, and therefore the last one that may have run) → verify the
+working tree → `autorun.sh clear --slug <s> --confirm`. Full procedure:
+[`docs/runbooks/ssd-state-recovery.md`](../../docs/runbooks/ssd-state-recovery.md) §
+"A stale `auto_run` lock".
+
+Like `rail_deviations` and `touches`, `auto_run` is a nested structure under a list item — the
+indent-aware parser fixed in v2.9.0 handles it, and every reader that does not know the key ignores it.
 
 ### `current.notes.yml` (free-form)
 

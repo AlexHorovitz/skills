@@ -2864,6 +2864,323 @@ EOS
 # ADR-0019 — the rail deviation writer. The headline assertion is the FORGERY one: `reason` is free
 # text and lands in a YAML file the gate parses with a hand-rolled awk walker, so a naive writer that
 # interpolated it would let one argument create two records (systems-designer round 1, S1).
+# ADR-0020. Four properties, and the fourth is the one that would have caught the real defect: at the
+# time this feature was briefed, `auto-runs/*-run.md` was GITIGNORED, so the record the whole ladder
+# rests on could not have been committed. A record the gate cannot see is an unimplemented mechanism
+# with a filename — which is the `--force` failure this library already had once.
+test_fixture_autorun_referee() {
+  echo "fixture: autorun-referee"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then echo "  (skipped — PyYAML not installed)"; return; fi
+  local tdir rc out; tdir=$(fixture_setup "autorun-referee")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/feat-one
+  echo "2.14.0" > VERSION
+  cat > .ssd/project.yml <<'EOS'
+project:
+  name: Parity Fixture
+ssd:
+  gitignore_mode: selective
+  autonomy:
+    mode: run
+    max_review_loops: 1
+    budget_transitions: 6
+EOS
+  cat > .ssd/current.yml <<'EOS'
+# an interior comment a full PyYAML round-trip would destroy
+schema_version: 2
+active:
+  - slug: feat-one
+    phase: design
+    budget_hours: 8
+    elapsed_hours: 1.0
+    blockers: []
+archived: []
+EOS
+  chmod 644 .ssd/current.yml
+  local A="$REPO_ROOT/methodology/autorun.sh"
+
+  # --- the ceiling is an exit code, not a sentence (FM-4) ---
+  bash "$A" start --slug feat-one --mode run --until ship >/dev/null 2>&1; rc=$?
+  _assert "autorun-referee" "--until ship is refused (FM-4): no rung reaches the delegation wall" \
+    "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  bash "$A" start --slug feat-one --mode run --until deploy >/dev/null 2>&1; rc=$?
+  _assert "autorun-referee" "--until deploy is refused (FM-4)" "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+
+  # --- an unrecognized mode is a refusal, never a silent default (FM-5) ---
+  sed -i.bak 's/    mode: run/    mode: advnce/' .ssd/project.yml
+  out=$(bash "$A" preflight 2>&1); rc=$?
+  _assert "autorun-referee" "a typo'd autonomy.mode exits 2 and quotes the value (FM-5)" \
+    "$([[ $rc -eq 2 ]] && echo "$out" | grep -q "advnce" && echo 0 || echo 1)"
+  mv .ssd/project.yml.bak .ssd/project.yml
+
+  # --- a dry run mutates NOTHING ---
+  bash "$A" plan --slug feat-one --until gate >/dev/null 2>&1
+  _assert "autorun-referee" "plan (--dry-run) writes no record and no lock" \
+    "$([[ ! -d .ssd/features/feat-one/auto-runs ]] && ! grep -q 'auto_run' .ssd/current.yml && echo 0 || echo 1)"
+
+  # --- start writes the record BEFORE the lock that points at it ---
+  bash "$A" start --slug feat-one --mode run --until gate >/dev/null 2>&1; rc=$?
+  _assert "autorun-referee" "start exits 0 and creates exactly one record" \
+    "$([[ $rc -eq 0 ]] && [[ $(ls .ssd/features/feat-one/auto-runs/*-run.md 2>/dev/null | wc -l) -eq 1 ]] && echo 0 || echo 1)"
+  _assert "autorun-referee" "the record filename carries no colon (survives a Windows checkout)" \
+    "$(python3 -c "
+import glob, os
+print(0 if all(':' not in os.path.basename(f) for f in glob.glob('.ssd/features/feat-one/auto-runs/*')) else 1)")"
+  _assert "autorun-referee" "the lock names the record on disk" \
+    "$(python3 -c "
+import yaml,os
+d=yaml.safe_load(open('.ssd/current.yml'))
+print(0 if os.path.isfile(d['active'][0]['auto_run']['record']) else 1)")"
+  _assert "autorun-referee" "current.yml's interior comment survived the splice" \
+    "$(grep -q 'an interior comment' .ssd/current.yml && echo 0 || echo 1)"
+
+  # --- FM-2: one run per project, and no bypass flag exists ---
+  bash "$A" start --slug feat-one --mode run --until gate >/dev/null 2>&1; rc=$?
+  _assert "autorun-referee" "a second start against a held lock is refused (FM-2)" \
+    "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+
+  # --- STOP-2: the writer cannot EXPRESS an off-rails edge, so it cannot write a deviation ---
+  out=$(bash "$A" transition --slug feat-one --from design --to review 2>&1); rc=$?
+  _assert "autorun-referee" "an off-rails edge reports STOP-2 (exit 0 — a stop is not an error)" \
+    "$([[ $rc -eq 0 ]] && echo "$out" | grep -q 'state=stop reason=STOP-2' && echo 0 || echo 1)"
+  _assert "autorun-referee" "a refused edge logs NOTHING — no transition entry was appended" \
+    "$(python3 -c "
+import yaml,glob,re
+t=open(glob.glob('.ssd/features/feat-one/auto-runs/*-run.md')[0]).read()
+d=yaml.safe_load(re.match(r'\A---\n(.*?)\n---\n', t, re.S).group(1))
+print(0 if d['run']['transitions']==[] else 1)")"
+
+  # --- STOP-4: a rails-VALID edge announced from somewhere the workstream is not. The mirror of the
+  # STOP-2 assertion above, and the one that was missing when MAJOR-1 shipped: the successor table
+  # validated the edge's SHAPE while nothing validated its ORIGIN, so mislabelling `review -> code`
+  # as `code -> review` consumed zero review loops and STOP-1 became unreachable.
+  out=$(bash "$A" transition --slug feat-one --from review --to gate 2>&1); rc=$?   # phase is design
+  _assert "autorun-referee" "a rails-valid edge from the wrong phase reports STOP-4" \
+    "$([[ $rc -eq 0 ]] && echo "$out" | grep -q 'state=stop reason=STOP-4' && echo 0 || echo 1)"
+  _assert "autorun-referee" "a STOP-4 hand-back logs nothing either" \
+    "$(python3 -c "
+import yaml,glob,re
+t=open(glob.glob('.ssd/features/feat-one/auto-runs/*-run.md')[0]).read()
+d=yaml.safe_load(re.match(r'\A---\n(.*?)\n---\n', t, re.S).group(1))
+print(0 if d['run']['transitions']==[] else 1)")"
+
+  # --- the forged reason. safe_dump + single-line normalisation (ADR-0019 D4/D6, inherited) ---
+  bash "$A" transition --slug feat-one --from design --to code \
+    --reason "$(printf 'ran long\n  injected: true\n  - kind: skip')" >/dev/null 2>&1
+  _assert "autorun-referee" "a forged reason is stored as DATA, introducing no structure" \
+    "$(python3 -c "
+import yaml,glob,re
+t=open(glob.glob('.ssd/features/feat-one/auto-runs/*-run.md')[0]).read()
+d=yaml.safe_load(re.match(r'\A---\n(.*?)\n---\n', t, re.S).group(1))
+e=d['run']['transitions'][0]
+print(0 if sorted(e)==['from','lowered','phase_minutes','reason','since_start_minutes','to','ts']
+            and 'injected: true' in e['reason'] else 1)")"
+  _assert "autorun-referee" "the lowered command is constructed from validated parts, not passed in" \
+    "$(python3 -c "
+import yaml,glob,re
+t=open(glob.glob('.ssd/features/feat-one/auto-runs/*-run.md')[0]).read()
+d=yaml.safe_load(re.match(r'\A---\n(.*?)\n---\n', t, re.S).group(1))
+print(0 if d['run']['transitions'][0]['lowered']=='/ssd code feat-one' else 1)")"
+
+  # --- STOP-1: max_review_loops is 1 in this fixture ---
+  # set_phase mirrors what the orchestrator does after each act. It has to: since MAJOR-1,
+  # `transition` refuses an edge whose `--from` disagrees with the recorded phase.
+  set_phase() { sed -i.bak "s/^    phase: .*/    phase: $1/" .ssd/current.yml; }
+  set_phase code
+  bash "$A" transition --slug feat-one --from code --to review >/dev/null 2>&1
+  set_phase review
+  bash "$A" transition --slug feat-one --from review --to code >/dev/null 2>&1
+  out=$(bash "$A" transition --slug feat-one --from review --to code 2>&1)
+  _assert "autorun-referee" "the review loop budget ends the run with STOP-1" \
+    "$(echo "$out" | grep -q 'state=stop reason=STOP-1' && echo 0 || echo 1)"
+
+  # --- D11: a run that reached the ceiling on a RED gate must not read as normal completion ---
+  bash "$A" finish --slug feat-one --stop STOP-7 --phase-reached gate >/dev/null 2>&1; rc=$?
+  _assert "autorun-referee" "finishing at the gate phase with no verdict is refused (FM-6)" \
+    "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  printf 'PASS wip-commits :: none\nFAIL rails-walked :: no review\n' > gate-out.txt
+  out=$(bash "$A" finish --slug feat-one --stop STOP-7 --phase-reached gate --gate-output gate-out.txt 2>&1)
+  _assert "autorun-referee" "a captured gate output yields gate_result=fail and outcome=red" \
+    "$(echo "$out" | grep -q 'outcome=red gate_result=fail' && echo 0 || echo 1)"
+  _assert "autorun-referee" "finish clears the lock" \
+    "$(python3 -c "
+import yaml
+print(0 if yaml.safe_load(open('.ssd/current.yml'))['active'][0]['auto_run'] is None else 1)")"
+  bash "$A" finish --slug feat-one --stop STOP-7 --phase-reached gate --gate-result fail >/dev/null 2>&1; rc=$?
+  _assert "autorun-referee" "finish is idempotent — a retry cannot wedge the lock" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+
+  # --- STOP-3, on its own run: the per-invocation transition budget. Ordered BEFORE the loop check,
+  # which is why it needs a run of its own rather than sharing the one above.
+  set_phase design
+  bash "$A" start --slug feat-one --mode run --until gate --budget-transitions 1 >/dev/null 2>&1
+  bash "$A" transition --slug feat-one --from design --to code >/dev/null 2>&1
+  set_phase code
+  out=$(bash "$A" transition --slug feat-one --from code --to review 2>&1)
+  _assert "autorun-referee" "the transition budget ends the run with STOP-3" \
+    "$(echo "$out" | grep -q 'state=stop reason=STOP-3' && echo 0 || echo 1)"
+  bash "$A" finish --slug feat-one --stop STOP-3 --phase-reached code >/dev/null 2>&1
+  _assert "autorun-referee" "a STOP-3 hand-back is outcome=incomplete — out of budget is not a verdict" \
+    "$(python3 -c "
+import yaml,glob,re
+f=sorted(glob.glob('.ssd/features/feat-one/auto-runs/*-run.md'))[-1]
+d=yaml.safe_load(re.match(r'\A---\n(.*?)\n---\n', open(f).read(), re.S).group(1))
+print(0 if d['run']['outcome']=='incomplete' and d['run']['stop_reason']=='STOP-3' else 1)")"
+
+  # --- R6, resolved as the intra-record form. AC-3's cross-artifact ordering ("every transition
+  # timestamp precedes its phase artifacts' produced_at") cannot be tested in this repo: every
+  # committed artifact is stamped at midnight while autorun.sh writes real instants, so a correctly
+  # ordered run fails the check. What autorun.sh fully controls — and what record-before-act actually
+  # asserts — is the ordering INSIDE the record. That is what this tests.
+  _assert "autorun-referee" "produced_at precedes every transition, and transitions are non-decreasing" \
+    "$(python3 -c "
+import yaml,glob,re
+f=sorted(glob.glob('.ssd/features/feat-one/auto-runs/*-run.md'))[0]
+d=yaml.safe_load(re.match(r'\A---\n(.*?)\n---\n', open(f).read(), re.S).group(1))
+ts=[t['ts'] for t in d['run']['transitions']]
+print(0 if ts and all(d['produced_at'] <= x for x in ts) and ts==sorted(ts) else 1)")"
+
+  # --- THE GREEN PATH. Round 2 found the suite asserted `red` and `incomplete` and never the one
+  # outcome the feature exists to produce; the round-1 mapping was "red unless explicitly green" and
+  # the rewrite inverted that structure, which is exactly the change a green assertion catches.
+  set_phase design
+  bash "$A" start --slug feat-one --mode run --until gate >/dev/null 2>&1
+  bash "$A" transition --slug feat-one --from design --to code >/dev/null 2>&1
+  printf 'PASS wip-commits :: none\nPASS tests-pass :: ok\n' > gate-green.txt
+  out=$(bash "$A" finish --slug feat-one --stop STOP-7 --phase-reached gate --gate-output gate-green.txt 2>&1)
+  _assert "autorun-referee" "an all-PASS gate output yields outcome=green gate_result=pass" \
+    "$(echo "$out" | grep -q 'outcome=green gate_result=pass' && echo 0 || echo 1)"
+  _assert "autorun-referee" "the green record says so in its frontmatter, not just on stdout" \
+    "$(python3 -c "
+import yaml,glob,re
+f=sorted(glob.glob('.ssd/features/feat-one/auto-runs/*-run.md'))[-1]
+d=yaml.safe_load(re.match(r'\A---\n(.*?)\n---\n', open(f).read(), re.S).group(1))
+print(0 if d['run']['outcome']=='green' and d['run']['gate_result']=='pass' else 1)")"
+
+  # --- NG5, measured rather than asserted in prose ---
+  _assert "autorun-referee" "the whole run wrote ZERO rail_deviations" \
+    "$(python3 -c "
+import yaml
+d=yaml.safe_load(open('.ssd/current.yml'))
+print(0 if not d['active'][0].get('rail_deviations') else 1)")"
+
+  # --- the record validates against its own schema ---
+  _assert "autorun-referee" "the record passes frontmatter-validate.py" \
+    "$(python3 "$REPO_ROOT/methodology/frontmatter-validate.py" .ssd/features/feat-one/auto-runs/*-run.md >/dev/null 2>&1 && echo 0 || echo 1)"
+
+  fixture_teardown "$tdir"
+}
+
+# Two active iterations of one feature are two active[] entries with the SAME slug. Resolving on the
+# slug alone read a SIBLING's phase and budget, which walked an at-the-ceiling, 97-hours-over-budget
+# workstream straight past FM-3 and the over-budget refusal and landed the lock on the wrong entry
+# (review round 1, MAJOR-2). The same shape existed in deviation.sh and is fixed there too.
+test_fixture_autorun_iteration_resolution() {
+  echo "fixture: autorun-iteration-resolution"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then echo "  (skipped — PyYAML not installed)"; return; fi
+  local tdir rc out; tdir=$(fixture_setup "autorun-iteration")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/feat
+  echo "2.14.0" > VERSION
+  printf 'project:\n  name: Parity Fixture\nssd:\n  gitignore_mode: selective\n' > .ssd/project.yml
+  cat > .ssd/current.yml <<'EOS'
+schema_version: 2
+active:
+  - slug: feat
+    iteration: b
+    phase: design
+    budget_hours: 8
+    elapsed_hours: 1
+    blockers: []
+  - slug: feat
+    iteration: a
+    phase: gate
+    budget_hours: 2
+    elapsed_hours: 99
+    blockers: []
+archived: []
+EOS
+  chmod 644 .ssd/current.yml
+  local A="$REPO_ROOT/methodology/autorun.sh"
+
+  bash "$A" start --slug feat#a --mode run --until gate >/dev/null 2>&1; rc=$?
+  _assert "autorun-iteration" "an iteration at the ceiling is refused on ITS OWN phase, not a sibling's" \
+    "$([[ $rc -eq 2 ]] && echo 0 || echo 1)"
+  out=$(bash "$A" start --slug feat#a --mode run --until gate 2>&1)
+  _assert "autorun-iteration" "the refusal names the iteration the user typed" \
+    "$(echo "$out" | grep -q "feat#a" && echo 0 || echo 1)"
+
+  bash "$A" start --slug feat#b --mode run --until gate >/dev/null 2>&1; rc=$?
+  _assert "autorun-iteration" "the sibling iteration, in budget and below the ceiling, starts" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  # NOTE: no `{...}` literals in these one-liners — a brace literal inside $(python3 -c "...") is
+  # brace-EXPANDED by the shell before python sees it, and the program arrives split in two.
+  _assert "autorun-iteration" "the lock lands on iteration b, and the record lives under iterations/b/" \
+    "$(python3 -c "
+import yaml
+act = yaml.safe_load(open('.ssd/current.yml'))['active']
+pick = lambda i: next(e for e in act if e['iteration'] == i)
+b = pick('b').get('auto_run')
+other = pick('a').get('auto_run')
+print(0 if other is None and b and 'iterations/b/' in b['record'] else 1)")"
+
+  # The same resolution defect, in the writer that shipped one release earlier.
+  bash "$REPO_ROOT/methodology/deviation.sh" record --slug feat#a --step 6 --reason "no deploy surface" >/dev/null 2>&1
+  _assert "autorun-iteration" "deviation.sh records against the named iteration, not the first match" \
+    "$(python3 -c "
+import yaml
+act = yaml.safe_load(open('.ssd/current.yml'))['active']
+pick = lambda i: next(e for e in act if e['iteration'] == i)
+print(0 if len(pick('a').get('rail_deviations') or []) == 1
+            and not pick('b').get('rail_deviations') else 1)")"
+
+  # A duplicate (slug, iteration) is hand-edited corruption. Making the key a pair did not make the
+  # pair unique; the spine refuses to guess past duplicate `branch:` values, and so does this.
+  python3 - <<'EOS'
+import pathlib
+p = pathlib.Path(".ssd/current.yml")
+p.write_text(p.read_text().replace("archived: []",
+    "  - slug: feat\n    iteration: b\n    phase: design\n    blockers: []\narchived: []"))
+EOS
+  bash "$A" plan --slug feat#b >/dev/null 2>&1; rc=$?
+  _assert "autorun-iteration" "a duplicate (slug, iteration) is refused, not resolved to the first match" \
+    "$([[ $rc -eq 3 ]] && echo 0 || echo 1)"
+  bash "$REPO_ROOT/methodology/deviation.sh" record --slug feat#b --step 6 --reason x >/dev/null 2>&1; rc=$?
+  _assert "autorun-iteration" "deviation.sh refuses the same duplicate rather than picking one" \
+    "$([[ $rc -eq 3 ]] && echo 0 || echo 1)"
+
+  fixture_teardown "$tdir"
+}
+
+# The defect this fixture makes permanent: `.ssd/features/**` denies everything under a feature
+# directory at every depth, so an auto-run record was gitignored the day the feature was specified as
+# "committed". Asserted against the CANONICAL pattern file, i.e. what every other project receives
+# from migrate.sh — not just against this repo's own .gitignore.
+test_fixture_autorun_record_not_gitignored() {
+  echo "fixture: autorun-record-not-gitignored"
+  local tdir rc; tdir=$(fixture_setup "autorun-gitignore")
+  cd "$tdir" || exit 2
+  cp "$REPO_ROOT/methodology/selective.gitignore" .gitignore
+  mkdir -p .ssd/features/feat-one/auto-runs
+
+  git check-ignore -q .ssd/features/feat-one/auto-runs/2026-09-21T194011Z-run.md; rc=$?
+  _assert "autorun-gitignore" "an auto-run record is COMMITTABLE under the canonical selective pattern" \
+    "$([[ $rc -eq 1 ]] && echo 0 || echo 1)"
+
+  git check-ignore -q .ssd/features/feat-one/auto-runs/secrets.env; rc=$?
+  _assert "autorun-gitignore" "a non-record file under auto-runs/ stays denied — the allow-list is still narrow" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+
+  git check-ignore -q .ssd/current.yml; rc=$?
+  _assert "autorun-gitignore" "machine state is still gitignored" \
+    "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+
+  _assert "autorun-gitignore" "the repo's own .gitignore carries the same negation (two copies, no drift)" \
+    "$(grep -qF '!.ssd/features/**/auto-runs/*-run.md' "$REPO_ROOT/.gitignore" && echo 0 || echo 1)"
+
+  fixture_teardown "$tdir"
+}
+
 test_fixture_deviation_writer() {
   echo "fixture: deviation-writer"
   if ! python3 -c "import yaml" >/dev/null 2>&1; then echo "  (skipped — PyYAML not installed)"; return; fi
@@ -3134,6 +3451,9 @@ test_fixture_ci_covers_stacked_prs
 test_fixture_deviation_writer
 test_fixture_deviations_recorded
 test_fixture_no_unsanctioned_stat
+test_fixture_autorun_referee
+test_fixture_autorun_iteration_resolution
+test_fixture_autorun_record_not_gitignored
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

@@ -122,6 +122,7 @@ are the escape hatch when you want to force a specific phase.
 /ssd ship       — Deploy readiness check only (systems-designer checklist)
 /ssd audit      — Adversarial comparative review (nuclear option)
 /ssd upgrade    — (v1.21+) report/migrate SSD convention drift (--apply · --adopt)
+/ssd run <slug> — (v2.14+) walk the rails to a ceiling of `gate`, opt-in (--until · --dry-run)
 ```
 
 **Parallel workstreams** (v1.16+, [ADR-0007](docs/decisions/ADR-0007-parallel-features.md)) — manage

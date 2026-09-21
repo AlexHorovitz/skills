@@ -27,6 +27,8 @@ and a team member onboard.
     │       ├── 03-coder-status.md       # — single-cycle features only
     │       ├── 04-code-review.md        # — single-cycle features only
     │       ├── 05-deploy.md             # — single-cycle features only
+    │       ├── auto-runs/               # autonomy-ladder records (v2.14.0, ADR-0020)
+    │       │   └── <UTC>-run.md         #   what the orchestrator did unattended
     │       └── iterations/              # — multi-iteration features only (opt-in, see ADR-0001)
     │           └── <iter-id>/           # e.g., 3a, 3b, auth-flow
     │               ├── brief.md
@@ -61,6 +63,7 @@ Artifacts under `.ssd/` divide along durable-vs-working lines:
 |---|---|---|
 | `.ssd/features/<slug>/00-brief.md`, `01-architect.md`, `02-systems-designer.md`, `03-coder-status.md`, `04-code-review*.md`, `05-deploy.md` | ✅ committed | Durable design records, same class as ADRs |
 | `.ssd/features/<slug>/iterations/<iter>/{brief,coder-status,deploy}.md`, `code-review/round-*.md` | ✅ committed | Same — per-iteration variants of the above |
+| `.ssd/features/<slug>/auto-runs/*-run.md` | ✅ committed | The durable trace of what an autonomy rung did unattended (v2.14.0, [ADR-0020](../../docs/decisions/ADR-0020-autonomy-ladder.md)). Same tier as a coder-status report — **a record the gate cannot see is an unimplemented mechanism with a filename**. Only `*-run.md` is re-included; anything else under `auto-runs/` stays denied |
 | `.ssd/features/<slug>/iterations/<iter>/deferred.yml` | ❌ gitignored | Machine-managed carry-over ledger |
 | `.ssd/milestones/<topic>/{skeptic-before,skeptic-after,refactor-plan,refactor-prs,verification}.md` | ✅ committed | Durable milestone records |
 | `.ssd/milestones/<topic>/{sha-before,metrics-before.yml}` | ❌ gitignored | Snapshot machinery, not design docs |
@@ -81,6 +84,7 @@ pattern with a bare `.ssd/` line; the `no-leaky-state` rule then SKIPs cleanly.
 | Path class | `selective` (default) | `blanket` | `private` |
 |---|---|---|---|
 | `.ssd/features/**` durable artifacts | ✅ committed | ❌ | ❌ |
+| `.ssd/features/**/auto-runs/*-run.md` | ✅ committed | ❌ | ❌ |
 | `.ssd/milestones/**` durable records | ✅ committed | ❌ | ❌ |
 | `.ssd/gate.yml` (ADR-0015 gate inputs) | ✅ committed | ✅ committed | ❌ |
 | `.ssd/` machine state | ❌ | ❌ | ❌ |

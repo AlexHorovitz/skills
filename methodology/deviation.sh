@@ -123,12 +123,36 @@ with open(lock_path, "w") as lock:
     except yaml.YAMLError as exc:
         print(f"deviation: {path} is not parseable YAML: {exc}", file=sys.stderr); sys.exit(3)
 
+    # Resolve on the PAIR (slug, iteration). Two active iterations of one feature are two active[]
+    # entries with the SAME slug — matching on slug alone recorded the deviation against whichever
+    # came first, and an iteration-qualified `--slug feat#b` matched nothing at all. Same defect the
+    # autonomy referee had; fixed in both rather than in one (autorun.sh review round 1, MAJOR-2).
+    base, _, iteration = slug.partition("#")
+    iteration = iteration or None
+
+    def entry_iteration(entry):
+        value = entry.get("iteration")
+        return str(value) if value not in (None, "", "null") else None
+
+    def qualified(entry):
+        it = entry_iteration(entry)
+        return f"{entry.get('slug')}#{it}" if it else str(entry.get("slug"))
+
     active = (doc or {}).get("active") or []
-    slugs = [w.get("slug") for w in active if isinstance(w, dict)]
-    if slug not in slugs:
-        print(f"deviation: no active workstream '{slug}'. Active: {', '.join(s for s in slugs if s) or '(none)'}",
+    known = [qualified(w) for w in active if isinstance(w, dict) and w.get("slug")]
+    matches = [w for w in active
+               if isinstance(w, dict) and w.get("slug") == base and entry_iteration(w) == iteration]
+    if not matches:
+        print(f"deviation: no active workstream '{slug}'. Active: {', '.join(known) or '(none)'}",
               file=sys.stderr)
         sys.exit(2)
+    # A duplicate (slug, iteration) is state corruption from hand-edited YAML. The spine refuses to
+    # guess past duplicate `branch:` values for the same reason; recording a deviation against a
+    # coin-flip entry is worse than not recording one (autorun.sh review round 2, MINOR-5).
+    if len(matches) > 1:
+        print(f"deviation: {len(matches)} active workstreams share (slug, iteration) = '{slug}'. "
+              "Delete or re-key the duplicate in .ssd/current.yml, then re-run.", file=sys.stderr)
+        sys.exit(3)
 
     lines = text.splitlines(keepends=True)
 
@@ -138,26 +162,41 @@ with open(lock_path, "w") as lock:
     # impossible) and those lines are spliced in. Both properties, neither traded away.
     frag = yaml.safe_dump([record], sort_keys=False, default_flow_style=False, allow_unicode=True)
 
+    def block_end(at, indent):
+        for j in range(at + 1, len(lines)):
+            ln = lines[j]
+            if not ln.strip():
+                continue
+            ind = len(ln) - len(ln.lstrip())
+            if ind <= indent and (ln.lstrip().startswith("- ") or ind == 0):
+                return j
+        return len(lines)
+
+    def block_iteration(at, stop_at, indent):
+        for j in range(at + 1, stop_at):
+            m = re.match(rf"^ {{{indent}}}iteration:\s*(.*)$", lines[j])
+            if m:
+                value = m.group(1).split("#", 1)[0].strip().strip("'\"")
+                return value if value not in ("", "null", "~", "None") else None
+        return None
+
+    # The splice must disambiguate exactly as the check above does, or the record lands on a
+    # sibling iteration's entry.
     start = None
     for i, ln in enumerate(lines):
         m = re.match(r"^(\s*)-\s+slug:\s*(\S+)\s*$", ln)
-        if m and m.group(2).strip("'\"") == slug:
-            start, item_indent = i, len(m.group(1))
+        if not (m and m.group(2).strip("'\"") == base):
+            continue
+        indent = len(m.group(1))
+        stop_at = block_end(i, indent)
+        if block_iteration(i, stop_at, indent + 2) == iteration:
+            start, item_indent, end = i, indent, stop_at
             break
     if start is None:
         print(f"deviation: '{slug}' is in active[] but its `- slug:` line could not be located",
               file=sys.stderr); sys.exit(3)
 
     field_indent = item_indent + 2
-    end = len(lines)
-    for j in range(start + 1, len(lines)):
-        ln = lines[j]
-        if not ln.strip():
-            continue
-        ind = len(ln) - len(ln.lstrip())
-        if ind <= item_indent and (ln.lstrip().startswith("- ") or ind == 0):
-            end = j
-            break
 
     body = "".join(" " * (field_indent + 2) + l if l.strip() else l for l in frag.splitlines(keepends=True))
 
