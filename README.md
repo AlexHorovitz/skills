@@ -23,6 +23,9 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 - [`ssd-private-mode`](.ssd/features/ssd-private-mode/01-architect.md) — `gitignore_mode: private`: run SSD with **no paper trail in git** ([ADR-0017](docs/decisions/ADR-0017-private-mode.md)). Nothing SSD produces is tracked — `.ssd/` plus the `docs/decisions/`, `docs/runbooks/`, `docs/architecture/` trees — while every rail step and gate rule still runs. Iteration A ships the mode (v2.8.0); iteration B adds the `/ssd upgrade` retrofit. Opt-in at `ssd-init --private`; absent ⇒ byte-identical behavior. See [Private mode](#private-mode-optional) below.
 - [`ssd-store`](.ssd/features/ssd-store/01-architect.md) — the private artifact store ([ADR-0018](docs/decisions/ADR-0018-ssd-artifact-store.md)): `.ssd` becomes a symlink into a separate private git repo, so the methodology record is version-controlled **outside** the project that keeps it private (v2.10.0). Found and fixed the leak the naive version would have shipped — a symlinked `.ssd` was ignored by neither `.gitignore` nor `no-leaky-state`.
 - [`github-issue-tracking`](.ssd/features/github-issue-tracking/01-architect.md) — opt-in, one-way mirror of workstream state to GitHub issues (ADR=epic, workstream=feature issue, `ssd:phase/*` labels; [ADR-0014](docs/decisions/ADR-0014-github-issue-state-tracking.md)). Two iterations: (A) the additive mirror — `ensure-epic`/`ensure-feature`/`set-phase` + auto-sync on phase advance, v2.3.0; (B) the close lifecycle (`close-feature`/`close-epic` behind `auto_close`) + the informational `issue-sync-current` gate rule, v2.4.0. Default-off — zero behavior change until a project opts in. See [GitHub Issue Tracking](#github-issue-tracking-optional) below.
+- [`ssd-init-gate-readiness`](.ssd/features/ssd-init-gate-readiness/00-brief.md) — the committed [`.ssd/gate.yml`](.ssd/gate.yml): gate inputs (`test_command`, `feature_flag_marker`) that travel to every clone and CI runner instead of living in a gitignored `project.yml` (v2.5.0; [ADR-0015](docs/decisions/ADR-0015-ssd-init-gate-readiness.md)).
+- [`rail-deviations`](.ssd/features/rail-deviations/01-architect.md) — `rail_deviations` is **written** by something and **read** by something ([ADR-0019](docs/decisions/ADR-0019-rail-deviation-records.md), v2.13.0). `rails.md` had promised since v1.15.0 that "every skipped step appears in `rail_deviations:`"; measured on 2026-09-01 there were **zero** such fields across 15 workstreams and no script wrote one. `methodology/deviation.sh` is the writer, the `deviations-recorded` gate rule is the reader, and they shipped together on purpose.
+- [`ssd-autonomy`](.ssd/features/ssd-autonomy/01-architect.md) — the **autonomy ladder** ([ADR-0020](docs/decisions/ADR-0020-autonomy-ladder.md), v2.14.0): two opt-in rungs above propose-and-wait, with `methodology/autorun.sh` as an executable referee and a durable record written *before* each phase runs. See [Autonomy ladder](#autonomy-ladder-optional) below.
 
 ## Methodology
 
@@ -76,7 +79,8 @@ so you never have to memorize the verb set.
 /ssd start  ← bootstrap a new project (Walking Skeleton) when there's no state to detect yet
 ```
 
-The full verb set (`feature`, `design`, `gate`, `milestone`, `verify`, `ship`, `audit`, `upgrade`)
+The full verb set (`start`, `feature`, `design`, `gate`, `milestone`, `verify`, `ship`, `audit`,
+`upgrade`, `run`)
 stays a first-class escape hatch — every phase is still directly invokable. The command path is a
 **thin alias** that lowers into the conversational path, not a co-equal surface. See
 [The Meta-Skill](#ssd--the-meta-skill) below for the full set.
@@ -181,6 +185,55 @@ Or call a sub-skill directly when working outside the SSD workflow:
 /codebase-skeptic
 /feynman
 ```
+
+---
+
+## Autonomy ladder (optional)
+
+*v2.14.0+ · [ADR-0020](docs/decisions/ADR-0020-autonomy-ladder.md)*
+
+By default `/ssd` **proposes** the next action and waits. Two opt-in rungs sit above that, for
+delegating the mechanical middle of a feature — the coder → reviewer → coder loop until the gate
+passes.
+
+| Rung | What bare `/ssd` does | Phases per invocation |
+|---|---|---|
+| `propose` | proposes; waits | 0 — **the default, and the default is absence** |
+| `advance` | executes its own top proposal when it is unambiguous | ≤ 1, unconditionally |
+| `run` | offers `/ssd run <slug>`, which walks the rails to a ceiling | ≤ `budget_transitions` |
+
+```yaml
+# .ssd/project.yml, under ssd:
+  autonomy:
+    mode: propose              # propose | advance | run
+    max_review_loops: 3        # coder<->reviewer rounds before the run stops
+    budget_transitions: 12     # phase transitions per invocation
+    budget_wall_minutes: 30    # 0 = uncapped
+```
+
+With no `autonomy:` block the orchestrator makes **no additional call at all**, so behavior is
+identical to v2.13.0. An unrecognized `mode:` is a refusal that quotes the value, never a silent
+default.
+
+**Rule-zero forbids silence, not autonomy.** Under a rung, "surfaced" means **announce → log → act**:
+the transition is narrated, written to a durable record on disk, and only then executed — so state
+lags reality by at most one announced step even when nobody is watching.
+
+**The ceiling is `gate`, and it is not configurable.** A feature is bounded by two human decisions —
+the brief before and the ship after — and no rung reaches ship, deploy, rollout, or flag removal.
+`--until ship` exits non-zero. That is not a retreat from "SSD trusts the developer": your door is
+untouched, and `/ssd ship <slug>` typed by a human works exactly as before.
+
+[`methodology/autorun.sh`](methodology/autorun.sh) is the referee. The orchestrator still executes
+phases; the script decides whether it may, and the mode literal, the ceiling, the rails successor
+table, the budgets and record-before-act are all **exit codes** rather than prose. An auto-run writes
+zero `rail_deviations` **by construction** — it cannot express an off-rails transition, so it cannot
+log one, and it cannot act without logging.
+
+Every run leaves `.ssd/features/<slug>/auto-runs/<ts>-run.md`, committed under `selective` mode,
+recording each transition, the executable gate's verdict, and an `outcome` of `green`, `red` or
+`incomplete`. Full playbook — stop conditions, refusals, the threat model, and stale-lock recovery —
+in [`ssd/chapters/autonomy.md`](ssd/chapters/autonomy.md).
 
 ---
 
@@ -341,7 +394,23 @@ letting SSD write into nothing.
 
 ## Contributing
 
-Contributions are welcome. All content in this repo is Markdown — there is no code to compile or test suite to run. The bar for a good contribution is whether Claude follows the guidance accurately and produces better outcomes than it would without it.
+Contributions are welcome. Most of this repo is Markdown, and for a guidance-only change the bar is
+whether Claude follows it accurately and produces better outcomes than it would without it.
+
+**There is executable code, and there is a test suite — run it.** The repo ships seven shell scripts
+and one Python validator under [`methodology/`](methodology/), and
+[`scripts/parity-test.sh`](scripts/parity-test.sh) is 82 fixtures / 375 assertions that
+[CI](.github/workflows/quality.yml) runs on every pull request alongside `shellcheck` and the gate
+itself:
+
+```bash
+bash scripts/parity-test.sh
+shellcheck -S warning methodology/*.sh scripts/*.sh
+bash methodology/gate-rules.sh --base main
+```
+
+A change to anything under `methodology/` or `scripts/` without a fixture is a change the next release
+can silently revert.
 
 ### What to contribute
 
@@ -392,26 +461,37 @@ architect/
 
 ## Skill Hygiene Contract
 
-Every skill in this directory MUST conform to these conventions. Skills that violate them are flagged
-by the skill linter (when present) and block `/ssd start` in strict mode.
+Conventions every skill in this directory aims at. **Nothing enforces them.** This section used to say
+violations were "flagged by the skill linter (when present) and block `/ssd start` in strict mode" —
+there is no linter in this repo and no strict mode anywhere in it. That sentence was the same shape as
+the `/ssd ship --force` claim struck in v2.11.0: a mechanism that existed only in the document
+describing it. What *is* enforced is listed under [Enforcement](#hard-rules) and runs in
+`methodology/gate-rules.sh`.
 
-**File structure:**
-- `SKILL.md` begins with `# Skill Name` as the first line. The license pointer (`<!-- License: See /LICENSE -->`)
-  and `**Version:** X.Y.Z` follow the title, not precede it. License is a single-line pointer — not
-  an inlined 13-line preamble.
-- Skills whose `SKILL.md` exceeds **400 lines** MUST split into `SKILL.md` (philosophy + workflow +
-  pointers) plus one or more `references/*.md` (or topically-named sibling files) with detailed
-  patterns, checklists, and examples.
+So the rules below are split by whether the repo currently meets them, measured rather than asserted.
+
+**Held today (11/11 skills):**
+- `SKILL.md` begins with `# Skill Name` as the first line. The license pointer
+  (`<!-- License: See /LICENSE -->`) and `**Version:** X.Y.Z` follow the title, not precede it.
 - Every `SKILL.md` ends with a `## Changelog` section. Each version bump adds a dated entry describing
-  what changed and why.
+  what changed and why. Checked by no script; true by habit.
+- Every skill has an `## Interface` table declaring explicit input/output *paths* (e.g.
+  `.ssd/features/<slug>/01-architect.md`), not just downstream skill names.
+- Every primary output artifact has YAML frontmatter conforming to the schema in
+  [`ssd/chapters/state.md`](ssd/chapters/state.md) § "Structured Output Requirements" — and this one
+  *is* enforced, by `frontmatter-valid` against [`methodology/schemas/`](methodology/schemas/).
 
-**Interface discipline:**
-- Every skill's `## Interface` table declares explicit input/output *paths* (e.g.,
-  `.ssd/features/<slug>/01-architect.md`) — not just downstream skill names.
-- Every primary output artifact has YAML frontmatter conforming to the shared schema documented in
-  `ssd/chapters/state.md` § "Structured Output Requirements."
-- Every skill's Purpose contains a "When NOT to use" clause disambiguating it from any overlapping
-  skill (see `ssd/chapters/skills.md` § "Resolving Skill Overlap").
+**Aspirations the repo does not currently meet:**
+- *Split any `SKILL.md` over 400 lines* into a spine plus `references/*.md`. **Five of eleven exceed
+  it**: `ssd-init` (987), `systems-designer` (677), `code-reviewer` (632), `feynman` (490),
+  `software-standards` (429). The `ssd/SKILL.md` chapter-split (v1.25.0) is the pattern the rest have
+  not followed.
+- *Every skill's Purpose carries a "When NOT to use" clause* disambiguating it from overlapping skills.
+  **Two of eleven have one.** Until that changes, the working disambiguation is
+  [`ssd/chapters/skills.md`](ssd/chapters/skills.md) § "Resolving Skill Overlap", which is complete.
+
+Listing the gap is the point. A contract nothing checks drifts, and the honest version of an unmet
+rule is the count of how far it is from being met.
 
 **Header / license ordering:**
 - Title-first: `# Skill Name` is line 1.
