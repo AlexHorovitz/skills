@@ -6,6 +6,96 @@ Format: `[version] — date — description`
 
 ---
 
+## [2.14.0] — 2026-09-21
+
+### The autonomy ladder — the orchestrator may execute its own proposal, and must write it down first (ADR-0020)
+
+Two opt-in rungs above propose-and-wait. **`advance`**: bare `/ssd` executes its own unambiguous top
+proposal, one phase per invocation. **`run`**: `/ssd run <slug>` walks the rails from the current phase
+to a ceiling of `gate`, looping coder↔reviewer until the gate passes, and hands back at the first stop
+condition. The default is unchanged, and **an absent `autonomy:` block makes no additional call at
+all** — which is what makes "byte-identical to v2.13.0" checkable rather than careful.
+
+**Rule-zero forbids silence, not autonomy.** Under a rung, "surfaced" means **announce → log → act**:
+narrated, then written to a durable record on disk, and only then executed. State therefore lags
+reality by at most one announced step, which is the property that makes recovery from an orchestrator
+death possible.
+
+**`methodology/autorun.sh`** — the referee. `preflight` · `status` · `plan` · `start` · `transition` ·
+`finish` · `clear`. The orchestrator still executes phases in prose; the script decides whether it
+may, because this library has already shipped one mechanism that existed only in prose. Everything the
+specification called a ceiling, a refusal or a budget is an exit code:
+
+- the `mode` literal (`propose|advance|run`) — a typo is a refusal that quotes the value, never a
+  silent default (the `gitignore_mode` stance, ADR-0017);
+- the **delegation wall** — `--until ship|deploy|rollout-advance|flag-removal` exits 2. Not
+  configurable. A feature is bounded by two human decisions: the brief before, the ship after;
+- the **rails successor table** — an off-rails edge is refused, so **an auto-run cannot write a rail
+  deviation because it cannot express one**. `autorun.sh` never calls `deviation.sh`;
+- **budgets** — review loops, transitions, wall-clock, and the workstream's own `budget_hours`;
+- **record-before-act** — the orchestrator acts only on `state=ok` from `transition`, so a failed log
+  aborts the act.
+
+It takes the **same** `.ssd/current.yml.lock` `deviation.sh` takes: two writers, one lock, no new lock
+file.
+
+**The record** (`.ssd/features/<slug>/auto-runs/<ts>-run.md`, committed under `selective`) carries
+`gate_result` — the executable gate's exit status — and `outcome: green|red|incomplete` **separately
+from** `stop_reason`. Before that split, a run that reached the ceiling on a red gate and one that
+reached it on a green gate produced byte-identical frontmatter, both reading STOP-7 = "normal
+completion", to consumers (`codebase-skeptic`, `feynman`) that exist to catch exactly that
+substitution. The stop reason says why the run ended; the outcome says how it went.
+
+**The record was gitignored on the day it was specified as committed.** `.ssd/features/**` denies at
+every depth, so `auto-runs/*-run.md` needed a negation in `.gitignore` **and**
+`methodology/selective.gitignore` (what every other project receives from `migrate.sh`). A parity
+fixture now asserts it against the canonical pattern file — a record the gate cannot see is an
+unimplemented mechanism with a filename.
+
+**Also:** `ssd/chapters/autonomy.md` (new chapter — ladder, wall, threat model, STOP/FM tables,
+partial-failure recovery); `auto_run` in the `current.yml` v2 schema; a stale-lock section in
+`docs/runbooks/ssd-state-recovery.md`; the `autonomy-block` migration (additive, writes a **commented**
+block, idempotent — its `detect` probe is a sentinel comment because the convention *is* an inert
+block); 22 new parity assertions (364 total).
+
+**Closed in review round 1**, because the referee was still trusting the relay in two places:
+
+- **`transition --from` is now checked against `current.yml.active[].phase`** (STOP-4 on a mismatch).
+  It was not, and the review-loop counter increments only on the literal `review → code` edge — so an
+  orchestrator that mislabelled the edge consumed **zero** loops and STOP-1 was unreachable. The
+  budget meant to stop an agent thrashing was enforced against a string the agent supplied.
+- **Workstreams resolve on `(slug, iteration)`, not slug alone.** Two active iterations of one feature
+  are two `active[]` entries with the same `slug`. Matching on slug read a *sibling's* phase and
+  budget, which walked an at-the-ceiling, 97-hours-over-budget workstream past **FM-3 and the
+  over-budget refusal** in one call and landed the lock on the wrong entry. **The same defect existed
+  in `methodology/deviation.sh` (v2.13.0) and is fixed there too** — an iteration-qualified
+  `--slug feat#b` previously matched nothing, and a bare slug recorded against whichever entry came
+  first.
+
+  **This changes `deviation.sh`'s CLI for iterated workstreams, and the change is breaking.** Where
+  v2.13.0 accepted a bare `--slug feat` against a workstream recorded as `iteration: a` and wrote the
+  record, v2.14.0 refuses and names the qualified form:
+  `no active workstream 'feat'. Active: feat#a`. Pass `--slug feat#a`. Refusing beats guessing, but a
+  script that relied on the old leniency will now exit 2. A **duplicate** `(slug, iteration)` — only
+  reachable by hand-editing `current.yml`, since `/ssd feature new` rejects it — is refused as a state
+  corruption (exit 3) rather than resolved to the first match, matching the spine's stance on
+  duplicate `branch:` values.
+- **`outcome` has a principle now**: `red` means *something judged the work and said no* (STOP-1,
+  STOP-6, a failing gate at the ceiling); `incomplete` means *the run stopped before anything judged
+  it* (STOP-2/3/4/5). Running out of budget is not a verdict on the code.
+- A wrong-*shaped* `current.yml` (parseable YAML, not a mapping) exits **3** instead of raising an
+  `AttributeError` traceback and exit 1; each transition records `since_start_minutes` **and**
+  `phase_minutes`; `README.md` lists `/ssd run`; and the chapter now states the rule that makes the
+  byte-identical claim true — `preflight` is called **iff** an `autonomy:` block is present.
+
+**Known limits, stated rather than implied:** interruption (STOP-5) depends on the orchestrator
+noticing your message — there is no signal handler; sub-skills are not atomic, so a phase that
+half-writes an artifact leaves it; `advance` can act once on misread state. `gate_result` is a
+script's exit status **relayed by the orchestrator** — `gate-rules.sh` writes no file of its own, so
+`--gate-output` captures its stdout and `finish` parses that, turning the relay into an artifact.
+
+---
+
 ## [2.13.0] — 2026-09-01
 
 ### `rail_deviations` is written by something, and read by something — ADR-0019

@@ -137,6 +137,27 @@ gitignore_mode() {
   echo "$mode"
 }
 
+# Where this project keeps its ADRs, relative to the project root. Default `docs/decisions`.
+#
+# NOT every project can use the default. Under `gitignore_mode: private` SSD's own
+# `docs/decisions/` is gitignored, so a project whose spec REQUIRES tracked ADRs has to put them
+# somewhere else — and then `adr-delta` probed an empty directory and FAILed forever while the
+# ADRs sat committed three directories away. A check that always fails for a structural reason
+# stops being read, which is the failure the whole rule table exists to prevent.
+adr_dir() {
+  local dir
+  dir=$(gate_input "adr_dir")
+  [[ -z "$dir" ]] && dir="docs/decisions"
+  dir="${dir#./}"
+  dir="${dir%/}"
+  echo "$dir"
+}
+
+# Escape a path for use in an ERE, so a directory containing `.` or `+` cannot widen the match.
+ere_escape() {
+  printf '%s' "$1" | sed 's/[][\.*^$+?(){}|]/\\&/g'
+}
+
 # Which scope a rule that reads SSD ARTIFACTS should use.
 #
 # Under private mode (ADR-0017) no SSD artifact is ever tracked, so it can never appear in
@@ -440,15 +461,33 @@ rule_adr_delta() {
     emit "SKIP" "adr-delta" "architectural diff $arch_lines lines below threshold $threshold"
     return
   fi
-  # Private mode (ADR-0017): docs/decisions/ is gitignored, so an ADR can never appear in the diff.
-  # Diff-scoping here would FAIL demanding a committed ADR delta that the mode forbids, while
-  # no-leaky-state FAILs if one is force-added — both branches FAIL and the gate is unpassable on
-  # any change over the threshold. Fall back to a worktree probe: an ADR touched more recently than
-  # the base commit. Deliberately weaker than a diff (an mtime is touchable) and the detail says so.
+  # WHERE the ADRs are is configurable (`adr_dir`), because the default is unusable for some
+  # projects — see adr_dir() above.
+  local adr_rel adr_ere adr_changes
+  adr_rel=$(adr_dir)
+  adr_ere=$(ere_escape "$adr_rel")
+
+  # A DIFF IS THE STRONGEST EVIDENCE, so look for one first and take it whatever the mode. A
+  # project that tracks its ADRs gets the real attestation rather than the mtime fallback, and
+  # `gitignore_mode` does not have to be consulted to find that out.
+  adr_changes=$(echo "$files" | grep -E "^$adr_ere/ADR-" || true)
+  if [[ -n "$adr_changes" ]]; then
+    local count
+    count=$(echo "$adr_changes" | wc -l | tr -d ' ')
+    emit "PASS" "adr-delta" "$count ADR file(s) changed in $adr_rel/ for $arch_lines architectural lines"
+    return
+  fi
+
+  # No ADR in the diff. Under private mode (ADR-0017) that is not evidence of absence: the ADR
+  # directory may be gitignored, or the ADRs may simply be uncommitted, and demanding a committed
+  # delta the mode forbids would deadlock against no-leaky-state — both branches FAIL and the gate
+  # is unpassable on any change over the threshold. Fall back to a worktree probe: an ADR touched
+  # more recently than the base commit. Deliberately weaker than a diff (an mtime is touchable)
+  # and the detail says so.
   if [[ "$(artifact_scope)" == "worktree" ]]; then
-    local adr_dir="$PROJECT_ROOT/docs/decisions" base_epoch rcount=0 unreadable=0
+    local adr_dir="$PROJECT_ROOT/$adr_rel" base_epoch rcount=0 unreadable=0
     if [[ ! -d "$adr_dir" ]]; then
-      emit "FAIL" "adr-delta" "$arch_lines architectural lines changed but docs/decisions/ does not exist (private mode, worktree scope)"
+      emit "FAIL" "adr-delta" "$arch_lines architectural lines changed but $adr_rel/ does not exist (private mode, worktree scope)"
       return
     fi
     base_epoch=$(base_commit_epoch)
@@ -458,7 +497,7 @@ rule_adr_delta() {
       emit "SKIP" "adr-delta" "private mode — cannot resolve base '$BASE' commit time; worktree ADR probe has no reference point"
       return
     fi
-    # Plain glob + stat rather than `find -newermt` (see file_mtime for why). docs/decisions/ is
+    # Plain glob + stat rather than `find -newermt` (see file_mtime for why). The ADR directory is
     # flat by convention (architect/SKILL.md § ADR), so a glob covers it.
     local adr_file mt
     for adr_file in "$adr_dir"/ADR-*.md; do
@@ -471,23 +510,16 @@ rule_adr_delta() {
       [[ "$mt" -ge "$base_epoch" ]] && rcount=$((rcount + 1))
     done
     if [[ $rcount -gt 0 ]]; then
-      emit "PASS" "adr-delta" "$rcount ADR file(s) modified since base for $arch_lines architectural lines (private mode: worktree mtime probe, weaker than a diff)"
+      emit "PASS" "adr-delta" "$rcount ADR file(s) under $adr_rel/ modified since base for $arch_lines architectural lines (private mode: worktree mtime probe, weaker than a diff)"
     elif [[ $unreadable -gt 0 ]]; then
       emit "SKIP" "adr-delta" "private mode — $unreadable ADR file(s) present but mtime unreadable; cannot verify (worktree scope)"
     else
-      emit "FAIL" "adr-delta" "$arch_lines architectural lines changed but no ADR under docs/decisions/ modified since base '$BASE' (private mode, worktree scope)"
+      emit "FAIL" "adr-delta" "$arch_lines architectural lines changed but no ADR under $adr_rel/ modified since base '$BASE' (private mode, worktree scope)"
     fi
     return
   fi
-  local adr_changes
-  adr_changes=$(echo "$files" | grep -E '^docs/decisions/ADR-' || true)
-  if [[ -n "$adr_changes" ]]; then
-    local count
-    count=$(echo "$adr_changes" | wc -l | tr -d ' ')
-    emit "PASS" "adr-delta" "$count ADR file(s) changed for $arch_lines architectural lines"
-  else
-    emit "FAIL" "adr-delta" "$arch_lines architectural lines changed but no ADR delta in docs/decisions/"
-  fi
+
+  emit "FAIL" "adr-delta" "$arch_lines architectural lines changed but no ADR delta in $adr_rel/"
 }
 
 # ----- rule: frontmatter-valid -----------------------------------------------

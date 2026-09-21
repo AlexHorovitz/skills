@@ -31,6 +31,11 @@
 !.ssd/features/**/iterations/**/code-review/round-*.md
 !.ssd/features/**/iterations/**/deploy.md
 
+# Auto-run records (v2.14.0, ADR-0020): the durable trace of what the orchestrator did unattended.
+# Same tier as a coder-status report — a record the gate cannot see is an unimplemented mechanism
+# with a filename.
+!.ssd/features/**/auto-runs/*-run.md
+
 # Milestones: durable records committed; snapshot machinery local.
 !.ssd/milestones/**/skeptic-before.md
 !.ssd/milestones/**/skeptic-after.md

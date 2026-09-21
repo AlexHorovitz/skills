@@ -172,3 +172,12 @@ migrations:
     title: "rails-walked gate rule — the first mechanical check of a rails invariant"
     detect: null
     guidance: "The gate gained a `rails-walked` rule. When a change set bumps VERSION — i.e. claims to be a release — every .ssd/features/<slug>/ directory it touches must contain a code review whose frontmatter says `gate_pass: true` (rails invariant 4). Nothing to install: the rule ships in gate-rules.sh, SKIPs on every non-release change set, and SKIPs for any project that keeps no .ssd/features/ artifacts. Why it exists: for eleven releases the gate enforced eleven hygiene rules and NOT ONE rails invariant, and a release shipped with no code review at all while every check was green. If this rule FAILs on your next release, the honest reading is that a feature shipped unreviewed — not that the rule is too strict."
+
+  - id: autonomy-block
+    introduced_in: "2.14.0"
+    applies_to: project
+    kind: mechanical
+    adr: ADR-0020
+    title: "autonomy ladder config block (ssd.autonomy, commented default) in project.yml"
+    detect: "project.yml carries the `# ssd:autonomy-block=` sentinel (executable probe: detect() in migrate.sh). A SENTINEL and not a key, because the block this entry writes is deliberately COMMENTED OUT — an absent/inert block is the byte-identical default, so there is no live key to probe. Same shape as private-mode's `# ssd:gitignore-mode=private` sentinel."
+    apply: "Append a commented `autonomy:` block under `ssd:` (mode/max_review_loops/budget_transitions/budget_wall_minutes/announce), preceded by the sentinel line. Purely additive and behaviourally inert: nothing reads a commented key, so an upgraded project behaves exactly as it did before. Uncommenting it is the opt-in, and chapters/autonomy.md is the thing to read first."
