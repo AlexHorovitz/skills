@@ -11,7 +11,13 @@ A free-for-personal-use skill set for [Claude Code](https://claude.ai/code) that
 
 **Core invariant:** If you can't ship it right now, you don't have a product — you have a construction site.
 
-**Dogfood.** As of v1.19.0 (per [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)) this repo tracks its own SSD artifacts under [`.ssd/features/`](.ssd/features/) — briefs, architect specs, coder-status reports, and code-reviews for every epic shipped in v1.5.0+. Read the history of how the methodology was built using the methodology itself. The epics so far:
+**Dogfood.** As of v1.19.0 (per [ADR-0008](docs/decisions/ADR-0008-ssd-commit-split.md)) this repo tracks its own SSD artifacts under [`.ssd/features/`](.ssd/features/) — briefs, architect specs, coder-status reports and code-reviews. Read the history of how the methodology
+was built using the methodology itself.
+
+Not uniformly: of the 15 feature directories, **four are missing at least one of those four artifact
+classes** — `recorded-defect-fixes` has only a code review, `ssd-2.0-greenlight` and
+`ssd-init-gate-readiness` and `ssd-skill-chapter-split` have no architect spec. The record is a record
+of what happened, including the steps that were skipped. The epics so far:
 
 - [`ssd-skill-upgrades`](.ssd/features/ssd-skill-upgrades/01-architect.md) — 9-iteration epic implementing v1.5–v1.14 (5 ADRs: iterations, `current.yml` split, rails, profiles, gate execution).
 - [`parallel-features`](.ssd/features/parallel-features/01-architect.md) — concurrent feature workstreams (3 iterations, v1.15–v1.17; [ADR-0007](docs/decisions/ADR-0007-parallel-features.md)).
@@ -146,7 +152,7 @@ more than one feature at once:
 | `/architect` | Design: models, services, API contracts. Platform-adaptive (web, iOS, Android, macOS, headless) |
 | `/systems-designer` | Production readiness: reliability, observability, deployment safety |
 | `/coder` | Implementation from spec (Python, TypeScript, Swift, Ruby, Java, C#, PHP, Go, Rust, C/C++, Obj-C) |
-| `/code-reviewer` | PR gate: BLOCKER/MAJOR findings block merge |
+| `/code-reviewer` | PR gate: BLOCKER or MAJOR findings send the work back to the coder. **Loud, not a wall** — nothing in this repo physically blocks a merge (see [Hard Rules](#hard-rules)) |
 | `/codebase-skeptic` | Deep architectural critique through fifteen expert lenses |
 | `/feynman` | Epistemic audit: builds a claim ledger and grades what the project believes about itself against evidence. Proposed at `/ssd milestone` Step 0.5, `verify`, `audit`, and pre-`ship`; gated by the `feynman-clean` rule ([ADR-0016](docs/decisions/ADR-0016-feynman-orchestrator-integration.md)) |
 | `/software-standards` | Adversarial comparative audit |
@@ -296,9 +302,14 @@ Sets `project.yml.ssd.gitignore_mode: private` and writes
 | Also suppressed | `add-` branch prefix (branches become plain `{slug}`), GitHub issue tracking (forced off), the `CLAUDE.md` SSD section |
 | **Kept** | the `🛠️ Crafted with SSD` commit/PR footer |
 
-**Every rail step and every gate rule still runs.** Privacy is a *storage and visibility* posture, never
-a reduction in rigor — `no-leaky-state` in fact becomes *more* load-bearing here than in any other mode,
-since it is what enforces the boundary.
+**Every rail step and every gate rule is still invoked, and rigor is not reduced** — `no-leaky-state` in
+fact becomes *more* load-bearing here than in any other mode, since it is what enforces the boundary.
+Privacy is a *storage and visibility* posture.
+
+Two rules can nonetheless **SKIP** under private mode where they would have run elsewhere: `adr-delta`
+when the base commit time is unresolvable or ADR mtimes are unreadable, and `feynman-clean` when no
+report is on disk. The gate's own footer defines a skip as *"a check that did not run"*, so "still
+runs" would be the wrong word for those two. See [Trade-offs](#trade-offs-stated-plainly).
 
 ### What "private" does and does not mean
 
@@ -383,19 +394,34 @@ letting SSD write into nothing.
 
 ## Hard Rules
 
-1. **No merge without a clean `/ssd gate`** — No BLOCKER or MAJOR findings. No exceptions.
+1. **No merge without a clean `/ssd gate`** — No BLOCKER or MAJOR findings.
 2. **No incomplete work on main without a feature flag** — WIP commits on main are banned.
 3. **Tests must pass before and after every change** — "I'll fix the tests tomorrow" is not a shippable state.
 4. **Refactor only after shipping** — Separate PRs, never mixed with feature work.
 5. **Deploy beats perfection** — Reduce scope rather than delay a deploy.
 6. **Production parity from day one** — If you haven't deployed to production yet, that is your next task.
 
+**"Hard rule" means loud when broken, not physically prevented.** This list used to end rule 1 with
+"No exceptions." It has exceptions, and pretending otherwise misdescribes the system:
+[ADR-0012](docs/decisions/ADR-0012-ssd-2.0-architecture.md) Pillar 5 is explicit that enforcement is
+*warnings, not walls* — the gate surfaces violations unmissably and exits non-zero, and **it does not
+lock the door**. `main` in this repo carries no branch protection; a developer who merges past a
+failing gate simply merges. This repo has done it: PR #43 shipped v2.10.0 with **zero review
+artifacts** while all eleven checks were green, which is what produced the `rails-walked` rule.
+
+There is also **no override mechanism**. `/ssd ship --force` was described in four documents for
+eleven releases and implemented by nothing; v2.11.0 struck the claim. Overriding a red gate means
+merging it on purpose and writing down why — by hand, or with
+[`methodology/deviation.sh`](methodology/deviation.sh) since v2.13.0.
+
 ---
 
 ## Contributing
 
-Contributions are welcome. Most of this repo is Markdown, and for a guidance-only change the bar is
-whether Claude follows it accurately and produces better outcomes than it would without it.
+Contributions are welcome. Most of this repo is Markdown, and for a guidance-only change the intended
+bar is whether Claude follows it accurately and produces better outcomes than it would without it.
+**Nothing measures that** — there is no eval harness in this repo and no before/after comparison, so
+treat it as the author's judgement rather than a test you can run. What you *can* run is below.
 
 **There is executable code, and there is a test suite — run it.** The repo ships seven shell scripts
 and one Python validator under [`methodology/`](methodology/), and
@@ -475,11 +501,15 @@ So the rules below are split by whether the repo currently meets them, measured 
   (`<!-- License: See /LICENSE -->`) and `**Version:** X.Y.Z` follow the title, not precede it.
 - Every `SKILL.md` ends with a `## Changelog` section. Each version bump adds a dated entry describing
   what changed and why. Checked by no script; true by habit.
-- Every skill has an `## Interface` table declaring explicit input/output *paths* (e.g.
-  `.ssd/features/<slug>/01-architect.md`), not just downstream skill names.
-- Every primary output artifact has YAML frontmatter conforming to the schema in
-  [`ssd/chapters/state.md`](ssd/chapters/state.md) § "Structured Output Requirements" — and this one
-  *is* enforced, by `frontmatter-valid` against [`methodology/schemas/`](methodology/schemas/).
+- Every skill has an `## Interface` table. **Ten of eleven** declare explicit input/output *paths*
+  (e.g. `.ssd/features/<slug>/01-architect.md`); `ssd/SKILL.md`, the orchestrator, declares a phase
+  argument and "an orchestrated session" instead.
+- Output frontmatter is the one rule here with an executable check —
+  `frontmatter-valid` against [`methodology/schemas/`](methodology/schemas/). Its reach is partial:
+  **eight schemas for eleven skills**, so `codebase-skeptic`, `refactor` and `/ssd verify` primary
+  outputs match nothing and the rule SKIPs them. At the last run, 111 artifacts validated and **13
+  were unvalidated for want of a schema**. A rule that skips what it has no schema for reports PASS
+  on silence, so the count matters more than the verdict.
 
 **Aspirations the repo does not currently meet:**
 - *Split any `SKILL.md` over 400 lines* into a spine plus `references/*.md`. **Five of eleven exceed
