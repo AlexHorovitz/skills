@@ -59,3 +59,10 @@
 
 # Personal notes
 real-world-artifacts/
+
+# Claude Code's skill-sync cache. Not ours, and not a selective-mode pattern: it exists only because
+# the README tells you to clone this repo into ~/.claude/skills, which is the same directory Claude
+# Code writes Anthropic-published skills into. So the cache lands inside this working tree and shows
+# up as untracked. It is regenerated on sync and versioned upstream — committing it would be churn.
+# Deliberately NOT in methodology/selective.gitignore: no other SSD project lives at that path.
+synced/
