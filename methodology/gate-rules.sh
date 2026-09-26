@@ -66,6 +66,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# AUDIT FIX (unknown --rules names): a typo'd or space-padded name (`--rules no-leaky-stat`,
+# `--rules "a, b"`) used to match nothing, run zero rules and exit 0 -- and on bash 3.2 crash on the
+# empty RESULTS array. Strip spaces and reject unknown names as a usage error, like any other bad arg.
+KNOWN_RULES=" wip-commits tests-pass feature-flag-present adr-delta frontmatter-valid no-leaky-state store-link-sane skill-version-sync migration-manifest-current rails-walked deviations-recorded feynman-clean issue-sync-current "
+if [[ -n "$RULES_FILTER" ]]; then
+  RULES_FILTER="${RULES_FILTER// /}"
+  _rules_n=0
+  while IFS= read -r _r; do
+    [[ -z "$_r" ]] && continue
+    case "$KNOWN_RULES" in
+      *" $_r "*) _rules_n=$((_rules_n + 1)) ;;
+      *) echo "--rules: unknown rule '$_r' (known:$KNOWN_RULES)" >&2; exit 2 ;;
+    esac
+  done < <(printf '%s\n' "$RULES_FILTER" | tr ',' '\n')
+  [[ $_rules_n -gt 0 ]] || { echo "--rules requires at least one rule name" >&2; exit 2; }
+fi
+
 # Decide whether a rule should run given any --rules filter. Empty filter = run all.
 should_run() {
   local rule="$1"
@@ -236,6 +253,8 @@ yaml_get_list() {
         if (match($0, /^[[:space:]]*-[[:space:]]+/)) {
           item = $0
           sub(/^[[:space:]]*-[[:space:]]+/, "", item)
+          # AUDIT FIX: drop a trailing ` # comment` and trailing whitespace/CR, else the item never matches.
+          sub(/[[:space:]]+#.*$/, "", item); sub(/[[:space:]]+$/, "", item)
           gsub(/^["'\'']|["'\'']$/, "", item)
           print item
           next
@@ -247,10 +266,24 @@ yaml_get_list() {
           next
         }
       }
-      if (match($0, "^[[:space:]]*"k":[[:space:]]*$")) {
+      # AUDIT FIX: the header used to be recognized ONLY as a bare `key:` line. The ssd-init template
+      # writes `gitignored_state: []   # additional patterns ...`, so the natural edits -- keep the
+      # comment and add `- item` lines below, or fill the flow list `[a, b]` -- were silently ignored
+      # and the extra deny patterns of the project were never enforced. Strip an inline comment first and
+      # accept a one-line flow list.
+      hdr = $0; sub(/[[:space:]]+#.*$/, "", hdr)
+      if (match(hdr, "^[[:space:]]*"k":[[:space:]]*$")) {
         match($0, /^[[:space:]]*/)
         list_indent = RLENGTH
         in_list = 1
+      } else if (match(hdr, "^[[:space:]]*"k":[[:space:]]*\\[.*\\][[:space:]]*$")) {
+        sub(/^[^[]*\[/, "", hdr); sub(/\][[:space:]]*$/, "", hdr)
+        n = split(hdr, parts, ",")
+        for (i = 1; i <= n; i++) {
+          item = parts[i]; sub(/^[[:space:]]+/, "", item); sub(/[[:space:]]+$/, "", item)
+          gsub(/^["'\'']|["'\'']$/, "", item)
+          if (item != "") print item
+        }
       }
     }
   ' "$file"
@@ -332,12 +365,40 @@ diff_files() {
   # consumers to move together. A newline in a path under .ssd/ is pathological; an accent is a
   # Tuesday in a French codebase. That residual gap is a known, narrower one and is recorded here
   # rather than left for the next reader to rediscover.
+  #
+  # AUDIT FIX (quoting): quotepath=false only stops quoting of bytes >= 0x80. Git STILL C-quotes a path
+  # containing `"`, `\`, TAB or another control byte, so `.ssd/archive/a"b.md` arrived as
+  # `".ssd/archive/a\"b.md"` and slipped past no-leaky-state. `-z` never quotes; translating NUL back
+  # to newline keeps this function's newline-delimited contract (a literal newline in a path still
+  # splits, as documented above -- the first fragment still carries the leaked directory prefix).
+  #
+  # AUDIT FIX (deletions): `diff_files --no-deletions` omits files the change DELETES. no-leaky-state
+  # uses it: a file removed from the index (`git rm --cached`) is no longer tracked, and counting it
+  # FAILed the very commit/PR that fixes a leak (the pre-commit hook blocked the remediation).
+  local filter=()
+  [[ "${1:-}" == "--no-deletions" ]] && filter=(--diff-filter=d)
   is_git_repo || { echo ""; return; }
   if [[ "$MODE" == "staged" ]]; then
-    git -C "$PROJECT_ROOT" -c core.quotepath=false diff --cached --name-only 2>/dev/null
+    git -C "$PROJECT_ROOT" -c core.quotepath=false diff --cached --name-only -z ${filter[@]+"${filter[@]}"} 2>/dev/null | tr '\0' '\n'
   else
-    git -C "$PROJECT_ROOT" -c core.quotepath=false diff --name-only "$BASE"...HEAD 2>/dev/null
+    git -C "$PROJECT_ROOT" -c core.quotepath=false diff --name-only -z ${filter[@]+"${filter[@]}"} "$BASE"...HEAD 2>/dev/null | tr '\0' '\n'
   fi
+}
+
+# AUDIT FIX (staged mode): the git-diff range matching diff_files. feature-flag-present and adr-delta
+# took their FILE LIST from diff_files (staged index in --staged mode) but then read the PATCH from
+# `$BASE...HEAD`, i.e. the wrong change set -- staged code was never inspected.
+diff_range_args() {
+  if [[ "$MODE" == "staged" ]]; then echo "--cached"; else echo "$BASE...HEAD"; fi
+}
+
+# AUDIT FIX (pipefail): true if find(1) prints at least one match. `find ... | read -r _` under
+# `set -o pipefail` reported "no match" whenever find exited non-zero AFTER printing a match (an
+# unreadable subdirectory) or was killed by SIGPIPE once `read` had returned (large output).
+find_any() {
+  local out
+  out=$(find "$@" 2>/dev/null)
+  [[ -n "$out" ]]
 }
 
 # Human-readable label for the current diff scope. Used in SKIP detail messages.
@@ -363,6 +424,15 @@ rule_wip_commits() {
     emit "SKIP" "wip-commits" "staged mode (no commits to grep yet)"
     return
   fi
+  # AUDIT FIX (unresolvable base): with a missing/typo'd base (a `master`-default repo run without
+  # --base, `--base mian`, a base never fetched) or no merge-base (fetch-depth: 1 CI checkout), every
+  # git call below failed into `2>/dev/null || true`: this rule PASSed ("no WIP commits"), every
+  # diff-scoped rule SKIPped as "no diff", and the gate exited 0 having checked nothing.
+  if ! git -C "$PROJECT_ROOT" rev-parse -q --verify "$BASE^{commit}" >/dev/null 2>&1 \
+     || ! git -C "$PROJECT_ROOT" merge-base "$BASE" HEAD >/dev/null 2>&1; then
+    emit "FAIL" "wip-commits" "cannot resolve base '$BASE' or no merge-base with HEAD (missing ref? shallow clone?) — every diff-scoped rule in this run is vacuous; pass --base <ref> and fetch history"
+    return
+  fi
   local matches
   matches=$(git -C "$PROJECT_ROOT" log "$BASE..HEAD" \
     --grep='WIP\|checkpoint\|TODO.*tomorrow\|FIXME.*later' -i \
@@ -385,7 +455,10 @@ rule_tests_pass() {
     return
   fi
   local out exit_code
-  out=$(cd "$PROJECT_ROOT" && eval "$cmd" 2>&1)
+  # AUDIT FIX: the eval'd command inherited this script's `set -u`, so a test_command that expands an
+  # unset variable (or sources a nounset-unsafe file) died with "unbound variable" and FAILed, though
+  # it succeeds in a normal shell. pipefail is deliberately kept (stricter for `cmd | tee log`).
+  out=$(cd "$PROJECT_ROOT" && set +u && eval "$cmd" 2>&1)
   exit_code=$?
   if [[ $exit_code -eq 0 ]]; then
     emit "PASS" "tests-pass" "\`$cmd\` exit 0"
@@ -424,16 +497,28 @@ rule_feature_flag_present() {
   local non_doc_array
   read_lines_into_array non_doc_array <<< "$non_doc"
   local diff_added
-  diff_added=$(git -C "$PROJECT_ROOT" diff "$BASE...HEAD" -- "${non_doc_array[@]}" 2>/dev/null \
-    | grep -E "^\+[^+]" || true)
+  diff_added=$(git -C "$PROJECT_ROOT" diff "$(diff_range_args)" -- "${non_doc_array[@]}" 2>/dev/null \
+    | grep -E "^\+[^+]" || true)   # AUDIT FIX: staged mode reads the staged patch (diff_range_args)
   if [[ -z "$diff_added" ]]; then
     emit "SKIP" "feature-flag-present" "no added code lines in non-doc files"
     return
   fi
-  if echo "$diff_added" | grep -qE "$marker"; then
-    emit "PASS" "feature-flag-present" "marker \`$marker\` present in added code lines"
+  # AUDIT FIX (pipefail/SIGPIPE): `echo "$diff_added" | grep -q` -- grep -q exits at the first match,
+  # echo takes SIGPIPE when the text exceeds the pipe buffer (64 KiB), and pipefail turned the match
+  # into a FAIL. A here-string has no writer process to kill.
+  # AUDIT FIX (invalid ERE): the marker is an ERE, but ADR-0015 documents `feature_flag_marker: flag(`,
+  # which is not a valid ERE -- grep exited 2 ("Unmatched (") and the rule FAILed forever. On exit 2,
+  # retry as a fixed string and say so. `-e` also keeps a marker starting with `-` from parsing as an option.
+  local rc how=""
+  grep -qE -e "$marker" <<< "$diff_added" 2>/dev/null; rc=$?
+  if [[ $rc -eq 2 ]]; then
+    grep -qF -e "$marker" <<< "$diff_added"; rc=$?
+    how=" (not a valid ERE; matched as a literal string)"
+  fi
+  if [[ $rc -eq 0 ]]; then
+    emit "PASS" "feature-flag-present" "marker \`$marker\` present in added code lines$how"
   else
-    emit "FAIL" "feature-flag-present" "marker \`$marker\` not present in added code lines"
+    emit "FAIL" "feature-flag-present" "marker \`$marker\` not present in added code lines$how"
   fi
 }
 
@@ -453,11 +538,14 @@ rule_adr_delta() {
   if [[ -n "$arch_files" ]] && is_git_repo; then
     local arch_files_array
     read_lines_into_array arch_files_array <<< "$arch_files"
-    arch_lines=$(git -C "$PROJECT_ROOT" diff --numstat "$BASE...HEAD" -- "${arch_files_array[@]}" 2>/dev/null \
+    # AUDIT FIX: staged mode counts the staged patch, not $BASE...HEAD (see diff_range_args).
+    arch_lines=$(git -C "$PROJECT_ROOT" diff --numstat "$(diff_range_args)" -- "${arch_files_array[@]}" 2>/dev/null \
       | awk '{a+=$1; b+=$2} END {print a+b+0}')
   fi
   local threshold=200
-  if [[ $arch_lines -lt $threshold ]]; then
+  # AUDIT FIX (off-by-one): documented as "> 200 lines" (ssd/chapters/enforcement.md, methodology/SKILL.md
+  # "exceeds threshold"); `-lt` demanded an ADR at exactly 200.
+  if [[ $arch_lines -le $threshold ]]; then
     emit "SKIP" "adr-delta" "architectural diff $arch_lines lines below threshold $threshold"
     return
   fi
@@ -549,10 +637,13 @@ rule_frontmatter_valid() {
   if [[ -n "$files" ]]; then
     local files_array
     read_lines_into_array files_array <<< "$files"
-    out=$(python3 "$validator" "${files_array[@]}" 2>&1)
+    # AUDIT FIX: the paths are repo-root-relative and the validator resolves them (and its default
+    # walk) against the CWD. Run from a subdirectory it found nothing and SKIPped "no SSD artifacts in
+    # scope" over artifacts with invalid frontmatter. Run it from PROJECT_ROOT.
+    out=$(cd "$PROJECT_ROOT" && python3 "$validator" "${files_array[@]}" 2>&1)
     exit_code=$?
   else
-    out=$(python3 "$validator" 2>&1)
+    out=$(cd "$PROJECT_ROOT" && python3 "$validator" 2>&1)
     exit_code=$?
   fi
   if [[ $exit_code -eq 0 ]]; then
@@ -625,7 +716,7 @@ rule_no_leaky_state() {
     return
   fi
   local files
-  files=$(diff_files)
+  files=$(diff_files --no-deletions)   # AUDIT FIX: a deleted (untracked-by-this-change) file is not a leak
   if [[ -z "$files" ]]; then
     emit "SKIP" "no-leaky-state" "no diff ($(diff_scope_label))"
     return
@@ -746,14 +837,19 @@ rule_store_link_sane() {
     && problems+=" TRACKED(the store path is committed in this repo — remove it: git rm --cached .ssd)"
   git -C "$PROJECT_ROOT" check-ignore -q .ssd 2>/dev/null \
     || problems+=" NOT-IGNORED(add a bare '.ssd' line to .gitignore — '.ssd/' cannot match a symlink)"
-  [[ -d "$target" ]] || problems+=" DANGLING(target does not exist: $target)"
+  # AUDIT FIX: a RELATIVE link target is relative to the link's directory (PROJECT_ROOT), not the CWD.
+  # Run from a subdirectory, `-d "$target"` resolved against the CWD and reported a healthy relative
+  # link as DANGLING. `target` itself is kept as read for messages and the DRIFT comparison.
+  local target_abs="$target"
+  [[ "$target" == /* ]] || target_abs="$PROJECT_ROOT/$target"
+  [[ -d "$target_abs" ]] || problems+=" DANGLING(target does not exist: $target)"
   # A link that RESOLVES but whose content is misplaced (e.g. one level too deep after a bad move)
   # reads as healthy until something opens a file. project.yml is the file every consumer needs, so
   # its absence through the link is the cheapest true signal. Checked BEFORE reading the mode, because
   # an unreadable project.yml makes gitignore_mode default to `selective` and would otherwise be
   # reported as a bogus SELECTIVE-MODE failure.
   local mode="unknown"
-  if [[ -d "$target" && ! -f "$link/project.yml" ]]; then
+  if [[ -d "$target_abs" && ! -f "$link/project.yml" ]]; then
     problems+=" MISPLACED-CONTENT(.ssd/project.yml unreadable through the link — inspect $target)"
   else
     mode=$(gitignore_mode)
@@ -773,7 +869,7 @@ rule_store_link_sane() {
   if [[ -n "$problems" ]]; then
     emit "FAIL" "store-link-sane" "store link unsafe:${problems}"
   else
-    local repo; repo="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null || true)"
+    local repo; repo="$(git -C "$target_abs" rev-parse --show-toplevel 2>/dev/null || true)"
     emit "PASS" "store-link-sane" "store link ok: $target${repo:+ (repo $repo)}"
   fi
 }
@@ -999,7 +1095,9 @@ rule_rails_walked() {
     emit "SKIP" "rails-walked" "no diff (vs $BASE)"
     return
   fi
-  if ! echo "$files" | grep -qx "VERSION"; then
+  # AUDIT FIX (pipefail/SIGPIPE): `echo "$files" | grep -qx` -- with >64 KiB of paths after VERSION
+  # echo took SIGPIPE, pipefail negated the match, and a release SKIPped as "VERSION unchanged".
+  if ! grep -qx "VERSION" <<< "$files"; then
     emit "SKIP" "rails-walked" "no release in this change set (VERSION unchanged) — invariant 4 is checked at release boundaries"
     return
   fi
@@ -1027,7 +1125,7 @@ rule_rails_walked() {
     #
     # A feature that ships code with no coder-status at all violates invariant 3 rather than 4, and
     # this rule does not check invariant 3. Stated so the gap is known, not discovered.
-    if ! find "$PROJECT_ROOT/$d" -type f \( -name '*coder-status*.md' -o -name '*code-review*.md' -o -name 'round-*.md' \) 2>/dev/null | read -r _; then
+    if ! find_any "$PROJECT_ROOT/$d" -type f \( -name '*coder-status*.md' -o -name '*code-review*.md' -o -name 'round-*.md' \); then   # AUDIT FIX: see find_any
       skipped_design=$((skipped_design + 1))
       continue
     fi
@@ -1102,7 +1200,7 @@ rule_deviations_recorded() {
   local files
   files=$(diff_files)
   [[ -n "$files" ]] || { emit "SKIP" "deviations-recorded" "no diff (vs $BASE)"; return; }
-  if ! echo "$files" | grep -qx "VERSION"; then
+  if ! grep -qx "VERSION" <<< "$files"; then   # AUDIT FIX (pipefail/SIGPIPE): as in rails-walked
     emit "SKIP" "deviations-recorded" "no release in this change set (VERSION unchanged)"
     return
   fi
@@ -1118,12 +1216,12 @@ rule_deviations_recorded() {
     [[ -z "$d" ]] && continue
     [[ -d "$PROJECT_ROOT/$d" ]] || continue
     # Only a feature that shipped code can have skipped a step on the way there.
-    find "$PROJECT_ROOT/$d" -type f -name '*coder-status*.md' 2>/dev/null | read -r _ || continue
+    find_any "$PROJECT_ROOT/$d" -type f -name '*coder-status*.md' || continue   # AUDIT FIX: see find_any
     slug="${d##*/}"
     checked=$((checked + 1))
     recorded="$(workstream_deviation_steps "$slug")"
     if [[ "$runtime" != "false" ]] \
-       && ! find "$PROJECT_ROOT/$d" -type f -name '*systems-designer*.md' 2>/dev/null | read -r _ \
+       && ! find_any "$PROJECT_ROOT/$d" -type f -name '*systems-designer*.md' \
        && ! echo "$recorded" | grep -qx "2"; then
       missing+=("$slug:step-2(systems-designer)")
     fi
@@ -1133,7 +1231,7 @@ rule_deviations_recorded() {
     # `phase: code` is a finding no PR can ever close. Measured across three past releases — v2.10.0
     # added none, v2.9.0 and v2.8.0 each added one, and those were for the PRECEDING iteration.
     if [[ "$(workstream_phase "$slug")" == "done" ]] \
-       && ! find "$PROJECT_ROOT/$d" -type f -name '*deploy*.md' 2>/dev/null | read -r _ \
+       && ! find_any "$PROJECT_ROOT/$d" -type f -name '*deploy*.md' \
        && ! echo "$recorded" | grep -qx "6"; then
       missing+=("$slug:step-6(deploy-log)")
     fi
@@ -1235,27 +1333,41 @@ should_run issue-sync-current && rule_issue_sync_current
 # A gate that exits zero because most of its checks never ran is not a passing gate — it is an
 # unrun one. Count the statuses so the summary states coverage instead of implying it
 # (Feynman audit 2026-08-19, C9).
+# AUDIT FIX (bash 3.2): `"${RESULTS[@]}"` on an empty array is an "unbound variable" abort under
+# `set -u` before bash 4.4. The `${arr[@]+...}` form expands to nothing instead.
 PASS_N=0; SKIP_N=0
-for line in "${RESULTS[@]}"; do
+for line in ${RESULTS[@]+"${RESULTS[@]}"}; do
   case "$line" in
     PASS*) PASS_N=$((PASS_N + 1)) ;;
     SKIP*) SKIP_N=$((SKIP_N + 1)) ;;
   esac
 done
 
+# AUDIT FIX (JSON): only `"` was escaped. A backslash (the parity fixture's own marker `flag_enabled\(`),
+# TAB or other control byte in a detail -- or in --base -- produced invalid JSON.
+json_escape() {
+  local s="$1" bs=\\ q='"'
+  s=${s//"$bs"/"$bs$bs"}
+  s=${s//"$q"/"$bs$q"}
+  s=${s//$'\t'/"${bs}t"}
+  s=${s//$'\r'/"${bs}r"}
+  s=${s//$'\n'/"${bs}n"}
+  printf '%s' "$s" | LC_ALL=C tr -d '\001-\010\013\014\016-\037'
+}
+
 if [[ $JSON -eq 1 ]]; then
   echo "{"
-  echo "  \"base\": \"$BASE\","
+  echo "  \"base\": \"$(json_escape "$BASE")\","
   echo "  \"fail_count\": $FAIL_COUNT,"
   echo "  \"pass_count\": $PASS_N,"
   echo "  \"skip_count\": $SKIP_N,"
   echo "  \"results\": ["
   json_idx=0
   json_last=$((${#RESULTS[@]} - 1))
-  for line in "${RESULTS[@]}"; do
+  for line in ${RESULTS[@]+"${RESULTS[@]}"}; do
     json_status=$(echo "$line" | awk '{print $1}')
     json_rule=$(echo "$line" | awk '{print $2}')
-    json_detail=$(echo "$line" | sed 's/^[^:]*:: //' | sed 's/"/\\"/g')
+    json_detail=$(json_escape "${line#*:: }")   # same strip as the old sed: status/rule hold no ':'
     if [[ $json_idx -eq $json_last ]]; then
       echo "    {\"status\": \"$json_status\", \"rule\": \"$json_rule\", \"detail\": \"$json_detail\"}"
     else
@@ -1266,7 +1378,7 @@ if [[ $JSON -eq 1 ]]; then
   echo "  ]"
   echo "}"
 else
-  for line in "${RESULTS[@]}"; do
+  for line in ${RESULTS[@]+"${RESULTS[@]}"}; do
     echo "$line"
   done
   # Name the skips. A SKIP is a check that did NOT run, not a check that passed.
