@@ -14,8 +14,26 @@ The four `NOT_RUN` rows in the v3 suite are: in-session instruction loading, `cl
 
 Jail checks inside the suite passed on this host: symlink escape, absolute host path, secret environment, designated output, snapshot immutability, and blocked network. That certifies `methodology/ssdlib/executor.py` on this profile. It does not certify an unrestricted host shell.
 
-`bash methodology/gate-rules.sh --base main` is run on the release commit and its output is appended below when that command has been executed. Until that line exists, do not read this file as a gate pass.
+`bash methodology/gate-rules.sh --base main` was run on commit `a9d6baa` (the release commit, before this evidence update). Exit 0.
 
 ## Gate
 
-Pending the post-commit run.
+```
+PASS wip-commits
+PASS tests-pass :: bash scripts/parity-test.sh exit 0
+SKIP feature-flag-present :: no feature_flag_marker
+PASS adr-delta :: 4 ADR file(s)
+PASS frontmatter-valid :: 5 artifact(s) validated; 1 unvalidated (the baseline verification note)
+PASS no-leaky-state
+SKIP store-link-sane :: no store link
+PASS skill-version-sync :: 9 examples match; 2 exempt
+PASS migration-manifest-current :: 16 entries, none newer than 3.0.0
+PASS rails-walked :: ssd-v3 carries gate_pass: true
+PASS deviations-recorded :: production_runtime=false
+SKIP feynman-clean :: no report in scope
+SKIP issue-sync-current :: issue tracking off
+PASS skill-metadata :: 11 skills
+GATE 10 pass · 4 skip · 0 fail
+```
+
+The full text is the command above. A skip is a check that did not run.
