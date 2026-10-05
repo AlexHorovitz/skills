@@ -3,14 +3,14 @@ name: ssd
 description: Orchestrate Shippable States Development. Bare /ssd reads project state and proposes the next action. It does not implement and it does not start an audit. Use when the user invokes /ssd or asks what to do next on an SSD project. Explicit verbs include start, feature, design, gate, ship, doctor, resume, upgrade, and run.
 license: See /LICENSE
 metadata:
-  version: "2.14.0"
+  version: "3.0.0"
 ---
 
 # SSD Meta-Skill
 
 <!-- License: See /LICENSE -->
 
-**Version:** 2.14.0
+**Version:** 3.0.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches

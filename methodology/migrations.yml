@@ -181,3 +181,12 @@ migrations:
     title: "autonomy ladder config block (ssd.autonomy, commented default) in project.yml"
     detect: "project.yml carries the `# ssd:autonomy-block=` sentinel (executable probe: detect() in migrate.sh). A SENTINEL and not a key, because the block this entry writes is deliberately COMMENTED OUT — an absent/inert block is the byte-identical default, so there is no live key to probe. Same shape as private-mode's `# ssd:gitignore-mode=private` sentinel."
     apply: "Append a commented `autonomy:` block under `ssd:` (mode/max_review_loops/budget_transitions/budget_wall_minutes/announce), preceded by the sentinel line. Purely additive and behaviourally inert: nothing reads a commented key, so an upgraded project behaves exactly as it did before. Uncommenting it is the opt-in, and chapters/autonomy.md is the thing to read first."
+
+  - id: format-marker
+    introduced_in: "3.0.0"
+    applies_to: project
+    kind: mechanical
+    adr: ADR-0024
+    title: "state format marker (.ssd/format major 3)"
+    detect: ".ssd/format exists and its first line starts with 3 (executable probe: detect() in migrate.sh). An absent file is an older project and is left unchanged."
+    apply: "Write `.ssd/format` containing `3` when the file is absent. If the file exists and is not major 3, refuse to overwrite it. Libraries released before 3.0.0 do not read this file. A 3.0.0+ library whose major is lower than the marker refuses to write. This does not rewrite workstreams, store links, or records."

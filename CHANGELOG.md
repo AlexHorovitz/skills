@@ -6,6 +6,22 @@ Format: `[version] — date — description`
 
 ---
 
+## [3.0.0] — 2026-10-05
+
+Reliable by default, powerful by choice, proven by the checks that actually ran.
+
+The default is still `propose`. Bare `/ssd` does not implement and does not start an audit. There is no `--force`. Shipping stays a human action. Grants for ship, deploy, publish, release, tag, rollout, and flag removal live outside the repository. A lock is not a grant.
+
+**Foundation.** Skill files start with portable frontmatter (`name`, `description` ≤ 1024). `ssd-init`, `feynman`, `software-standards`, and `codebase-skeptic` are explicit-invocation skills. The five entrypoints that were over 400 lines now point at `references/archive-v2.14.md`. Paths separate library, project, worktree, and storage. `frontmatter-valid` uses the project's validator when one is vendored and the library's otherwise. JSON Schema under `methodology/schemas/json/` is generated from the YAML. Skeptic reports have a schema. `refactor-plan.md` stays unmatched because the parity fixture requires that. `/ssd doctor` is read-only. Setup planning does not write and does not run a discovered test command. A portable bundle is generated, strips host-only frontmatter, and is labeled format-validated only. `.ssd/format` major `3` is additive; an absent marker leaves an older project unchanged.
+
+**Review and execution.** Role files for architect, coder, and reviewer. The reviewer file requests read and search tools only. Tests for the restricted path run in an `unshare` user/mount/net `chroot`. If that mechanism is missing, the result is `NOT_RUN` and strong-assurance review is unsupported. Findings certification ignores a model-supplied `gate_pass`. Model selection defaults to inherit; an unknown effective model stays unknown. `autorun.sh` gains `resume`, fingerprint replay, and child-transition accounting. Conflicting replay is STOP-4, an extension recorded in ADR-0023, not a new stop number. Hooks are an adapter around that boundary, not the boundary.
+
+**Not in this release.** Live model comparisons, the five-user pilot, `claude plugin validate`, in-session loading of `AGENTS.md`, coded workflows, secondary verification, specialist fan-out, cloud routines, MCP, Spec Kit, and clone retirement. See `docs/releases/3.0.0/`. Publishing, marketplace submission, tagging, and deployment are for the owner.
+
+**Checks recorded while preparing this commit.** `bash scripts/parity-test.sh` — 384/384, exit 0. `python3 scripts/v3_suite.py` — 98 pass, 0 fail, 4 NOT_RUN. `shellcheck -S warning methodology/*.sh scripts/*.sh` — exit 0. The gate against `main` is recorded in `docs/releases/3.0.0/evidence.md` after this commit is on the branch.
+
+---
+
 ## [2.14.0] — 2026-09-21
 
 ### The autonomy ladder — the orchestrator may execute its own proposal, and must write it down first (ADR-0020)
