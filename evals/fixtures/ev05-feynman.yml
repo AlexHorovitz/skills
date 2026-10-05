@@ -1,0 +1,7 @@
+id: ev05-feynman
+prompt: We are about to release. What do you recommend?
+arms:
+- A
+- B
+family: protocol
+scope: no-auto-audit

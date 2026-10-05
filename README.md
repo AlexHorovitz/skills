@@ -163,11 +163,15 @@ more than one feature at once:
 
 ## Installation
 
-Clone the repo into your Claude Code skills directory:
+Clone remains supported:
 
 ```bash
 git clone https://github.com/AlexHorovitz/skills ~/.claude/skills
 ```
+
+A plugin manifest is at `.claude-plugin/plugin.json` (name `ssd`, skills listed as directories, no `bin/`). Installing it with Claude Code's plugin command was **not** run in the 3.0.0 implementation environment (`claude` was not on PATH, and `claude plugin validate` was not executed). Until you run that command yourself, use the clone path above. Namespaced skill names look like `/ssd:coder` on a host that namespaces plugin skills; the clone path keeps the short names (`/coder`). Both can be present. Do not delete one to "finish" the other.
+
+`/ssd doctor` is read-only. It reports the installation, roots, state, and which capabilities were actually verified.
 
 Then, from your project root, run the bootstrap once:
 
@@ -492,41 +496,15 @@ architect/
 
 ## Skill Hygiene Contract
 
-Conventions every skill in this directory aims at. **Nothing enforces them.** This section used to say
-violations were "flagged by the skill linter (when present) and block `/ssd start` in strict mode" —
-there is no linter in this repo and no strict mode anywhere in it. That sentence was the same shape as
-the `/ssd ship --force` claim struck in v2.11.0: a mechanism that existed only in the document
-describing it. What *is* enforced is listed under [Enforcement](#hard-rules) and runs in
-`methodology/gate-rules.sh`.
+Portable frontmatter is checked by `scripts/skill-frontmatter-check.py` and, in this repository, by the `skill-metadata` gate rule ([ADR-0021](docs/decisions/ADR-0021-skill-frontmatter.md)). There is still no "strict mode" that blocks `/ssd start`. What else the gate enforces is listed under [Enforcement](#hard-rules) and runs in `methodology/gate-rules.sh`.
 
-So the rules below are split by whether the repo currently meets them, measured rather than asserted.
+**Held:**
+- Each `SKILL.md` starts with YAML frontmatter (`name` matches the directory, `description` at most 1,024 characters). The title, the license pointer, and the `**Version:**` banner follow that block. The banner is the skill's own version ([ADR-0009](docs/decisions/ADR-0009-skill-version-sync.md)), not a copy of the library `VERSION`, except `ssd/SKILL.md`, which tracks the library version at the last edit of that file.
+- Every entrypoint is at most 400 physical lines. The five skills that used to exceed it (`ssd-init`, `systems-designer`, `code-reviewer`, `feynman`, `software-standards`) keep the previous text in `references/archive-v2.14.md` and point at it from the entrypoint.
+- `ssd-init`, `feynman`, `software-standards`, and `codebase-skeptic` set `disable-model-invocation: true` and say in the body that a person must invoke them.
+- Output frontmatter is `frontmatter-valid` against [`methodology/schemas/`](methodology/schemas/). `codebase-skeptic` reports now have a schema. `refactor-plan.md` stays unmatched because the parity fixture `frontmatter-valid-names-schemaless` requires that. `software-standards`, `ssd-init`, and `methodology` explain the absence in [`methodology/coverage.yml`](methodology/coverage.yml).
 
-**Held today (11/11 skills):**
-- `SKILL.md` begins with `# Skill Name` as the first line. The license pointer
-  (`<!-- License: See /LICENSE -->`) and `**Version:** X.Y.Z` follow the title, not precede it.
-- Every `SKILL.md` ends with a `## Changelog` section. Each version bump adds a dated entry describing
-  what changed and why. Checked by no script; true by habit.
-- Every skill has an `## Interface` table. **Ten of eleven** declare explicit input/output *paths*
-  (e.g. `.ssd/features/<slug>/01-architect.md`); `ssd/SKILL.md`, the orchestrator, declares a phase
-  argument and "an orchestrated session" instead.
-- Output frontmatter is the one rule here with an executable check —
-  `frontmatter-valid` against [`methodology/schemas/`](methodology/schemas/). Its reach is partial:
-  **eight schemas for eleven skills**, so `codebase-skeptic`, `refactor` and `/ssd verify` primary
-  outputs match nothing and the rule SKIPs them. At the last run, 111 artifacts validated and **13
-  were unvalidated for want of a schema**. A rule that skips what it has no schema for reports PASS
-  on silence, so the count matters more than the verdict.
-
-**Aspirations the repo does not currently meet:**
-- *Split any `SKILL.md` over 400 lines* into a spine plus `references/*.md`. **Five of eleven exceed
-  it**: `ssd-init` (987), `systems-designer` (677), `code-reviewer` (632), `feynman` (490),
-  `software-standards` (429). The `ssd/SKILL.md` chapter-split (v1.25.0) is the pattern the rest have
-  not followed.
-- *Every skill's Purpose carries a "When NOT to use" clause* disambiguating it from overlapping skills.
-  **Two of eleven have one.** Until that changes, the working disambiguation is
-  [`ssd/chapters/skills.md`](ssd/chapters/skills.md) § "Resolving Skill Overlap", which is complete.
-
-Listing the gap is the point. A contract nothing checks drifts, and the honest version of an unmet
-rule is the count of how far it is from being met.
+The 400-line check and the frontmatter check are `python3 scripts/skill-frontmatter-check.py` plus `python3 scripts/v3_suite.py`. A missing PyYAML fails those commands; it does not pass them.
 
 **Header / license ordering:**
 - Title-first: `# Skill Name` is line 1.

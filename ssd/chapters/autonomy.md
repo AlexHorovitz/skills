@@ -229,6 +229,16 @@ The full procedure, including a corrupted or missing `current.yml`, is in
 **manual by design**: an age-based auto-expiry would silently resume a run whose working tree nobody
 checked.
 
+### `/ssd resume <run-id>`
+
+```bash
+bash methodology/autorun.sh resume --run-id <YYYY-MM-DDTHHMMSSZ>-run.md
+```
+
+Resume validates the record, the lock, the input fingerprint when one was stored, and whether a worker may still be alive. It continues the same record. It does not reset consumed transitions, does not restore a shipping grant, and does not replay a phase whose fingerprint already completed. A conflicting fingerprint stops with STOP-4 for a person to reconcile. If the process died and `stop_reason` is still null, the report says the run is indeterminate. It does not invent a finish.
+
+A brand-new `/ssd run` is still a new invocation with fresh budgets, and it still refuses with FM-2 while a lock is held. Clearing a lock and starting again is a new run, not a resume.
+
 ### The record
 
 Every `run` invocation and every `advance` execution writes

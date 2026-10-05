@@ -3387,6 +3387,106 @@ test_fixture_no_unsanctioned_stat() {
 }
 
 
+# v3: a project that has not vendored the validator still validates against the
+# library copy. The project copy, when present, remains the one under test
+# (see frontmatter-valid-names-schemaless, which copies schemas into the fixture).
+test_fixture_library_validator_fallback() {
+  echo "fixture: library-validator-fallback"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    echo "  (skipped — PyYAML not installed)"
+    return
+  fi
+  local tdir out; tdir=$(fixture_setup "lib-validator")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/f
+  echo base > a.txt; git add -A -f >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+  git checkout -q -b feat
+  cat > .ssd/features/f/00-brief.md <<'EOS'
+---
+skill: brief
+version: 1.0.0
+produced_at: 2026-10-05T00:00:00Z
+produced_by: t
+project: t
+scope: f
+consumed_by: []
+---
+EOS
+  git add -A -f >/dev/null 2>&1; git commit -qm brief >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules frontmatter-valid 2>&1)
+  _assert "library-validator-fallback" "does not SKIP for a missing project validator" \
+    "$(echo "$out" | grep -q 'validator not found' && echo 1 || echo 0)"
+  _assert "library-validator-fallback" "validates the brief with the library schemas" \
+    "$(echo "$out" | grep -qE '^PASS frontmatter-valid :: 1 artifact\(s\) validated' && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# skill-metadata is a library rule. A consuming project does not fail it.
+test_fixture_skill_metadata_skips_elsewhere() {
+  echo "fixture: skill-metadata-skips-elsewhere"
+  local tdir out; tdir=$(fixture_setup "skill-meta-skip")
+  cd "$tdir" || exit 2
+  echo base > a.txt; git add -A -f >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+  out=$(bash "$GATE_SCRIPT" --base main --rules skill-metadata 2>&1)
+  _assert "skill-metadata-skips-elsewhere" "SKIPs when the project is not the skills library" \
+    "$(echo "$out" | grep -q '^SKIP skill-metadata ::' && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
+# Fingerprint replay is additive. Absent fingerprint keeps the old counter.
+test_fixture_autorun_fingerprint_replay() {
+  echo "fixture: autorun-fingerprint-replay"
+  if ! python3 -c "import yaml" >/dev/null 2>&1; then echo "  (skipped — PyYAML not installed)"; return; fi
+  local tdir rc out A; tdir=$(fixture_setup "autorun-fp")
+  cd "$tdir" || exit 2
+  mkdir -p .ssd/features/feat-one
+  cat > .ssd/project.yml <<'EOS'
+project:
+  name: Parity Fixture
+ssd:
+  gitignore_mode: selective
+  autonomy:
+    mode: run
+    max_review_loops: 3
+    budget_transitions: 4
+EOS
+  cat > .ssd/current.yml <<'EOS'
+schema_version: 2
+active:
+  - slug: feat-one
+    phase: review
+    budget_hours: 8
+    elapsed_hours: 0
+    blockers: []
+archived: []
+EOS
+  A="$REPO_ROOT/methodology/autorun.sh"
+  bash "$A" start --slug feat-one --mode run --until gate >/dev/null 2>&1; rc=$?
+  _assert "autorun-fingerprint-replay" "start exits 0" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  out=$(bash "$A" transition --slug feat-one --from review --to code --fingerprint abc123 2>&1); rc=$?
+  _assert "autorun-fingerprint-replay" "first fingerprinted edge is state=ok" \
+    "$([[ $rc -eq 0 ]] && echo "$out" | grep -q 'state=ok reason=-' && echo 0 || echo 1)"
+  out=$(bash "$A" transition --slug feat-one --from review --to code --fingerprint abc123 2>&1); rc=$?
+  _assert "autorun-fingerprint-replay" "same fingerprint and same edge replays without appending" \
+    "$([[ $rc -eq 0 ]] && echo "$out" | grep -q 'state=ok reason=replay' && echo 0 || echo 1)"
+  _assert "autorun-fingerprint-replay" "replay did not append a second transition" \
+    "$(python3 -c "
+import glob,re,yaml
+t=open(glob.glob('.ssd/features/feat-one/auto-runs/*-run.md')[0]).read()
+d=yaml.safe_load(re.match(r'\A---\n(.*?)\n---\n', t, re.S).group(1))
+print(0 if len(d['run']['transitions'])==1 else 1)")"
+  out=$(bash "$A" transition --slug feat-one --from review --to gate --fingerprint abc123 2>&1); rc=$?
+  _assert "autorun-fingerprint-replay" "same fingerprint on a different edge is STOP-4" \
+    "$([[ $rc -eq 0 ]] && echo "$out" | grep -q 'state=stop reason=STOP-4' && echo 0 || echo 1)"
+  out=$(bash "$A" transition --slug feat-one --from review --to gate --child-transitions 4 2>&1); rc=$?
+  _assert "autorun-fingerprint-replay" "child transitions count against the same budget (STOP-3)" \
+    "$([[ $rc -eq 0 ]] && echo "$out" | grep -q 'state=stop reason=STOP-3' && echo 0 || echo 1)"
+  cd "$REPO_ROOT" || exit 2
+  fixture_teardown "$tdir"
+}
+
 test_fixture_migrate_apply_old
 test_fixture_migrate_apply_v1_to_v2
 test_fixture_migrate_apply_gitignore_idempotent
@@ -3454,6 +3554,9 @@ test_fixture_no_unsanctioned_stat
 test_fixture_autorun_referee
 test_fixture_autorun_iteration_resolution
 test_fixture_autorun_record_not_gitignored
+test_fixture_library_validator_fallback
+test_fixture_skill_metadata_skips_elsewhere
+test_fixture_autorun_fingerprint_replay
 echo "================================================================"
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

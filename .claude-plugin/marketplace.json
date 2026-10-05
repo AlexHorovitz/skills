@@ -1,0 +1,14 @@
+{
+  "name": "ssd",
+  "owner": {
+    "name": "Alex Horovitz"
+  },
+  "plugins": [
+    {
+      "name": "ssd",
+      "source": "./",
+      "description": "Shippable States Development skill pack. Local clone and plugin manifests coexist; this file does not submit the package anywhere.",
+      "version": "2.14.0"
+    }
+  ]
+}

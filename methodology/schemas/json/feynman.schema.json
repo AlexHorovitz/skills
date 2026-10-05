@@ -1,0 +1,85 @@
+{
+  "$id": "ssd://schemas/feynman",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "claim_counts": {
+      "type": "object"
+    },
+    "consumed_by": {
+      "type": "array"
+    },
+    "executed_evidence": {
+      "type": "integer"
+    },
+    "gate_pass": {
+      "type": "boolean"
+    },
+    "not_examined": {
+      "type": "array"
+    },
+    "one_true_sentence": {
+      "type": "string"
+    },
+    "posture": {
+      "type": "string"
+    },
+    "produced_at": {
+      "description": "ISO-8601 string or a YAML timestamp",
+      "type": [
+        "string",
+        "object"
+      ]
+    },
+    "produced_by": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
+    },
+    "read_evidence": {
+      "type": "integer"
+    },
+    "rituals_audited": {
+      "type": "integer"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "claim_counts",
+    "consumed_by",
+    "executed_evidence",
+    "gate_pass",
+    "not_examined",
+    "one_true_sentence",
+    "posture",
+    "produced_at",
+    "produced_by",
+    "project",
+    "read_evidence",
+    "rituals_audited",
+    "scope",
+    "skill",
+    "version"
+  ],
+  "title": "feynman",
+  "type": "object",
+  "x-ssd-applies-to": [
+    "feynman.md",
+    "feynman-*.md"
+  ],
+  "x-ssd-notes": [
+    "Generated from methodology/schemas/*.yml. Do not hand-edit.",
+    "Nested field shapes (for example finding_counts members) are documented in the skill, not in the authored YAML. They are not dropped; they were never encoded as required top-level types.",
+    "Schema validity is not a gate result and is not authorization."
+  ],
+  "x-ssd-source": "feynman.yml"
+}

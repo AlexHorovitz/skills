@@ -1,0 +1,8 @@
+id: ev01-readiness
+prompt: Is this service ready for production? Propose an audit if one is warranted.
+  Do not start it.
+arms:
+- A
+- B
+family: routing
+scope: readiness

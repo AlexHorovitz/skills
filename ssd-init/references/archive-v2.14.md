@@ -1,0 +1,989 @@
+<!-- archive of the v2.14 entrypoint. Load when a template, worked example, or the pre-3.0 wording is required. The SKILL.md entrypoint is authoritative for what to do. -->
+
+# SSD Init Skill
+
+<!-- License: See /LICENSE -->
+
+**Version:** 1.14.0
+
+## Purpose
+
+First-run housekeeping for a project adopting Shippable States Development. Sets up the `.ssd/` working directory, gitignore discipline, project-shape detection, and prerequisite checks so that subsequent `/ssd start` and `/ssd feature` invocations have a consistent, known-good foundation.
+
+Run **once** at the beginning of a project's SSD adoption. Idempotent: safe to re-run against an already-initialized project; it will detect existing state and surface anything out of conformance rather than overwriting.
+
+## When to Use
+
+- First time invoking any `/ssd` command on a project
+- When onboarding an existing codebase to SSD methodology
+- When `.ssd/` directory has drifted from the expected structure
+- When `/ssd` commands are failing with "no project configuration" errors
+
+**When NOT to use:**
+- Mid-feature — `ssd-init` is a prerequisite, not a workflow step. Use `/ssd feature` once init is complete.
+- For proposal review (`proposal-reviewer`) or capitalization assessment (`software-capitalization`) — those skills are outside the SSD workflow and do not require init.
+
+## Interface
+
+| | |
+|---|---|
+| **Input** | Current working directory (assumed project root, or walked upward to find one); optional user clarifications for platform / distribution channel |
+| **Output** | `.ssd/` directory with subtree; `.gitignore` entry (selective · blanket · **private**); `.ssd/project.yml`; `.ssd/init-log.md` |
+| **Consumed by** | `.ssd` (all phases), `architect`, `systems-designer`, `coder`, review skills — all read from and write to `.ssd/` |
+| **SSD Phase** | Prerequisite to all phases. Typically called before `/ssd start`. |
+
+---
+
+## The `.ssd/` Convention
+
+**Core rule (user-set):** All documentation and artifacts that Claude produces in service of an SSD project live under `.ssd/` at the project root. The directory is `.gitignore`d by default so that working plans, transient reviews, and intermediate artifacts do not pollute the repo's committed history.
+
+```
+<project-root>/
+└── .ssd/                                # gitignored
+    ├── README.md                       # explains this dir + conventions
+    ├── project.yml                     # detected + declared project metadata
+    ├── current.yml                     # active workstreams (see /ssd Session Continuity)
+    ├── init-log.md                     # record of what ssd-init did and when
+    ├── features/                       # per-feature artifact bundles (from /ssd feature)
+    │   └── <feature-slug>/             # e.g., goal-approval-flow
+    │       ├── 00-brief.md             # user's original brief
+    │       ├── 01-architect.md         # architect spec
+    │       ├── 02-systems-designer.md  # production readiness checklist
+    │       ├── 03-coder-status.md      # coder output + test results
+    │       ├── 04-code-review.md       # code-reviewer output
+    │       └── 05-deploy.md            # deployment log
+    ├── milestones/                     # per-milestone artifact bundles (from /ssd milestone)
+    │   └── YYYY-MM-DD-<topic>/         # e.g., 2026-04-18-q2-consolidation
+    │       ├── sha-before
+    │       ├── metrics-before.yml
+    │       ├── skeptic-before.md
+    │       ├── refactor-plan.md
+    │       ├── refactor-prs.md
+    │       ├── skeptic-after.md
+    │       └── verification.md
+    ├── audits/                         # software-standards comparative audits
+    │   └── YYYY-MM-DD-<scope>/
+    │       └── standards-report.md
+    └── archive/                        # completed workstreams (moved from features/ or milestones/)
+        ├── features/<feature-slug>/
+        └── milestones/<topic>/
+```
+
+**Feature-centric / milestone-centric layout.** Artifacts for a given feature or milestone are co-located, with a numbered file prefix (01-architect, 02-systems-designer, 03-coder-status, 04-code-review, 05-deploy) reflecting SSD's phase order. This matches what every sub-skill's Interface table declares.
+
+Examples (all relative to the user's project root):
+- `.ssd/features/goal-approval-flow/01-architect.md`
+- `.ssd/features/goal-approval-flow/03-coder-status.md`
+- `.ssd/milestones/2026-04-18-q2-consolidation/skeptic-before.md`
+- `.ssd/milestones/2026-04-18-q2-consolidation/refactor-plan.md`
+- `.ssd/audits/2026-04-18-vendor-selection/standards-report.md`
+
+**ADRs and runbooks** live under `docs/decisions/` and `docs/runbooks/` at the project root — these are committed, not gitignored, because they are durable decision records rather than working artifacts.
+
+**Why `.ssd/` (hidden) rather than `ssd/` (visible):** the working tree is transient state, not source code humans need to browse alongside the rest of the repo. Hiding it keeps `ls` output and IDE file trees clean while remaining navigable via `cd .ssd/`, IDE go-to-file, and `ls -a`. Gitignore keeps it out of commits. If a specific artifact (e.g., an ADR) needs to be committed, move it to `docs/decisions/` explicitly — the SSD skills will not do that automatically. Additionally, in the SSD skills repo itself, a visible `ssd/` directory at the project root would collide with the orchestrator skill source directory.
+
+**Un-ignoring specific artifacts:** if a team decides to commit a subset (e.g., ADRs, milestone summaries), add an exception to `.gitignore`:
+
+```
+.ssd/
+!.ssd/milestones/*/summary.md
+```
+
+`ssd-init` does not add exceptions by default.
+
+---
+
+## Workflow
+
+Execute these steps in order. Each step is idempotent; if the work is already done, report it and continue.
+
+### Step 1 — Locate Project Root
+
+Walk up from the current working directory looking for one of:
+- `.git/` (strongest signal)
+- `pyproject.toml`, `package.json`, `go.mod`, `Cargo.toml`, `Gemfile`, `*.xcodeproj`, `*.csproj`
+- `CLAUDE.md` at a directory boundary
+
+If found, that directory is the project root. If not found, ask the user to confirm the intended project root. Do not silently assume CWD.
+
+### Step 2 — Verify Git State
+
+Run `git rev-parse --show-toplevel` to confirm a git repo. Outcomes:
+
+- **Git repo, clean tree, on main/master:** proceed.
+- **Git repo, dirty tree or feature branch:** warn but proceed. `ssd-init` creates new files; it does not modify committed code.
+- **Not a git repo:** ask the user: (a) `git init` now, (b) proceed without git (skip `.gitignore` step), or (c) abort. Default: ask; do not `git init` without consent.
+
+Record the result in the init log.
+
+### Step 3 — Create `.ssd/` Directory Tree
+
+Create the top-level bundle subdirectories. Individual feature / milestone / audit subfolders are created on-demand by the orchestrator when each flow starts.
+
+```bash
+mkdir -p .ssd/features .ssd/milestones .ssd/audits \
+         .ssd/archive/features .ssd/archive/milestones
+```
+
+Also ensure the decision-record locations exist (these live outside `.ssd/` because they are normally tracked):
+
+```bash
+mkdir -p docs/decisions docs/runbooks docs/architecture
+```
+
+**Under `gitignore_mode: private`** ([ADR-0017](../docs/decisions/ADR-0017-private-mode.md)) these
+three directories are still **created** — SSD writes ADRs, runbooks, and architecture docs to the same
+well-known paths in every mode — but they are **gitignored** rather than tracked. Private mode changes
+the commit posture, never the artifact paths (the alternative, relocating them under `.ssd/docs/`, was
+rejected: twelve non-`.ssd/` files hardcode `docs/decisions/`).
+
+If `.ssd/` already exists:
+- Verify each expected top-level subdirectory is present; create missing ones.
+- Do NOT delete or move existing contents.
+- Note in the init log which subdirs already existed.
+- Existing feature / milestone folders are left untouched.
+
+**Per-feature `iterations/` subdirectories are NOT created here.** Multi-iteration features (see
+[ADR-0001](../docs/decisions/ADR-0001-iterations-as-schema-substrate.md)) get their `iterations/`
+subtree on demand by the orchestrator the first time a `<slug>#<iter-id>` reference is made. Single-cycle
+features keep the flat layout. `ssd-init` only creates the top-level bundle directories above.
+
+### Step 4 — Write `.ssd/README.md`
+
+Write a short README explaining the convention:
+
+```markdown
+# SSD Working Directory
+
+This directory holds artifacts produced by the Shippable States Development
+(SSD) skills — architect specs, production-readiness checklists, code review
+output, milestone reviews, refactor plans, and audit reports.
+
+Contents are gitignored by default. To commit a specific artifact, either:
+
+1. Move it to a committed location (`docs/decisions/` for ADRs, `docs/runbooks/`
+   for runbooks), or
+2. Add an exception to `.gitignore` (e.g., `!.ssd/milestones/*/summary.md`).
+
+**Structure:**
+- `project.yml` — detected project metadata (language, framework, platform)
+- `current.yml` — active workstreams (features, milestones) in progress
+- `features/<slug>/` — per-feature artifacts from `/ssd feature` (numbered 00–05)
+- `milestones/YYYY-MM-DD-<topic>/` — milestone audit artifacts (skeptic-before, refactor-plan, skeptic-after, verification, …)
+- `audits/YYYY-MM-DD-<scope>/` — software-standards comparative / adversarial audits
+- `archive/features/` and `archive/milestones/` — completed workstreams
+
+ADRs, runbooks, and architecture overviews live in `docs/decisions/`, `docs/runbooks/`, and
+`docs/architecture/` — these are committed, not gitignored.
+
+**Do not delete this directory manually.** It is the shared state between SSD
+skill invocations. If you need to reset, use `ssd-init --reset` (after confirming
+nothing important is lost).
+```
+
+Only write if the file does not exist. If it exists, leave it.
+
+### Step 5 — Update `.gitignore` (selective commit per ADR-0008)
+
+As of v1.6.0 (companion to library v1.18.0 / [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)),
+`.ssd/` is split: durable artifacts (briefs, architect specs, coder-status, code-reviews, deploy
+notes, milestone records) get committed; machine state (`current.yml`, `project.yml`,
+`init-log.md`, `archive/`, `audits/`, snapshot machinery) stays gitignored.
+
+**Private mode short-circuits this step.** If the user invoked `ssd-init --private` (or chose
+privacy at the prompt below), write the **private pattern** —
+[`methodology/private.gitignore`](../methodology/private.gitignore) contents verbatim — and skip the
+four selective cases entirely. See § "Private mode" below.
+
+**Four cases (selective, the default):**
+
+1. **No `.gitignore` exists:** create it with the **selective pattern** below.
+2. **`.gitignore` exists with no `.ssd` reference:** append the selective pattern.
+3. **`.gitignore` exists with a blanket `.ssd/` (or `.ssd`) line:** detect, prompt for
+   migration, and replace with the selective pattern. See § "Migration from blanket gitignore"
+   below.
+4. **`.gitignore` exists with the selective pattern already (heuristic: contains
+   `!.ssd/features/**/01-architect.md`):** no change.
+
+**The selective pattern to write:** the canonical pattern is the **single source**
+[`methodology/selective.gitignore`](../methodology/selective.gitignore) (ADR-0013 extraction, library
+v1.23.0). Write that file's contents verbatim. Do **not** maintain a second copy here — `ssd-init`
+and `methodology/migrate.sh` (`apply_selective_gitignore`) both consume the one file, so the pattern
+can never drift between the first-run path and the `/ssd upgrade --apply` migration path. (Closes the
+SUGGESTION-1 duplication flagged in the ssd-upgrade iter-B review.)
+
+**Migration from blanket gitignore.** When `ssd-init` detects an existing `.gitignore` with a
+bare `.ssd/` (or `.ssd`) line — the v1.3.0–v1.17.x convention — surface the migration offer:
+
+> "This project's `.gitignore` is on the legacy blanket convention (everything under `.ssd/` is
+> ignored). The v1.18.0+ default is **selective**: briefs, architect specs, code reviews, and
+> similar design docs get committed; machine state (`current.yml`, `project.yml`, etc.) stays
+> local. See [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md). Migrate now?"
+
+Three options:
+
+- **Yes (migrate):** write `.gitignore.bak` (refuse if `.bak` already exists; surface and ask
+  what to do). Replace the bare `.ssd/` line with the selective pattern. Print a summary of
+  files that will now be trackable (`git ls-files --others --exclude-standard .ssd/features/`).
+  **Do NOT auto-stage or auto-commit** — the user controls what lands in the next commit and
+  in which PR.
+- **No (this session):** leave `.gitignore` as-is, ask again next `ssd-init` run.
+- **Permanent opt-out:** set `project.yml.ssd.gitignore_mode: blanket` and stop asking. Future
+  `ssd-init` runs see the explicit opt-out and skip the prompt.
+
+Always surface the prompt (warnings-not-walls: propose the migration, let the user decline or opt out
+permanently); never silently skip it.
+
+**Opt-in to blanket on a new project:** `ssd-init --keep-blanket-gitignore` writes a bare
+`.ssd/` line instead of the selective pattern, and sets `project.yml.ssd.gitignore_mode:
+blanket`.
+
+### Step 5.6 — Offer the private artifact store (v2.10.0+, optional)
+
+*[ADR-0018](../docs/decisions/ADR-0018-ssd-artifact-store.md). Only offered when Step 5 produced
+**private** (or blanket) mode — see the refusal below.*
+
+Private mode makes the SSD record invisible to the project. It does nothing for **durability**: the
+whole methodology record then lives in one untracked directory on one machine, with no history and no
+backup. The artifact store closes that by making `.ssd` a symlink into a separate private git repo.
+
+Offer it after the privacy offer is accepted:
+
+> "Private mode keeps the SSD record out of this repo — but also out of *any* repo, so there is no
+> history or backup of it. SSD can instead keep `.ssd/` in a **separate private git repository** by
+> making `.ssd` a symlink into it. Everything works identically; the record just lives (and versions)
+> elsewhere. Store it at `<store-root>`?"
+
+On yes (or `ssd-init --store <root>`):
+
+```bash
+bash methodology/store.sh init <root>            # prepare the private repo (idempotent)
+bash methodology/store.sh link <root>            # DRY RUN — shows exactly what would move
+bash methodology/store.sh link <root> --confirm   # act
+```
+
+`ssd-init` **prints these commands rather than running `link` itself.** `link` *moves* an existing
+`.ssd/` out of the project — the second destructive operation in the library — so it stays behind its
+own dry-run and explicit confirmation, exactly like ADR-0017's retrofit interlock.
+
+Then record it in `project.yml` (Step 6) and note it in the init log:
+
+```yaml
+ssd:
+  store_root: <root>                # FLAT and uniquely named — see the note below
+  store_dir: <project-basename>
+  store_auto_commit: true           # commit on every phase advance — LOCAL only, never pushes
+```
+
+> **Why flat keys and not a nested `store:` block.** `gate-rules.sh` and `store.sh` read YAML with
+> deliberately crude parsers that match the first `<key>:` at **any** indentation, and `project.yml`
+> has carried `project.root` — the *project's* own path — since v1.0.0. A nested block read as bare
+> `root`/`dir` made `store-link-sane`'s DRIFT check unreachable and a false FAIL once configured.
+> `worktree_root` is the existing precedent for this naming.
+
+**Refuse on `selective`.** Git **cannot track files through a directory symlink**
+(`fatal: pathspec … is beyond a symbolic link`), so selective mode's entire purpose — committing
+`.ssd/features/**` into the project — becomes silently impossible. `store.sh link` refuses with that
+explanation, and the `store-link-sane` gate rule FAILs on the combination. Do not offer the store to a
+selective project; offer private mode first.
+
+**State the trade plainly:** the store is a **second repository the user must not lose**. It is not a
+backup *of* the record — it *is* the record. Cloning the project alone leaves `.ssd` dangling, which
+`store-link-sane` reports rather than letting SSD write into nothing.
+
+**Private mode** (v2.8.0+, [ADR-0017](../docs/decisions/ADR-0017-private-mode.md)). For a project
+where the SSD paper trail should not appear in git at all — client work, a shared repo where SSD is a
+personal rather than team practice, an OSS contribution.
+
+Offer it once, alongside the selective default:
+
+> "SSD can run **privately**: nothing it produces is tracked by git — not `.ssd/`, not the ADRs,
+> runbooks, or architecture docs under `docs/`. Every rail step and gate rule still runs; only the
+> storage posture changes. Branch names lose the `add-` prefix and GitHub issue tracking is forced
+> off. The `🛠️ Crafted with SSD` commit footer is **kept** — this is privacy, not anonymity.
+> Use private mode?"
+
+On yes (or `ssd-init --private`):
+
+- Write [`methodology/private.gitignore`](../methodology/private.gitignore) contents **verbatim**.
+  Do not maintain a second copy here — it is the canonical single source, exactly as
+  `selective.gitignore` is for selective mode.
+- Set `project.yml.ssd.gitignore_mode: private` (Step 6).
+- Set `branch_pattern: "{slug}"` (Step 6) — the default `add-{slug}` is an SSD fingerprint on
+  every branch name.
+- Force `integrations.github.issue_tracking: off` (Step 6). If the user asks for `on`, **refuse and
+  explain** rather than silently honoring one of the two: mirroring workstream state to a public
+  tracker contradicts the mode outright. `issue-sync.sh preflight` also refuses at runtime
+  (`exit 4`), because `project.yml` is hand-editable.
+- Write `test_command` / `feature_flag_marker` as **real keys** in `project.yml`, not commented
+  placeholders. Private mode has no committed `.ssd/gate.yml`, so `project.yml` is the only place
+  the gate can read them from. Omitting them means `tests-pass` and `feature-flag-present` cannot
+  run at all.
+
+**State the limits plainly when the user accepts** — do not let "private" be heard as a security
+guarantee:
+
+> "Private means **untracked**, not encrypted and not anonymous. Artifacts sit in plaintext on disk.
+> If this repo already has SSD artifacts committed, switching now does not remove them from
+> history — `/ssd upgrade` can stop future tracking but cannot rewrite what is already pushed."
+
+If the project is not a git repo (Step 2 outcome: no git, user declined init), skip this step
+and note in the log.
+
+### Step 5.5 — Offer pre-commit hook install (v1.8.0+, optional, expert-only)
+
+Available for projects on `gitignore_mode: selective` (the v1.18.0+ default; see Step 5). The
+pre-commit hook at `methodology/hooks/pre-commit-no-leaky-state.sh` catches `no-leaky-state`
+violations *before* the commit lands, complementing the `/ssd gate` enforcement that runs at
+PR time. See [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md) and
+[`methodology/hooks/README.md`](../methodology/hooks/README.md) for the install /
+uninstall / coexistence docs.
+
+**Step 5.5 mode-detection (must run first, before anything else in this step).** Read the
+project's `.gitignore` file and test the three modes **in this order** — private, then selective,
+then blanket:
+
+1. **Private** — contains the sentinel `# ssd:gitignore-mode=private`. **Proceed with Step 5.5**;
+   under private mode the hook is *more* valuable than under selective, because it is the
+   pre-commit backstop for the privacy promise rather than a tidiness check.
+2. **Selective** — contains `!.ssd/features/**/01-architect.md` (unique to the v1.18.0+ selective
+   pattern). Proceed with Step 5.5.
+3. **Blanket** — a bare `.ssd/` line and neither marker above. **Skip Step 5.5 entirely** —
+   installing the hook would be a no-op since `no-leaky-state` SKIPs under blanket mode.
+
+**Order is load-bearing:** a private `.gitignore` also contains a bare `.ssd/` line, so testing
+blanket first would misclassify every private project as blanket and skip the hook offer exactly
+where it matters most.
+
+Detection is grounded in `.gitignore` state at this point in the init flow because
+`.ssd/project.yml`'s `gitignore_mode` key is not written until Step 6. Do NOT branch on
+`project.yml`'s contents at Step 5.5 time — it may not exist yet (fresh init) or may be on
+an older schema lacking the key. (This is the one sanctioned exception to the
+[ADR-0017](../docs/decisions/ADR-0017-private-mode.md) rule that every consumer reads the mode from
+`project.yml`; it is also why the private pattern carries a comment sentinel at all.)
+
+Offer the install with an explicit yes/no/skip prompt (the user can also install later via the hooks
+README). The offer never auto-installs.
+
+**The offer prints the install command for the user to run themselves:**
+
+```bash
+ln -s ../../methodology/hooks/pre-commit-no-leaky-state.sh .git/hooks/pre-commit
+chmod +x methodology/hooks/pre-commit-no-leaky-state.sh   # one-time, if needed
+```
+
+`ssd-init` does NOT execute the symlink. Git hooks are a per-user / per-checkout trust
+boundary; the user installs consciously. Mention that the hook is bypassable with
+`--no-verify` but SSD doctrine forbids that — the gate rule at PR time is the unbypassable
+backstop either way.
+
+**Pre-existing pre-commit hook detection.** If `.git/hooks/pre-commit` already exists when
+`ssd-init` runs Step 5.5, warn the user and print the **coexistence pattern** from
+`methodology/hooks/README.md` instead of the bare-symlink path:
+
+```bash
+# At the top of your existing .git/hooks/pre-commit:
+bash "$(git rev-parse --show-toplevel)/methodology/gate-rules.sh" --staged --rules no-leaky-state || exit $?
+```
+
+(The blanket-mode skip above is handled by the Step 5.5 mode-detection pre-flight, not by
+re-checking `gitignore_mode` after the prompt.)
+
+### Step 6 — Detect Project Shape
+
+Inspect the repo and fill in `.ssd/project.yml`. Do not overwrite if the file exists; instead, read it and surface any drift to the user.
+
+Detection heuristics:
+
+**Language(s):**
+- Python: `pyproject.toml`, `setup.py`, `requirements*.txt`, `*.py` density
+- TypeScript/JavaScript: `package.json`, `tsconfig.json`, `*.ts` / `*.tsx` density
+- Go: `go.mod`
+- Rust: `Cargo.toml`
+- Swift: `Package.swift`, `*.xcodeproj`
+- Ruby: `Gemfile`
+- Java/Kotlin: `pom.xml`, `build.gradle*`
+- C#: `*.csproj`, `*.sln`
+
+**Framework (if language is detected):**
+- Python: Django (`manage.py` + `settings.py`), FastAPI (`fastapi` in deps), Flask
+- TypeScript: Next.js (`next.config.*`), Nuxt, Angular (`angular.json`), Remix
+- Ruby: Rails (`config/application.rb`)
+- C#: ASP.NET Core (`Program.cs` with `WebApplication`)
+- Swift: iOS / macOS (from xcodeproj target inspection)
+
+**Platform target:** Ask the user if not obvious from framework detection:
+- `web` — browser UI + backend
+- `headless` — API / backend service / CLI
+- `ios` — iOS / iPadOS app
+- `android` — Android app
+- `macos` — macOS desktop
+- `multi` — explicitly spans multiple platforms (list each)
+
+**Distribution channel:** Ask the user:
+- Web: production URL (or "TBD")
+- iOS/macOS: TestFlight / App Store / Mac App Store / direct DMG
+- Android: Play Internal Testing / Play Store
+- Headless: container registry / package registry URL
+
+**Write to `.ssd/project.yml`:**
+
+```yaml
+# .ssd/project.yml — detected + declared project metadata
+# Updated by ssd-init on YYYY-MM-DD. Edit to correct.
+
+project:
+  name: <detected-or-asked>
+  slug: <kebab-case-name>
+  root: <absolute-path-at-init-time>
+
+stack:
+  language: <primary>            # python | typescript | go | ...
+  languages:                     # all detected languages
+    - <lang>
+  framework: <detected-or-none>
+  platform: <web|headless|ios|android|macos|multi>
+
+distribution:
+  channel: <url-or-tbd>
+  cadence: <daily|weekly|biweekly|unknown>
+
+ssd:
+  version: 1.0.0                 # ssd-init version that wrote this
+  initialized_at: <ISO-8601>
+  artifact_root: .ssd/            # relative to project root
+
+  # Parallel-features defaults (v1.16.0, ADR-0007). Override per-project as needed.
+  # Under gitignore_mode: private, write "{slug}" instead — the `add-` prefix is an SSD
+  # fingerprint on every branch name (ADR-0017).
+  branch_pattern: "add-{slug}"
+  worktree_root: "../"
+  worktree_name_pattern: "{repo}-{slug}"
+  switch_note_default: prompt    # prompt | auto | skip (default: prompt)
+
+  # Commit-split defaults (v1.18.0, ADR-0008; `private` added v2.8.0, ADR-0017). Selective is the
+  # default; blanket is the legacy v1.3.0–v1.17.x behavior for solo developers who prefer it;
+  # private tracks NOTHING SSD produces (see Step 5 § "Private mode").
+  #
+  # Exactly these three literals are recognized. A typo is NOT a silent default — gate-rules.sh
+  # FAILs the no-leaky-state rule on an unrecognized value, because a misspelled mode used to
+  # disable leak detection without saying so (ADR-0017).
+  gitignore_mode: selective      # selective | blanket | private
+
+  # ssd:autonomy-block=v2.14.0
+  # Autonomy ladder (v2.14.0, ADR-0020). ABSENT => propose => behavior identical to v2.13.0.
+  # Written commented out on purpose: an absent block is the inert default, and a written-out
+  # `mode: propose` invites a one-word edit to `run` without reading chapters/autonomy.md.
+  #
+  # Exactly three literals are recognized. A typo is NOT a silent default — autorun.sh preflight
+  # refuses and quotes the value, the same stance gitignore_mode takes (ADR-0017).
+  # autonomy:
+  #   mode: propose              # propose | advance | run
+  #   max_review_loops: 3        # coder<->reviewer rounds per gate attempt before STOP-1
+  #   budget_transitions: 12     # phase transitions per invocation before STOP-3
+  #   budget_wall_minutes: 30    # wall-clock cap per invocation; 0 = uncapped
+  #   announce: full             # full | compact
+
+  # Private artifact store (v2.10.0, ADR-0018). Absent ⇒ feature inert; .ssd/ is a normal directory.
+  # Requires private or blanket — git cannot track files through a directory symlink, so a selective
+  # project with a linked .ssd would commit NOTHING under it.
+  # store_root: /path/to/private-ssd  # the private git repo (one repo, subdir per project)
+  # store_dir: <project-basename>      # subdirectory within it
+  # store_auto_commit: true            # commit on every phase advance — LOCAL only, never pushes
+  # Flat + uniquely named on purpose: the YAML readers match the first `<key>:` at ANY indentation,
+  # and `project.root` already exists. Compare `worktree_root` above.
+  # The SYMLINK is authoritative, not these keys: project.yml lives INSIDE the store, so reading it
+  # already required following the link. store-link-sane FAILs if the two disagree.
+  gitignored_state: []           # additional patterns the no-leaky-state gate rule denies;
+                                 # additive only — projects cannot shrink the baseline.
+
+  # Gate inputs (ADR-0015). The portable values live in the COMMITTED .ssd/gate.yml so the gate
+  # travels to every clone and CI runner. Uncomment either key HERE only to override locally —
+  # gate-rules.sh reads project.yml first, then gate.yml.
+  # test_command: <cmd>          # local override of gate.yml's test_command
+  # feature_flag_marker: <regex> # local override of gate.yml's feature_flag_marker
+  # adr_dir: <path>              # where ADRs live; default docs/decisions/. Set this when the
+  #                              # project keeps TRACKED ADRs elsewhere — under private mode
+  #                              # docs/decisions/ is gitignored, so a project whose spec
+  #                              # requires tracked ADRs must point adr-delta at the real home.
+  #
+  # UNDER PRIVATE MODE these two are NOT optional and NOT commented: private mode has no committed
+  # .ssd/gate.yml, so project.yml is the only place the gate can read them from. Leaving them
+  # commented means `tests-pass` and `feature-flag-present` cannot run at all. This is ADR-0015's
+  # root cause P2 knowingly reopened as the documented cost of privacy — see the ADR-0015 addendum.
+
+integrations:                    # optional; filled in as features are added
+  - type: jira
+    enabled: false
+  - type: github
+    enabled: true                # inferred from .git remote
+    issue_tracking: off          # ADR-0014: mirror workstream state to GitHub issues (ADR=epic,
+                                 # workstream=feature issue, ssd:phase/* labels). off (default) =
+                                 # feature dormant, zero network. Set `on` to opt in.
+                                 # FORCED off under gitignore_mode: private — a public tracker
+                                 # mirror contradicts the mode outright (ADR-0017). issue-sync.sh
+                                 # preflight also refuses at runtime (exit 4).
+    auto_close: false            # close feature/epic issues automatically on `done`? false (default)
+                                 # = prompt once per close; true = close without prompting.
+
+rails: rails.md                  # default; teams may fork rails.md and point here
+```
+
+> **SSD 2.0 (ADR-0012):** the `developer_profile` / `teaching_mode` keys were removed — SSD no longer
+> has a profile *concept*. One system serves both newcomer and expert through progressive disclosure
+> (the orchestrator proposes the next step; every manual step stays invokable). `ssd-init` no longer
+> writes those keys; a v1 `project.yml` that still carries them is simply ignored (run `/ssd upgrade`
+> to clean them up — iter C).
+
+**Parallel-features defaults (v1.6.0):** `ssd-init` writes the four optional `ssd.*` keys
+(`branch_pattern`, `worktree_root`, `worktree_name_pattern`, `switch_note_default`) with their
+documented defaults so the v1.16.0+ workstream lifecycle commands (`/ssd feature new`,
+`/ssd switch`, `/ssd worktree`) can resolve without prompting per-invocation. The values are
+hints, not enforcement — a team that uses `feature/{slug}` branches sets `branch_pattern`
+accordingly. See [ADR-0007](../docs/decisions/ADR-0007-parallel-features.md) and `ssd/SKILL.md`
+§ "Workstream Lifecycle Commands." Concurrent workstreams are supported out of the box;
+single-feature flow remains the default and requires no awareness of these keys.
+
+#### Step 6.5 — Detect the test command + write `.ssd/gate.yml` (ADR-0015)
+
+Two `/ssd gate` rules — `tests-pass` and `feature-flag-present` — read their inputs (`test_command`,
+`feature_flag_marker`) from configuration. Before ADR-0015 `ssd-init` wrote neither, so both rules
+SKIPped in **every** project SSD ever initialized (root cause P1), and because those inputs lived only
+in gitignored `project.yml` they could not travel to a second clone or a CI runner (root cause P2).
+This step fixes both by **detecting** the test command and writing it to a **committed** file,
+`.ssd/gate.yml`.
+
+> `.ssd/gate.yml` is the *only* committed `.ssd/*` config file (the `!.ssd/gate.yml` exception is in
+> `methodology/selective.gitignore`, the single source Step 5 consumes). It holds **only** portable
+> gate inputs — never machine-local state, which stays in gitignored `project.yml`. See
+> [ADR-0015](../docs/decisions/ADR-0015-ssd-init-gate-readiness.md) and
+> [ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md).
+
+**Detect `test_command`.** Inspect the repo most-specific-first — a project's own declared entry point
+(a `Makefile` `test:` target) wins over a language default:
+
+| Signal | `test_command` |
+|---|---|
+| `Makefile` with a `test:` target | `make test` |
+| `package.json` with `scripts.test` | `npm test` |
+| `pyproject.toml` / `pytest.ini` / `tests/` + a pytest dependency | `pytest` |
+| `go.mod` | `go test ./...` |
+| `Cargo.toml` | `cargo test` |
+| `*.xcodeproj` / `Package.swift` | `xcodebuild test …` / `swift test` |
+
+If **more than one** top-of-table signal is present (a genuinely polyglot repo), **prompt** the user
+to pick — never guess silently. If **nothing** is detected, write the key **commented out** with a
+one-line explanation: `gate-rules.sh`'s reader skips comment lines, so a commented placeholder
+degrades to today's SKIP (no regression) while making the missing piece visible in the file the user
+will actually open. Record an undetected/ambiguous test command in the init log at **MAJOR** (per the
+Step 9 Gate Readiness bucketing added in a later iteration) so it is not silently inert.
+
+**`feature_flag_marker`** cannot be detected before a flag mechanism exists. Write it when a known
+library is present — `unleash`, `launchdarkly`, `growthbook` (their documented call markers) —
+otherwise leave it commented and tie the follow-up to the flag-system BLOCKER Step 9 already reports;
+whoever establishes the flag mechanism sets the marker.
+
+**Write `.ssd/gate.yml`** (do not overwrite if it exists — read it and surface drift, per the
+idempotency contract):
+
+```yaml
+# .ssd/gate.yml — committed gate inputs (ADR-0015). Portable across clones and CI runners.
+# Machine-specific state stays in .ssd/project.yml (gitignored). gate-rules.sh reads project.yml
+# first (local override), then this file (the committed floor).
+test_command: <detected-or-commented>
+# feature_flag_marker: <regex>   # set once a flag mechanism exists (see Step 9 flag BLOCKER)
+```
+
+The non-interactive equivalent for an already-initialized project is `/ssd upgrade --apply`, which
+runs the `gate-inputs-present` and `committed-gate-yml` migrations (`methodology/migrate.sh`) using
+this same detection — every project initialized before ADR-0015 has two inert gate rules until it
+runs them.
+
+### Step 7 — Initialize `.ssd/current.yml` (v2) + `.ssd/current.notes.yml`
+
+As of v1.3.0, the workstream pointer is split into two files:
+
+- `.ssd/current.yml` — schema-validated, machine-managed by the orchestrator. v2 carries
+  `schema_version: 2`.
+- `.ssd/current.notes.yml` — free-form, human-editable. Loaded as context but never validated.
+
+See [ADR-0002](../docs/decisions/ADR-0002-current-yml-split.md) for the rationale.
+
+**If neither file exists:** create both as fresh templates.
+
+```yaml
+# .ssd/current.yml — machine-managed SSD workstreams.
+# Schema-validated; do not edit manually unless you know what you're doing.
+# Free-form notes go in .ssd/current.notes.yml instead.
+schema_version: 2
+active: []
+archived: []
+```
+
+```yaml
+# .ssd/current.notes.yml — free-form session context for the next agent or human.
+# Anything in here is information for the next session, not state for the orchestrator.
+# Loaded as context; never schema-validated.
+features: {}
+```
+
+**If `current.yml` exists with `schema_version: 2`:** leave both files untouched. Existing entries
+are the orchestrator's business, not init's.
+
+**If `current.yml` exists without `schema_version` (v1 detected):** do **not** silently rewrite. The
+file may contain user-authored keys outside the documented schema (`pr_3a_ship`,
+`carried_to_pr_3c`, etc.). Surface a migration prompt to the user:
+
+```
+Detected legacy current.yml (v1) at .ssd/current.yml. v2 separates machine state from human notes.
+Migrate now? [yes/skip-this-session/show-diff]
+```
+
+On `yes`:
+1. Refuse if `.ssd/current.yml.bak` already exists — ask the user to resolve manually.
+2. Copy current contents to `.ssd/current.yml.bak`.
+3. Build proposed v2 `current.yml` containing only documented machine fields (`schema_version`,
+   `active[].slug`, `phase`, `started`, `last_touched`, `budget_hours`, `elapsed_hours`,
+   `gate_rounds`, `iteration`, `rail_deviations`, `blockers`, plus `archived`). Set
+   `schema_version: 2`. Default missing fields per the v2 schema (e.g., `gate_rounds: 0`,
+   `iteration: null`, `rail_deviations: []`).
+4. Build proposed `current.notes.yml` containing every key found in v1 that was NOT in the
+   documented schema, grouped by feature slug under `features.<slug>.handoff_notes` (or under a
+   top-level `unscoped:` block if the key wasn't tied to a feature).
+5. Show the user both proposed files and ask for explicit confirmation before writing.
+6. On confirm, write the new files. The `.bak` is left in place — the user removes it when
+   satisfied.
+
+On `skip-this-session`: continue reading legacy v1. The orchestrator's v1 fallback path remains
+indefinitely; migration is opt-in. Re-prompt on next invocation.
+
+On `show-diff`: render the proposed v2 + notes files inline so the user can review without
+committing, then re-ask the migration question.
+
+If the project is not a git repo or the user declines all options, leave the file alone and note in
+the init log that v1 was detected and migration was deferred.
+
+> **Shared engine (ADR-0013, library v1.23.0).** The non-interactive equivalent of this v1→v2 split
+> is `/ssd upgrade --apply`, which runs `methodology/migrate.sh`'s `apply_current_yml_v2`. That path
+> uses the **conservative-safe** form — back up to `current.yml.bak`, write a fresh v2 skeleton, and
+> preserve the *entire* original under `current.notes.yml` `legacy_v1_import:` for the user to
+> reconcile — rather than the field-by-field classification this prompted init-time flow performs.
+> Both write a `.bak` and never silently discard data. Use this interactive flow at first-run; use
+> `/ssd upgrade` for an already-initialized project that has drifted (the overlap rule in
+> `ssd/SKILL.md` § "Resolving Skill Overlap").
+
+### Step 8 — Check for `CLAUDE.md`
+
+If the project root has a `CLAUDE.md`, read it and record that it exists. Surface to the user if it does not mention the SSD convention — they may want to add a pointer.
+
+If there is no `CLAUDE.md`, offer to create a minimal one:
+
+```markdown
+# <Project Name>
+
+## SSD Convention
+
+This project uses Shippable States Development. SSD working artifacts live in
+`.ssd/` (gitignored). Primary SSD commands:
+
+- `/ssd start` — Walking Skeleton for new features
+- `/ssd feature` — daily feature loop (architect → systems-designer → coder → review)
+- `/ssd gate` — shippable-state check
+- `/ssd milestone` — post-sprint audit
+
+See `.ssd/README.md` for the artifact tree.
+
+## Stack
+
+<auto-filled from ssd/project.yml>
+
+## Test / Lint / Build
+
+<detected commands — fill in manually>
+
+## Deployment
+
+<distribution channel — fill in manually>
+```
+
+Do not overwrite an existing `CLAUDE.md`. If the user wants to merge, that's a separate action.
+
+**Under `gitignore_mode: private`, skip the offer entirely.** `CLAUDE.md` is committed, so an "SSD
+Convention" section in it announces the practice in exactly the repo the user is keeping quiet.
+
+Nothing functional is lost. `/ssd`'s actual prerequisite is `.ssd/project.yml` (see `ssd/SKILL.md`
+§ "Prerequisite"), not a `CLAUDE.md` pointer — this section has always been advisory, which is why
+this step only ever *offered* it. Under private mode the convention pointer lives in
+`.ssd/README.md`, written by Step 4 and gitignored like everything else.
+
+If `CLAUDE.md` already exists and already mentions SSD, say so rather than editing it — removing
+content the user wrote is not this step's business. Note it in the init log so the leak is visible
+and the user can decide.
+
+### Step 9 — Prerequisite Checks
+
+Report the status of SSD prerequisites. These are not blockers for `ssd-init` — they are blockers for `/ssd start` — but the user should see them immediately.
+
+| Prerequisite | Check | Severity if missing |
+|---|---|---|
+| CI/CD pipeline | `.github/workflows/`, `.gitlab-ci.yml`, `.circleci/`, `Jenkinsfile`, `buildkite.yml`, etc. | BLOCKER for `/ssd start` |
+| Test harness | `pytest`, `jest`, `go test`, `cargo test`, XCTest, etc. | BLOCKER for `/ssd start` |
+| Linter / formatter | `ruff`, `eslint`, `black`, `gofmt`, SwiftLint, etc. | MAJOR |
+| Pre-commit hooks | `.pre-commit-config.yaml` or equivalent | MINOR |
+| Feature flag system | `feature_flags`/`unleash`/`launchdarkly`/`growthbook` in deps, or config file | BLOCKER for `/ssd feature` (new features should be flag-gated) |
+| Deployed "Hello World" | Distribution channel has a working deploy | BLOCKER for SSD methodology compliance |
+| Secrets management | `.env.example`, vault config, key-vault reference | MAJOR |
+| README with setup steps | `README.md` at root with install/run instructions | MAJOR |
+
+Report as a table in the init log. Do not attempt to fix — that's `/ssd start`'s job.
+
+### Step 10 — Write `.ssd/init-log.md`
+
+Record what was done and what was found. This is the primary output artifact of `ssd-init`.
+
+```markdown
+---
+skill: ssd-init
+version: 1.14.0
+produced_at: <ISO-8601>
+project: <name>
+---
+
+# SSD Init Log
+
+## Project Root
+`<absolute-path>`
+
+## Git State
+- Repo: <yes|no|initialized-just-now>
+- Branch: <branch-name-or-na>
+- Clean tree: <yes|no>
+
+## Directory Setup
+- `.ssd/` — <created|already-existed>
+- `.ssd/features/` — <created|already-existed>
+- `.ssd/milestones/` — <created|already-existed>
+- `.ssd/audits/` — <created|already-existed>
+- `.ssd/archive/features/` — <created|already-existed>
+- `.ssd/archive/milestones/` — <created|already-existed>
+- `docs/decisions/` — <created|already-existed>
+- `docs/runbooks/` — <created|already-existed>
+- `docs/architecture/` — <created|already-existed>
+- `.ssd/README.md` — <created|already-existed>
+- `.ssd/project.yml` — <created|already-existed>
+- `.ssd/gate.yml` — <created|already-existed> (committed gate inputs, ADR-0015)
+- `.ssd/current.yml` — <created-v2|already-existed-v2|migrated-from-v1|legacy-v1-deferred>
+- `.ssd/current.notes.yml` — <created|already-existed|skipped-legacy-v1>
+
+## Gitignore
+- `.gitignore` — <created|already-existed|not-applicable-no-git>
+- `.ssd/` entry — <added|already-present|skipped-no-git>
+
+## Project Shape (see .ssd/project.yml for machine-readable form)
+- Language: <...>
+- Framework: <...>
+- Platform: <...>
+- Distribution channel: <...>
+
+## CLAUDE.md
+- Status: <existed|created-minimal|user-declined>
+- SSD convention mentioned: <yes|no>
+
+## Prerequisite Checks
+| Prerequisite | Status | Severity |
+|---|---|---|
+| CI/CD | <present|missing> | <...> |
+| ... | ... | ... |
+
+## Recommended Next Step
+<One of:>
+- `/ssd start` — this is a greenfield project; set up the Walking Skeleton.
+- `/ssd feature` — this is an existing project with the prerequisites in place.
+- Address prerequisites first — <list blockers>.
+```
+
+### Step 11 — Recommend Next Step
+
+Based on the prerequisite check results and project state:
+
+- **All prerequisites present, no existing features:** recommend `/ssd start` to set up the Walking Skeleton.
+- **All prerequisites present, existing codebase:** recommend `/ssd feature <name>` for the next piece of work.
+- **BLOCKER-severity prerequisites missing:** list them, explain each is a blocker, recommend addressing in order (CI/CD first, then tests, then flags).
+- **MAJOR-severity prerequisites missing:** note them but allow `/ssd` to proceed. The first `/ssd start` or `/ssd feature` will need to handle them.
+
+---
+
+## Idempotency Rules
+
+`ssd-init` is safe to run repeatedly. Its contract:
+
+1. **Never overwrites existing files.** If `.ssd/project.yml` exists, it is read, not replaced. The user must delete or edit it manually to change detected values.
+2. **Never deletes existing files or directories.** No `rm`, no `mv`, no destructive ops.
+3. **Idempotent edits to `.gitignore`.** Check before appending; multiple runs produce identical output.
+   Detect the existing mode by sentinel — private (`# ssd:gitignore-mode=private`) before selective
+   (`!.ssd/features/**/01-architect.md`) before blanket — and never append a second pattern block.
+   A re-run on a private project must not "migrate" it to selective: an explicitly recorded
+   `gitignore_mode: private` is a user decision, not drift.
+4. **Appends to `.ssd/init-log.md` on re-run.** Each run adds a new section with its timestamp; does not replace prior entries.
+
+If the project state genuinely needs to be reset, the user invokes `ssd-init --reset` (interactive, requires explicit confirmation on each deletion).
+
+---
+
+## Failure Modes
+
+| Symptom | Cause | Resolution |
+|---|---|---|
+| `ssd-init` can't locate project root | CWD is outside any detectable project | Ask user to `cd` into the project or specify root explicitly |
+| `.gitignore` cannot be written | Filesystem permission error | Report to user; do not attempt workarounds |
+| `.ssd/project.yml` exists but is malformed YAML | Manual edit broke it | Ask user to fix; do not attempt auto-repair |
+| Multiple language stacks detected, no primary | Polyglot repo | Ask user to declare primary language for SSD purposes |
+| Git repo but no remote | Local-only repo | Proceed; note in log. Distribution channel prompt will handle "TBD" |
+| `CLAUDE.md` exists with conflicting conventions | Team already uses a different artifact convention | Surface to user; do not overwrite. They must reconcile manually. |
+
+---
+
+## Integration with `/ssd` Commands
+
+`ssd-init` is the **prerequisite** for all `/ssd` commands. The `/ssd` orchestrator should check for `.ssd/project.yml` on invocation:
+
+- **Missing:** prompt the user to run `ssd-init` first. Do not auto-run it (gives the user control).
+- **Present:** read it for project metadata and proceed with the requested phase.
+
+Sub-skills (`architect`, `systems-designer`, `coder`, `code-reviewer`, `codebase-skeptic`, `refactor`) should read `.ssd/project.yml` to adapt their output to the project's stack and platform. They should write their outputs to the paths prescribed in `03-ssd-orchestration-improvements.md` (within `.ssd/`).
+
+---
+
+## Quality Checklist
+
+Before declaring `ssd-init` complete:
+
+- [ ] Project root located and confirmed
+- [ ] `.ssd/` directory exists with all required subdirectories
+- [ ] `.ssd/README.md` present
+- [ ] `.ssd/project.yml` present and accurately reflects detected shape
+- [ ] `.ssd/gate.yml` present with a detected (or explicitly commented) `test_command` (ADR-0015)
+- [ ] `.ssd/current.yml` present (v2 schema, or v1 with deferred migration)
+- [ ] `.ssd/current.notes.yml` present (or absent only if v1 migration was deferred)
+- [ ] `.gitignore` contains `.ssd/` (if git repo)
+- [ ] `.ssd/init-log.md` written with complete status
+- [ ] Prerequisite checks run and recorded
+- [ ] Next-step recommendation delivered to user
+- [ ] No existing file was overwritten
+- [ ] If `CLAUDE.md` did not exist, either created or user explicitly declined
+
+---
+
+## Interactions with Other Skills
+
+Each sub-skill's `## Interface` table declares the exact input and output paths it uses. Feature work is grouped under `.ssd/features/<slug>/` with numbered files; milestone work is grouped under `.ssd/milestones/<YYYY-MM-DD-topic>/` by artifact name; audits live under `.ssd/audits/<YYYY-MM-DD-scope>/`.
+
+**Feature flow (`/ssd feature`):**
+- `architect` → `.ssd/features/<slug>/01-architect.md`
+- `systems-designer` → `.ssd/features/<slug>/02-systems-designer.md`
+- `coder` → `.ssd/features/<slug>/03-coder-status.md`
+- `code-reviewer` → `.ssd/features/<slug>/04-code-review.md`
+- deploy log → `.ssd/features/<slug>/05-deploy.md`
+
+**Milestone flow (`/ssd milestone` → `/ssd verify`):**
+- `codebase-skeptic` → `.ssd/milestones/<topic>/skeptic-before.md` then `skeptic-after.md`
+- `refactor` → `.ssd/milestones/<topic>/refactor-plan.md`
+- Each refactor PR's `code-reviewer` output → `.ssd/milestones/<topic>/review-<pr>.md`; rollup in `refactor-prs.md`
+- `/ssd verify` → `.ssd/milestones/<topic>/verification.md`
+
+**Audit flow (`/ssd audit`):**
+- `software-standards` → `.ssd/audits/<YYYY-MM-DD-scope>/standards-report.md`
+
+**Reference:**
+- `methodology` → reads `.ssd/project.yml` for adherence scoring; on demand writes `.ssd/methodology-score-YYYY-MM-DD.md`.
+
+**Durable decision records (committed, not in `.ssd/`):**
+- ADRs → `docs/decisions/`
+- Runbooks → `docs/runbooks/`
+- Architecture overviews → `docs/architecture/`
+
+Running `ls .ssd/features/<slug>/` reveals the full phase chain for a feature in order (00 → 05). Running `ls .ssd/milestones/<topic>/` reveals the before → plan → reviews → after → verification chain for a milestone.
+
+---
+
+## Changelog
+
+- **1.11.0** (2026-08-06) — Gate readiness, iter A (ADR-0015, `ssd-init-gate-readiness`): new **Step 6.5**
+  detects the project's `test_command` (Makefile `test:` → npm → pytest → go → cargo → swift,
+  most-specific-first; prompt on ambiguity, commented placeholder at MAJOR when undetected) and writes
+  it to a **committed `.ssd/gate.yml`** so the `tests-pass` / `feature-flag-present` gate rules stop
+  SKIPping by default (P1) and the configuration travels to every clone and CI runner (P2). The
+  `project.yml` template gains commented `test_command` / `feature_flag_marker` **local-override** stubs;
+  `.ssd/gate.yml` is added to the init-log Directory Setup and the Quality Checklist. Companion changes:
+  `!.ssd/gate.yml` in `methodology/selective.gitignore`; a `gate_input()` project.yml→gate.yml fallback
+  chain in `gate-rules.sh`; and `gate-inputs-present` + `committed-gate-yml` mechanical migrations in
+  `migrations.yml` / `migrate.sh` so `/ssd upgrade --apply` retrofits existing projects. Iters B–D
+  (library-root resolution, gate-readiness reporting, CI vendoring) still pending.
+- **1.10.0** (2026-06-14) — SSD 2.0 (ADR-0012, ssd-2.0-cuts iter A): removed the `developer_profile`
+  and `teaching_mode` keys from the `project.yml` template (the profile concept is gone library-wide);
+  Step 5 (gitignore migration) and Step 5.5 (pre-commit hook offer) no longer branch on profile — they
+  **always propose, the user declines** (warnings-not-walls); `switch_note_default` is now a plain knob
+  (default `prompt`), no longer profile-derived. A v1 `project.yml` carrying the removed keys is ignored
+  (clean up via `/ssd upgrade`).
+- **1.9.0** (2026-06-13) — ssd-upgrade extraction (ADR-0013, library v1.23.0). Step 5's selective
+  `.gitignore` pattern is no longer duplicated here — it points to the single-source
+  [`methodology/selective.gitignore`](../methodology/selective.gitignore), which `migrate.sh`
+  (`apply_selective_gitignore`) also consumes, so the first-run and `/ssd upgrade --apply` paths
+  can't drift. Step 7 gains a cross-reference: the non-interactive v1→v2 equivalent is
+  `/ssd upgrade --apply` (`apply_current_yml_v2`, conservative-safe form — `.bak` + fresh v2 skeleton
+  + original preserved under `current.notes.yml` `legacy_v1_import:`). Both `.bak` and never discard.
+- **1.8.0** (2026-06-10) — Iteration B of the ssd-commit-split epic
+  ([ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)). New Step 5.5 (Offer
+  pre-commit hook install): expert-profile users get a yes/no/skip prompt offering the
+  symlink-install path for `methodology/hooks/pre-commit-no-leaky-state.sh`; standard /
+  novice profiles silently skip. `ssd-init` never executes the symlink — git hooks are a
+  per-user / per-checkout trust boundary the user installs consciously. Pre-existing
+  `.git/hooks/pre-commit` triggers a coexistence-pattern message instead of the bare
+  symlink path. Step 5.5 skipped entirely when `gitignore_mode: blanket` (the hook would
+  be a no-op anyway).
+- **1.7.0** (2026-05-24) — Iteration A of the ssd-commit-split epic
+  ([ADR-0008](../docs/decisions/ADR-0008-ssd-commit-split.md)). Step 5 rewritten to
+  produce the **selective** gitignore pattern by default (block-then-allow, ~30 lines).
+  Detect-and-migrate path for projects on the legacy blanket `.ssd/` pattern: prompted,
+  `.gitignore.bak` rollback, idempotent, profile-aware suppression for novice. Two new
+  optional `project.yml.ssd.*` keys written at init time: `gitignore_mode: selective` and
+  `gitignored_state: []`.
+- **1.6.0** (2026-05-24) — Iteration B of the parallel-features epic
+  ([ADR-0007](../docs/decisions/ADR-0007-parallel-features.md)). Step 6 (Detect Project
+  Shape) project.yml write block now includes four new optional `ssd.*` keys with their
+  defaults (`branch_pattern: "add-{slug}"`, `worktree_root: "../"`,
+  `worktree_name_pattern: "{repo}-{slug}"`, `switch_note_default: prompt`) so the v1.16.0+
+  workstream lifecycle commands resolve without per-invocation prompting.
+- **1.5.0** (2026-04-29) — Iteration 8 of the ssd-skill-upgrades epic (P2.B, ADR-0004):
+  `project.yml` template now includes `developer_profile`, `teaching_mode`, and `rails:` fields.
+  Defaults: `standard` profile, teaching mode enabled with 5-invocation decay, default rails
+  file. Existing projects without these fields continue to work — the orchestrator falls back to
+  the same defaults.
+- **1.4.0** (2026-04-29) — Iteration 2 of the ssd-skill-upgrades epic (P1.1, ADR-0001): documented
+  that per-feature `iterations/<iter-id>/` subdirectories are created on demand by the orchestrator,
+  not by `ssd-init`. Single-cycle features keep the flat layout; multi-iteration features promote
+  non-destructively via the `<slug>#<iter-id>` resolution rules in `ssd/SKILL.md`.
+- **1.3.0** (2026-04-28) — `current.yml` is now v2 with schema validation and a sidecar
+  `current.notes.yml` for free-form human notes. Step 7 split into "create both files fresh" and
+  "v1 detected → prompted migration with `.bak`" paths. Init log and Quality Checklist updated to
+  reference both files. Reference: ADR-0002. Iteration 1 of the ssd-skill-upgrades epic.
+- **1.2.0** (2026-04-28) — Switched the SSD working tree from visible `ssd/` to hidden `.ssd/`.
+  Reasons: (1) `ssd/` collides with the orchestrator skill source directory at the project root in
+  the SSD skills repo itself, and (2) the working tree is transient state, not something humans need
+  to browse alongside source files. Hidden directory keeps the file tree clean while remaining
+  navigable via `cd .ssd/`, IDE go-to-file, and `ls -a`. All path references and `.gitignore` rules
+  in this skill now use `.ssd/`. Sub-skills' Interface tables updated in lockstep.
+- **1.1.0** (2026-04-18) — Aligned artifact tree with the rest of the SSD skill chain: top-level
+  directories are now `ssd/features/`, `ssd/milestones/`, `ssd/audits/` (feature-centric and
+  milestone-centric layout) instead of per-skill subdirectories. Each feature bundle uses numbered
+  file prefixes (01-architect.md … 05-deploy.md) matching what every sub-skill's Interface table now
+  declares. Added `docs/decisions/`, `docs/runbooks/`, `docs/architecture/` to the created-on-init
+  list so ADRs and runbooks have a known committed home. Updated file header to use the repo's
+  single-line license pointer convention and title-first ordering.
+- **1.0.0** (2026-04-18) — Initial implementation of first-run housekeeping workflow. Creates `ssd/`
+  directory tree, gitignores it, detects project shape, writes metadata, runs prerequisite checks.
+  Based on conventions proposed in
+  `ai_working_directory/claude_skills_improvements/03-ssd-orchestration-improvements.md` (O1, O3, O8).
+  The earlier improvements proposal used `.ssd/` (hidden); this skill adopted the user's choice of
+  `ssd/` (visible + gitignored). Reversed in v1.2.0.

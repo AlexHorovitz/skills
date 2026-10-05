@@ -169,6 +169,9 @@ detect() {
     # there is no live key to probe and a key-form probe would report PENDING forever after --apply.
     # Precedent: private-mode's `# ssd:gitignore-mode=private` sentinel.
     autonomy-block)         grep -qE '^[[:space:]]*# ssd:autonomy-block=' "$ROOT/.ssd/project.yml" 2>/dev/null ;;
+    # ADR-0024. Absent file => old project, unchanged. A leading "3" is this
+    # library's marker. Libraries that do not know the file ignore it.
+    format-marker)          [[ -f "$ROOT/.ssd/format" ]] && grep -qE '^3([[:space:]]|$)' "$ROOT/.ssd/format" ;;
     *) return 1 ;;
   esac
 }
@@ -253,6 +256,19 @@ apply_parallel_features_keys() {  # ADR-0007 — four ssd.* keys nested under ss
   worktree_name_pattern: "{repo}-{slug}"
   switch_note_default: prompt
 EOF
+}
+
+apply_format_marker() {           # ADR-0024 — additive .ssd/format major. Does not rewrite records.
+  local f="$ROOT/.ssd/format"
+  if [[ -f "$f" ]] && grep -qE '^3([[:space:]]|$)' "$f"; then
+    return 0
+  fi
+  if [[ -f "$f" ]]; then
+    echo "migrate: .ssd/format exists and is not major 3; not overwriting it." >&2
+    return 1
+  fi
+  mkdir -p "$ROOT/.ssd"
+  printf '3\n' > "$f"
 }
 
 apply_autonomy_block() {          # ADR-0020 — commented autonomy: block nested under ssd:.
@@ -711,6 +727,7 @@ apply_dispatch() {
     committed-gate-yml)     apply_committed_gate_yml ;;
     strict-selective-gitignore) apply_strict_selective_gitignore ;;
     autonomy-block)         apply_autonomy_block ;;
+    format-marker)          apply_format_marker ;;
     *)                      return 1 ;;   # unknown mechanical id
   esac
 }

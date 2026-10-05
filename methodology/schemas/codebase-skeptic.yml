@@ -1,0 +1,30 @@
+# Frontmatter schema — codebase-skeptic output.
+# Closes the coverage gap: skeptic-before.md and skeptic-after.md were unmatched.
+
+skill: codebase-skeptic
+applies_to:
+  - skeptic-before.md
+  - skeptic-after.md
+  - skeptic-*.md
+
+required:
+  skill: string
+  version: string
+  produced_at: timestamp
+  produced_by: string
+  project: string
+  scope: string
+  consumed_by: list
+  finding_counts: dict
+  voices_activated: list
+  posture: string
+  gate_pass: bool
+
+optional:
+  compared_to: string
+  reviewed_snapshot: string
+  execution_method: string
+  result_status: string
+  provenance: dict
+
+notes: "compared_to is present on after-reports and absent on before-reports, so it is optional. gate_pass here is not a ship grant."
