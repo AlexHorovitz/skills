@@ -5,35 +5,37 @@ Host: Linux, Python 3.12, PyYAML installed, bash, git, shellcheck 0.9.0. `claude
 | Command | Working directory | Exit | Result |
 | --- | --- | --- | --- |
 | `bash scripts/parity-test.sh` | repository root | 0 | 384/384 |
-| `python3 scripts/v3_suite.py` | repository root | 0 | 98 pass, 0 fail, 4 NOT_RUN |
+| `python3 scripts/v3_suite.py` | repository root | 0 | 100 pass, 0 fail, 3 NOT_RUN |
 | `shellcheck -S warning methodology/*.sh scripts/*.sh` | repository root | 0 | clean |
 | `python3 methodology/frontmatter-validate.py` | repository root | 0 | no FAIL lines (historical artifacts plus the new workstream) |
 | `python3 scripts/skill-frontmatter-check.py` | repository root | 0 | library skills |
 
-The four `NOT_RUN` rows in the v3 suite are: in-session instruction loading, `claude plugin validate`, live model repetitions, and the five-user pilot.
+`claude plugin validate .` was run by the owner on a Mac with Claude Code installed. The result was "Validation passed with warnings". Both warnings are addressed in this tree. The record is `plugin-validate.md`. This host still has no `claude` binary, so the suite asserts that record and the tree fixes; it does not execute `claude`.
+
+The remaining `NOT_RUN` rows in the v3 suite are: in-session instruction loading, live model repetitions, and the five-user pilot.
 
 Jail checks inside the suite passed on this host: symlink escape, absolute host path, secret environment, designated output, snapshot immutability, and blocked network. That certifies `methodology/ssdlib/executor.py` on this profile. It does not certify an unrestricted host shell.
 
-`bash methodology/gate-rules.sh --base main` was run on commit `a9d6baa` (the release commit, before this evidence update). Exit 0.
+`bash methodology/gate-rules.sh --base main` was run on this branch after the plugin-validate follow-up (the warning-fix commit, before this evidence paragraph was edited). Exit 0. An earlier run on `a9d6baa` had the same 10 pass / 4 skip / 0 fail shape.
 
 ## Gate
 
 ```
-PASS wip-commits
-PASS tests-pass :: bash scripts/parity-test.sh exit 0
-SKIP feature-flag-present :: no feature_flag_marker
-PASS adr-delta :: 4 ADR file(s)
-PASS frontmatter-valid :: 5 artifact(s) validated; 1 unvalidated (the baseline verification note)
-PASS no-leaky-state
-SKIP store-link-sane :: no store link
-PASS skill-version-sync :: 9 examples match; 2 exempt
-PASS migration-manifest-current :: 16 entries, none newer than 3.0.0
-PASS rails-walked :: ssd-v3 carries gate_pass: true
-PASS deviations-recorded :: production_runtime=false
-SKIP feynman-clean :: no report in scope
-SKIP issue-sync-current :: issue tracking off
-PASS skill-metadata :: 11 skills
-GATE 10 pass · 4 skip · 0 fail
+PASS wip-commits :: no WIP/checkpoint commits between main and HEAD
+PASS tests-pass :: `bash scripts/parity-test.sh` exit 0
+SKIP feature-flag-present :: no feature_flag_marker in .ssd/project.yml or .ssd/gate.yml
+PASS adr-delta :: 4 ADR file(s) changed in docs/decisions/ for 3054 architectural lines
+PASS frontmatter-valid :: 5 artifact(s) validated against schemas; 1 unvalidated (no matching schema)
+PASS no-leaky-state :: no gitignored-by-policy files in diff
+SKIP store-link-sane :: no store link (.ssd is a project-local directory)
+PASS skill-version-sync :: 9 skill example(s) match banner; 2 exempt (no example block)
+PASS migration-manifest-current :: manifest valid (16 entries; ids unique, ascending, ≤ VERSION 3.0.0)
+PASS rails-walked :: 1 feature dir(s) in this release each carry a code review with gate_pass: true
+PASS deviations-recorded :: 1 feature dir(s): every in-scope rail step either walked or recorded (production_runtime=false)
+SKIP feynman-clean :: no feynman report in scope (vs main)
+SKIP issue-sync-current :: issue_tracking not on (mirror dormant)
+PASS skill-metadata :: 11 skill(s) have valid frontmatter
+GATE 10 pass · 4 skip · 0 fail — a skip is a check that did not run
 ```
 
-The full text is the command above. A skip is a check that did not run.
+A skip is a check that did not run. It is not a pass.

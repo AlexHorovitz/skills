@@ -26,4 +26,4 @@ The v3 plan's optional items (coded workflows, secondary verification, specialis
 
 ## Consequences
 
-Live model comparisons, the five-user pilot, native plugin validation, and in-session instruction loading are `NOT_RUN` in the 3.0.0 evidence bundle. They are not passes. Publishing, marketplace submission, tagging, and deployment are owner actions and are not performed by the implementation change.
+The owner ran `claude plugin validate .` on a Mac. The result was "Validation passed with warnings", and both warnings are addressed in the tree. Live model comparisons, the five-user pilot, and in-session instruction loading remain `NOT_RUN` in the 3.0.0 evidence bundle. They are not passes. Publishing, marketplace submission, tagging, and deployment are owner actions and are not performed by the implementation change.

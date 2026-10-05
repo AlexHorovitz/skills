@@ -5,7 +5,7 @@ The implementation request authorized a branch and a pull request. It did not au
 - Tag `3.0.0` or push the tag.
 - Publish a GitHub release.
 - Submit `.claude-plugin/marketplace.json` to a marketplace.
-- Run `claude plugin validate` on a machine where Claude Code is installed, then decide whether the README may call the plugin path tested.
+- `claude plugin validate .` already ran on the owner's Mac. The result was "Validation passed with warnings", and both warnings are addressed in this tree (`docs/releases/3.0.0/plugin-validate.md`). A second run after this commit, and a clean-host plugin install, are still yours if you want them. This environment has no `claude` binary.
 - Set `SSD_EVAL_RUNTIME` and `SSD_EVAL_SPEND_CEILING` and run live evaluations. The driver returns `NOT_RUN` until both are set, and this tree still has no model driver behind that flag.
 - Run the five-user protocol in `usability.md`.
 - Enable a required status check. `.github/workflows/quality.yml` stays informational.

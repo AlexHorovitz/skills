@@ -16,9 +16,13 @@ The default is still `propose`. Bare `/ssd` does not implement and does not star
 
 **Review and execution.** Role files for architect, coder, and reviewer. The reviewer file requests read and search tools only. Tests for the restricted path run in an `unshare` user/mount/net `chroot`. If that mechanism is missing, the result is `NOT_RUN` and strong-assurance review is unsupported. Findings certification ignores a model-supplied `gate_pass`. Model selection defaults to inherit; an unknown effective model stays unknown. `autorun.sh` gains `resume`, fingerprint replay, and child-transition accounting. Conflicting replay is STOP-4, an extension recorded in ADR-0023, not a new stop number. Hooks are an adapter around that boundary, not the boundary.
 
-**Not in this release.** Live model comparisons, the five-user pilot, `claude plugin validate`, in-session loading of `AGENTS.md`, coded workflows, secondary verification, specialist fan-out, cloud routines, MCP, Spec Kit, and clone retirement. See `docs/releases/3.0.0/`. Publishing, marketplace submission, tagging, and deployment are for the owner.
+**Plugin catalog.** `.claude-plugin/marketplace.json` has a top-level `description`, the field the marketplace document uses for a brief catalog description. The owner ran `claude plugin validate .` on a Mac; the result was "Validation passed with warnings". The other warning was a `CLAUDE.md` at the plugin root. That file only imported `AGENTS.md`, the contributor guide for this repository. Checkout memory now lives at `.claude/CLAUDE.md` (`@../AGENTS.md`). Plugin users already get the product rules from the skills, especially `ssd/SKILL.md`. The implementation environment has no `claude` binary, so it did not re-run the command. Detail: `docs/releases/3.0.0/plugin-validate.md`.
+
+**Not in this release.** Live model comparisons, the five-user pilot, in-session loading of `AGENTS.md`, a clean-host plugin install, coded workflows, secondary verification, specialist fan-out, cloud routines, MCP, Spec Kit, and clone retirement. See `docs/releases/3.0.0/`. Publishing, marketplace submission, tagging, and deployment are for the owner.
 
 **Checks recorded while preparing this commit.** `bash scripts/parity-test.sh` — 384/384, exit 0. `python3 scripts/v3_suite.py` — 98 pass, 0 fail, 4 NOT_RUN. `shellcheck -S warning methodology/*.sh scripts/*.sh` — exit 0. The gate against `main` is recorded in `docs/releases/3.0.0/evidence.md` after this commit is on the branch.
+
+The plugin-validate follow-up on the same release re-ran parity (384/384, exit 0), the v3 suite (100 pass, 0 fail, 3 NOT_RUN), and `bash methodology/gate-rules.sh --base main` (exit 0, 10 pass / 4 skip / 0 fail). No shell file changed in that follow-up, so shellcheck was not re-run.
 
 ---
 

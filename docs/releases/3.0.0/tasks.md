@@ -11,8 +11,8 @@ Status words: completed means the acceptance check that can run here did run. NO
 | T04 | completed for the line check | Five entrypoints compacted; archives in `references/archive-v2.14.md`. Suite checks line count, required sentences, and links. "References were read by a model" is NOT_RUN |
 | T05 | completed | `methodology/ssdlib/paths.py`, `state.py`. External project, spaces, linked worktree, corrupt versus missing. Suite |
 | T06 | completed with the refactor deviation | Generated JSON in sync. Skeptic schema added. `refactor-plan.md` unmatched on purpose. Historical validator run had no FAIL |
-| T07 | partial | `AGENTS.md`, `CLAUDE.md` `@AGENTS.md`, `ssd-init/references/project-instructions.md`. In-session load NOT_RUN |
-| T08 | partial | `.claude-plugin/plugin.json` and `marketplace.json`. Version matches `VERSION`. `claude plugin validate` NOT_RUN. Clone path unchanged |
+| T07 | partial | `AGENTS.md`, `.claude/CLAUDE.md` `@../AGENTS.md`, `ssd-init/references/project-instructions.md`. In-session load NOT_RUN |
+| T08 | completed for validate | `.claude-plugin/plugin.json` and `marketplace.json` (top-level `description`). Version matches `VERSION`. Owner ran `claude plugin validate .` on a Mac: Validation passed with warnings. Both warnings are addressed. Clean-host install was not run. Clone path unchanged |
 | T09 | completed for the local tools | `doctor.py`, `lifecycle.plan` writes 0, discover does not execute. Suite |
 | T10 | completed as format-validated | `portable.export`. Closure passed. `unattended_run` false. No host install of the bundle |
 | T11 | completed for the helpers | Managed blocks, backup/restore functions, remove keeps `.ssd/` and foreign hooks, format marker, migrate `format-marker`. Coexistence keeps clone and plugin |
@@ -67,7 +67,7 @@ Status words: completed means the acceptance check that can run here did run. NO
 | EV-04 | PASS for plan/idempotent helpers in the suite. Live setup session NOT_RUN |
 | EV-05 | NOT_RUN as a live trace. Skill text forbids automatic audits. `disable-model-invocation` is set |
 | EV-06 | PASS in the suite (external project, spaces, linked worktree, library validator) |
-| EV-07 | PASS for portable closure and plugin path checks. Native install NOT_RUN |
+| EV-07 | PASS for portable closure, plugin path checks, and the owner's `claude plugin validate .` (Validation passed with warnings; both warnings addressed). Clean-host install was not run |
 | EV-08 | PASS. Historical frontmatter had no FAIL. Incomplete architect artifact FAILs. Schema sync empty |
 | EV-09 | NOT_RUN. No host dispatched a role |
 | EV-10 | PASS for `grade_review` on a fixture report. Live recall NOT_RUN |

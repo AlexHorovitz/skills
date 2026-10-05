@@ -57,6 +57,6 @@ No project test suite runs from the hook.
 | --- | --- | --- |
 | Linux 6.12, Python 3.12, unshare user/mount/net | Jail, authz, resume, hooks-as-a-process | Claude Code delivering the hook |
 | Portable bundle | Metadata and relative links | Any host runtime |
-| Plugin manifest | JSON shape and version sync with `VERSION` | `claude plugin validate` |
+| Plugin manifest | JSON shape, version sync with `VERSION`, marketplace `description`, and the owner's `claude plugin validate .` (passed with warnings; both warnings addressed in the tree) | A clean-host plugin install |
 
 Unattended `run` is certified only for the first row's tested adapter. Other routes stay at effective mode `propose`.

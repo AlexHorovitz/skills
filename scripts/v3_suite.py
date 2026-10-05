@@ -246,6 +246,8 @@ def test_portable_and_plugin() -> None:
     plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     market = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     check("plugin-version-matches-library", plugin.get("version") == version and market["plugins"][0]["version"] == version, plugin.get("version"))
+    market_description = market.get("description")
+    check("marketplace-description", isinstance(market_description, str) and bool(market_description.strip()))
     skills = plugin.get("skills") or []
     check("plugin-lists-methodology", "./methodology" in skills)
     check("plugin-has-no-bin", "bin" not in json.dumps(plugin))
@@ -258,9 +260,26 @@ def test_portable_and_plugin() -> None:
     check("hooks-wrapped", isinstance(hooks.get("hooks"), dict) and "PreToolUse" in hooks["hooks"])
     agents_md = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     check("agents-md-under-200", len(agents_md.splitlines()) < 200, str(len(agents_md.splitlines())))
-    check("claude-imports-agents", (ROOT / "CLAUDE.md").read_text(encoding="utf-8").strip() == "@AGENTS.md")
+    project_memory = ROOT / ".claude" / "CLAUDE.md"
+    check(
+        "claude-imports-agents",
+        project_memory.is_file()
+        and project_memory.read_text(encoding="utf-8").strip() == "@../AGENTS.md"
+        and not (ROOT / "CLAUDE.md").exists(),
+    )
     note("in-session-instruction-loading", "claude is not installed; file import was not executed in a session")
-    note("native-plugin-validate", "claude plugin validate was not run")
+    validate_record = ROOT / "docs" / "releases" / "3.0.0" / "plugin-validate.md"
+    recorded = validate_record.read_text(encoding="utf-8") if validate_record.is_file() else ""
+    check(
+        "native-plugin-validate",
+        "Validation passed with warnings" in recorded
+        and "claude plugin validate ." in recorded
+        and "owner" in recorded.lower()
+        and isinstance(market_description, str)
+        and bool(market_description.strip())
+        and not (ROOT / "CLAUDE.md").exists()
+        and project_memory.is_file(),
+    )
     with tempfile.TemporaryDirectory() as tmp:
         dest = Path(tmp) / "portable"
         result = portable.export(ROOT, dest)
