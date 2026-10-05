@@ -8,7 +8,7 @@ scope: ssd-v3
 consumed_by: []
 machine_checked:
   parity: "384/384 exit 0"
-  v3_suite: "98 pass, 0 fail, 4 NOT_RUN"
+  v3_suite: "100 pass, 0 fail, 3 NOT_RUN"
   shellcheck: "exit 0"
 human_review:
   required: true

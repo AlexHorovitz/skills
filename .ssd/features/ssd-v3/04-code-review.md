@@ -17,7 +17,7 @@ gate_pass: true
 remediation_mode: false
 round: 1
 closed_from_previous_round: []
-reviewed_snapshot: "branch cursor/ssd-v3-f373 after the plugin-validate follow-up; runner records are refreshed in docs/releases/3.0.0/evidence.md"
+reviewed_snapshot: "branch cursor/ssd-v3-f373 after the plugin-validate follow-up; parity 384/384 and v3_suite 100 pass, 0 fail, 3 NOT_RUN"
 execution_method: inline
 result_status: PASS
 provenance:

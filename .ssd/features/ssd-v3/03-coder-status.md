@@ -19,7 +19,7 @@ tests_added:
 review_markers: 0
 test_results:
   parity: "bash scripts/parity-test.sh exit 0, 384/384"
-  v3: "python3 scripts/v3_suite.py exit 0, 98 pass, 0 fail, 4 NOT_RUN"
+  v3: "python3 scripts/v3_suite.py exit 0, 100 pass, 0 fail, 3 NOT_RUN"
   shellcheck: "shellcheck -S warning methodology/*.sh scripts/*.sh exit 0"
 lint_results:
   command: shellcheck -S warning methodology/*.sh scripts/*.sh

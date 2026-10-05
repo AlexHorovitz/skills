@@ -22,6 +22,8 @@ The default is still `propose`. Bare `/ssd` does not implement and does not star
 
 **Checks recorded while preparing this commit.** `bash scripts/parity-test.sh` — 384/384, exit 0. `python3 scripts/v3_suite.py` — 98 pass, 0 fail, 4 NOT_RUN. `shellcheck -S warning methodology/*.sh scripts/*.sh` — exit 0. The gate against `main` is recorded in `docs/releases/3.0.0/evidence.md` after this commit is on the branch.
 
+The plugin-validate follow-up on the same release re-ran parity (384/384, exit 0), the v3 suite (100 pass, 0 fail, 3 NOT_RUN), and `bash methodology/gate-rules.sh --base main` (exit 0, 10 pass / 4 skip / 0 fail). No shell file changed in that follow-up, so shellcheck was not re-run.
+
 ---
 
 ## [2.14.0] — 2026-09-21
