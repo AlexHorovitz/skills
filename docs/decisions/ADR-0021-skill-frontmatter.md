@@ -24,4 +24,4 @@ This repository's hygiene text said each `SKILL.md` begins with a Markdown title
 
 Hosts that do not read frontmatter still see the body, including the deliberate-invocation sentences. Missing frontmatter is not claimed to make a skill universally uninvocable.
 
-`disable-model-invocation` is stripped from the portable export. The body sentences remain. Native `claude plugin validate` was not run in the 3.0.0 implementation environment.
+`disable-model-invocation` is stripped from the portable export. The body sentences remain. The owner ran `claude plugin validate .` on a Mac; the result was "Validation passed with warnings". Both warnings are addressed in the tree (`docs/releases/3.0.0/plugin-validate.md`). The implementation environment did not re-run the command.

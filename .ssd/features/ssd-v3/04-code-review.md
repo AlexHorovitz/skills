@@ -17,7 +17,7 @@ gate_pass: true
 remediation_mode: false
 round: 1
 closed_from_previous_round: []
-reviewed_snapshot: "branch cursor/ssd-v3-f373 at the release commit; runner records are parity 384/384 and v3_suite 98/0/4"
+reviewed_snapshot: "branch cursor/ssd-v3-f373 after the plugin-validate follow-up; runner records are refreshed in docs/releases/3.0.0/evidence.md"
 execution_method: inline
 result_status: PASS
 provenance:
@@ -31,7 +31,7 @@ This review records the runner output. It is not an isolated model review. `exec
 
 ## Findings
 
-MINOR-1. The portable export and the plugin manifest were not installed by Claude Code. `claude` is not on PATH. Native validation is `NOT_RUN`. The clone path remains the tested install.
+MINOR-1. The owner ran `claude plugin validate .` on a Mac. The result was "Validation passed with warnings". The marketplace description and the plugin-root `CLAUDE.md` warning are addressed in this tree. A clean-host plugin install was not run. The clone path remains the tested install. This environment did not re-execute `claude`.
 
 No confirmed blocker or major finding is in the examined checks. A clean result here is those checks, not a claim that every host path is closed.
 

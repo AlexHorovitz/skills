@@ -169,7 +169,7 @@ Clone remains supported:
 git clone https://github.com/AlexHorovitz/skills ~/.claude/skills
 ```
 
-A plugin manifest is at `.claude-plugin/plugin.json` (name `ssd`, skills listed as directories, no `bin/`). Installing it with Claude Code's plugin command was **not** run in the 3.0.0 implementation environment (`claude` was not on PATH, and `claude plugin validate` was not executed). Until you run that command yourself, use the clone path above. Namespaced skill names look like `/ssd:coder` on a host that namespaces plugin skills; the clone path keeps the short names (`/coder`). Both can be present. Do not delete one to "finish" the other.
+A plugin manifest is at `.claude-plugin/plugin.json` (name `ssd`, skills listed as directories, no `bin/`). The owner ran `claude plugin validate .` on a Mac with Claude Code installed. The result was "Validation passed with warnings": the marketplace had no top-level `description`, and a `CLAUDE.md` at the plugin root is not loaded as plugin context. This tree adds that marketplace description and keeps checkout instructions in `.claude/CLAUDE.md`, which imports `AGENTS.md`. Product rules for plugin users stay in the skills. A clean-host install of the plugin, and marketplace submission, were not run. Until you install it yourself, use the clone path above. Namespaced skill names look like `/ssd:coder` on a host that namespaces plugin skills; the clone path keeps the short names (`/coder`). Both can be present. Do not delete one to "finish" the other.
 
 `/ssd doctor` is read-only. It reports the installation, roots, state, and which capabilities were actually verified.
 

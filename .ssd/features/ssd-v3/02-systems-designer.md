@@ -17,7 +17,7 @@ block_conditions_met: false
 block_conditions:
   live_models: "NOT_RUN"
   five_user_pilot: "NOT_RUN"
-  native_plugin_validate: "NOT_RUN"
+  native_plugin_validate: "owner ran claude plugin validate . on a Mac; Validation passed with warnings; both warnings addressed"
 result_status: NOT_RUN
 reviewed_snapshot: "implementation tree before the release commit; re-run the gate after the commit"
 execution_method: inline

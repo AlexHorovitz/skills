@@ -39,6 +39,8 @@ Feynman, software-standards, and codebase-skeptic start only when a person invok
 
 Library version is the `VERSION` file. Skill banners are per skill. Plugin version in `.claude-plugin/plugin.json` tracks `VERSION`.
 
+Project memory for a checkout of this repository is `.claude/CLAUDE.md`, which imports this file. Claude Code does not load a `CLAUDE.md` at the plugin root. Plugin users get the rail from the skills, especially `ssd/SKILL.md`. This file stays the contributor guide.
+
 CI in `.github/workflows/quality.yml` is informational. Do not add a required status check.
 
 Optional workflows, secondary verification, specialist fan-out, cloud routines, MCP, and Spec Kit are not part of the core product until an ADR says they shipped. Clone installation stays supported.

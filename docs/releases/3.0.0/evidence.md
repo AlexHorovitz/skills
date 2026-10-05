@@ -10,7 +10,9 @@ Host: Linux, Python 3.12, PyYAML installed, bash, git, shellcheck 0.9.0. `claude
 | `python3 methodology/frontmatter-validate.py` | repository root | 0 | no FAIL lines (historical artifacts plus the new workstream) |
 | `python3 scripts/skill-frontmatter-check.py` | repository root | 0 | library skills |
 
-The four `NOT_RUN` rows in the v3 suite are: in-session instruction loading, `claude plugin validate`, live model repetitions, and the five-user pilot.
+`claude plugin validate .` was run by the owner on a Mac with Claude Code installed. The result was "Validation passed with warnings". Both warnings are addressed in this tree. The record is `plugin-validate.md`. This host still has no `claude` binary, so the suite asserts that record and the tree fixes; it does not execute `claude`.
+
+The remaining `NOT_RUN` rows in the v3 suite are: in-session instruction loading, live model repetitions, and the five-user pilot.
 
 Jail checks inside the suite passed on this host: symlink escape, absolute host path, secret environment, designated output, snapshot immutability, and blocked network. That certifies `methodology/ssdlib/executor.py` on this profile. It does not certify an unrestricted host shell.
 
