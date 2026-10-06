@@ -5,12 +5,15 @@ Host: Linux, Python 3.12, PyYAML installed, bash, git, shellcheck 0.9.0. `claude
 | Command | Working directory | Exit | Result |
 | --- | --- | --- | --- |
 | `bash scripts/parity-test.sh` | repository root | 0 | 384/384 |
-| `python3 scripts/v3_suite.py` | repository root | 0 | 100 pass, 0 fail, 3 NOT_RUN |
+| `python3 scripts/v3_suite.py` | repository root | 0 | 101 pass, 0 fail, 3 NOT_RUN |
+| `python3 scripts/live_eval_test.py` | repository root | 0 | fake runtime; ceiling, redaction, NOT_RUN, recording, adapter errors |
 | `shellcheck -S warning methodology/*.sh scripts/*.sh` | repository root | 0 | clean |
 | `python3 methodology/frontmatter-validate.py` | repository root | 0 | no FAIL lines (historical artifacts plus the new workstream) |
 | `python3 scripts/skill-frontmatter-check.py` | repository root | 0 | library skills |
 
 `claude plugin validate .` was run by the owner on a Mac with Claude Code installed. The result was "Validation passed with warnings". Both warnings are addressed in this tree. The record is `plugin-validate.md`. This host still has no `claude` binary, so the suite asserts that record and the tree fixes; it does not execute `claude`.
+
+The live evaluation driver is in `scripts/eval_driver.py` and `methodology/ssdlib/live_eval.py`. This host has no `claude` binary and no model credential, so the driver was not pointed at a model. Live repetitions stay `NOT_RUN`. The owner commands are in `live-evals.md`.
 
 The remaining `NOT_RUN` rows in the v3 suite are: in-session instruction loading, live model repetitions, and the five-user pilot.
 

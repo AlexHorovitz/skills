@@ -2,7 +2,8 @@
 """Neutral evaluation driver.
 
 Offline validation and live model execution are different operations.
-A missing runtime prints NOT_RUN and exits 2. It never records a green baseline.
+A missing runtime, credential, or spend ceiling prints NOT_RUN and exits 2.
+It never records a green baseline and never substitutes a different runtime.
 Graders and ground truth live under evals/, which workers are not given as a
 writable output directory.
 """
@@ -129,20 +130,32 @@ def run_offline(fixture_id: str, arm: str) -> dict:
         raise
 
 
-def run_live() -> dict:
-    ceiling = os.environ.get("SSD_EVAL_SPEND_CEILING")
-    runtime = os.environ.get("SSD_EVAL_RUNTIME")
-    if not ceiling or not runtime:
-        return {
-            "status": "NOT_RUN",
-            "reason": "live evaluation needs SSD_EVAL_RUNTIME and SSD_EVAL_SPEND_CEILING; neither was set. Not a green baseline.",
-            "operation": "live-evaluation",
-        }
-    return {
-        "status": "NOT_RUN",
-        "reason": "runtime flag is set but this environment has no model driver wired; refusing to invent results",
-        "operation": "live-evaluation",
-    }
+def run_live(args=None, env: dict | None = None) -> dict:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from methodology.ssdlib import live_eval
+
+    source = os.environ if env is None else env
+    dry_run = bool(getattr(args, "dry_run", False))
+    fixture_id = getattr(args, "fixture", None)
+    arm = getattr(args, "arm", None)
+    repetitions = getattr(args, "repetitions", None)
+    probes = not bool(getattr(args, "no_probes", False))
+    output = None
+    if not dry_run and source.get("SSD_EVAL_RUNTIME") and source.get("SSD_EVAL_SPEND_CEILING"):
+        chosen = getattr(args, "output", None)
+        output = Path(chosen) if chosen else live_eval.default_output_dir(ROOT)
+    return live_eval.run_from_environment(
+        ROOT,
+        source,
+        dry_run=dry_run,
+        fixture_id=fixture_id,
+        arm=arm,
+        repetitions=repetitions,
+        probes=probes,
+        output_dir=output,
+        protocol_grade=_grade,
+    )
 
 
 def reproduce(manifest_path: Path) -> dict:
@@ -159,6 +172,25 @@ def reproduce(manifest_path: Path) -> dict:
     }
 
 
+def _dump(payload: dict) -> str:
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from methodology.ssdlib.live_eval import secret_values, to_json
+
+    return to_json(payload, secret_values())
+
+
+def _live_exit(payload: dict) -> int:
+    status = payload.get("status")
+    if status in {"FAIL", "ERROR"}:
+        return 1
+    if status in {"NOT_RUN", "STOPPED"}:
+        return 2
+    if status == "RECORDED":
+        return 0
+    return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="eval-driver")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -167,9 +199,19 @@ def main(argv: list[str] | None = None) -> int:
     run_p.add_argument("--fixture", required=True)
     run_p.add_argument("--arm", required=True, choices=("A", "B", "C"))
     run_p.add_argument("--live", action="store_true")
+    run_p.add_argument("--dry-run", action="store_true")
+    run_p.add_argument("--repetitions", type=int)
+    run_p.add_argument("--no-probes", action="store_true")
+    run_p.add_argument("--output")
     rep = sub.add_parser("reproduce")
     rep.add_argument("--manifest", required=True)
-    sub.add_parser("live")
+    live_p = sub.add_parser("live")
+    live_p.add_argument("--dry-run", action="store_true")
+    live_p.add_argument("--fixture")
+    live_p.add_argument("--arm", choices=("A", "B", "C"))
+    live_p.add_argument("--repetitions", type=int)
+    live_p.add_argument("--no-probes", action="store_true")
+    live_p.add_argument("--output")
     args = parser.parse_args(argv)
     try:
         if args.cmd == "validate":
@@ -178,9 +220,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if payload["errors"] else 0
         if args.cmd == "run":
             if args.live:
-                payload = run_live()
-                print(json.dumps(payload, indent=2))
-                return 2
+                payload = run_live(args)
+                print(_dump(payload))
+                return _live_exit(payload)
             payload = run_offline(args.fixture, args.arm)
             print(json.dumps(payload, indent=2))
             grade = payload.get("grade") or {}
@@ -188,9 +230,11 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             return 0 if grade.get("status") == "PASS" else 1
         if args.cmd == "live":
-            payload = run_live()
-            print(json.dumps(payload, indent=2))
-            return 2 if payload["status"] == "NOT_RUN" else 0
+            payload = run_live(args)
+            print(_dump(payload))
+            if args.dry_run:
+                return 0 if payload.get("status") in {"DRY_RUN", "NOT_RUN"} else 1
+            return _live_exit(payload)
         if args.cmd == "reproduce":
             print(json.dumps(reproduce(Path(args.manifest)), indent=2))
             return 0

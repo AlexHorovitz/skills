@@ -6,7 +6,7 @@ Owner: Alex Horovitz. The 3.0.0 change does not assign a second maintainer.
 | --- | --- |
 | Compatibility | Re-run `bash scripts/parity-test.sh` and `python3 scripts/v3_suite.py` when a referee or schema changes. |
 | Schemas | Edit `methodology/schemas/*.yml` only, then regenerate JSON with `methodology/ssdlib/schemas.py`. |
-| Evaluations | Live model runs need `SSD_EVAL_RUNTIME` and `SSD_EVAL_SPEND_CEILING`. Without both, the driver returns `NOT_RUN`. Do not schedule unbounded nightly spend. |
+| Evaluations | Live runs need `SSD_EVAL_RUNTIME`, a credential, and `SSD_EVAL_SPEND_CEILING`. Without them the driver returns `NOT_RUN`. Commands and the ceiling rules are in `docs/releases/3.0.0/live-evals.md`. Do not schedule unbounded nightly spend. |
 | Security | Reports against the control directory, the jail, or a hook bypass go to the owner. Do not publish raw traces. |
 | Docs | Release notes live in `CHANGELOG.md` and `docs/releases/`. |
 

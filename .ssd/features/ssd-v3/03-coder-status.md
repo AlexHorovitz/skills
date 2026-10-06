@@ -13,13 +13,17 @@ files_touched:
   - methodology/migrate.sh
   - scripts/v3_suite.py
   - scripts/parity-test.sh
+  - scripts/eval_driver.py
+  - scripts/live_eval_test.py
+  - methodology/ssdlib/live_eval.py
 tests_added:
   - scripts/v3_suite.py
+  - scripts/live_eval_test.py
   - scripts/parity-test.sh fixtures library-validator-fallback, skill-metadata-skips-elsewhere, autorun-fingerprint-replay
 review_markers: 0
 test_results:
   parity: "bash scripts/parity-test.sh exit 0, 384/384"
-  v3: "python3 scripts/v3_suite.py exit 0, 100 pass, 0 fail, 3 NOT_RUN"
+  v3: "python3 scripts/v3_suite.py exit 0, 101 pass, 0 fail, 3 NOT_RUN"
   shellcheck: "shellcheck -S warning methodology/*.sh scripts/*.sh exit 0"
 lint_results:
   command: shellcheck -S warning methodology/*.sh scripts/*.sh
