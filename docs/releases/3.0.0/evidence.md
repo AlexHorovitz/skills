@@ -19,7 +19,7 @@ The remaining `NOT_RUN` rows in the v3 suite are: in-session instruction loading
 
 Jail checks inside the suite passed on this host: symlink escape, absolute host path, secret environment, designated output, snapshot immutability, and blocked network. That certifies `methodology/ssdlib/executor.py` on this profile. It does not certify an unrestricted host shell.
 
-`bash methodology/gate-rules.sh --base main` was run on this branch after the plugin-validate follow-up (the warning-fix commit, before this evidence paragraph was edited). Exit 0. An earlier run on `a9d6baa` had the same 10 pass / 4 skip / 0 fail shape.
+`bash methodology/gate-rules.sh --base main` was run on this branch after the live-driver commit. Exit 0. Earlier runs on `a9d6baa` and after the plugin-validate follow-up had the same 10 pass / 4 skip / 0 fail shape. The architectural line count rose because the driver is Python.
 
 ## Gate
 
@@ -27,7 +27,7 @@ Jail checks inside the suite passed on this host: symlink escape, absolute host 
 PASS wip-commits :: no WIP/checkpoint commits between main and HEAD
 PASS tests-pass :: `bash scripts/parity-test.sh` exit 0
 SKIP feature-flag-present :: no feature_flag_marker in .ssd/project.yml or .ssd/gate.yml
-PASS adr-delta :: 4 ADR file(s) changed in docs/decisions/ for 3054 architectural lines
+PASS adr-delta :: 4 ADR file(s) changed in docs/decisions/ for 4182 architectural lines
 PASS frontmatter-valid :: 5 artifact(s) validated against schemas; 1 unvalidated (no matching schema)
 PASS no-leaky-state :: no gitignored-by-policy files in diff
 SKIP store-link-sane :: no store link (.ssd is a project-local directory)
