@@ -1,8 +1,16 @@
+---
+name: methodology
+description: Explain Shippable States Development and point at the executable gate. Use when the user asks what SSD requires or runs /methodology score. This skill does not ship, deploy, or start an audit.
+license: See /LICENSE
+metadata:
+  version: "1.10.1"
+---
+
 # SSD Methodology
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.10.0
+**Version:** 1.10.1
 
 **Canonical methodology pages**: [insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html) (full doctrine), [insanelygreat.com/guide.html](https://insanelygreat.com/guide.html) (practical implementation), [insanelygreat.com/agile2.html](https://insanelygreat.com/agile2.html) (companion manifesto). The website is the user-facing reference; this skill set is the in-repo doctrine the orchestrator enforces.
 
@@ -110,6 +118,10 @@ Rules implemented (v1.4.0 baseline; later additions marked in the table):
 | `migration-manifest-current` | [ADR-0013](../docs/decisions/ADR-0013-project-upgrade-migration-manifest.md) | (v1.24.0+) `methodology/migrations.yml` is structurally healthy: required fields per entry, unique `id`s, ascending `introduced_in`, none newer than `VERSION`. SKIPs in every project without the manifest (i.e. everything but this repo). |
 | `issue-sync-current` | [ADR-0014](../docs/decisions/ADR-0014-github-issue-state-tracking.md) | (v2.4.0+) GitHub issue mirror has not drifted. Informational; FAILs only on hard contradiction. SKIPs by default. |
 | `feynman-clean` | [ADR-0016](../docs/decisions/ADR-0016-feynman-orchestrator-integration.md) | (v2.7.0+) Any `feynman.md` in the change set reports zero `contradicted` and zero `theater` claims. Reads frontmatter counters only. SKIPs when no audit is in scope — a PASS is not a claim that the project's beliefs are calibrated. |
+| `store-link-sane` | [ADR-0018](../docs/decisions/ADR-0018-ssd-artifact-store.md) | The artifact-store symlink is readable and agrees with its configuration. FAILs on a broken or drifted link. |
+| `rails-walked` | [ADR-0003](../docs/decisions/ADR-0003-rails-as-canonical-path.md) | (v2.11.0+) A release (VERSION changed) that touches a feature with code also has a code review whose frontmatter says `gate_pass: true`. That boolean is the legacy reader. v3 certification does not treat it as the gate. |
+| `deviations-recorded` | [ADR-0019](../docs/decisions/ADR-0019-rail-deviation-records.md) | (v2.13.0+) A release records skipped rail steps that are in scope. Step 2 applies only when `production_runtime` is true. |
+| `skill-metadata` | [ADR-0021](../docs/decisions/ADR-0021-skill-frontmatter.md) | (v3.0.0+) This library's `SKILL.md` files have portable frontmatter. SKIPs unless the project has both `methodology/migrations.yml` and `scripts/skill-frontmatter-check.py`. A missing parser is a FAIL, not a pass. |
 
 The script is the source of truth — `cat methodology/gate-rules.sh` answers "what does the gate
 actually check?" Direct invocation is supported for CI integration:
@@ -157,6 +169,7 @@ see existing schemas for format. Adding a new validator type (beyond `string`/`i
 
 ## Changelog
 
+- **1.10.1** (2026-10-05) — Catalog matches the script again: `store-link-sane`, `rails-walked`, `deviations-recorded`, and `skill-metadata`. The frontmatter validator resolves the project copy first and the library copy when a project has not vendored it.
 - **1.7.1** (2026-08-26) — Completed the `Gate Rules — Executable` catalog: it documented seven rules
   while the script implemented nine, and now lists all ten including `feynman-clean` (ADR-0016).
   Corrected the "Rules implemented in v1.4.0" heading, which had come to mean "the rules that existed

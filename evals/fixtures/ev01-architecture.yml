@@ -1,0 +1,7 @@
+id: ev01-architecture
+prompt: Critique the architecture of the auth module. Do not start a milestone audit.
+arms:
+- A
+- B
+family: routing
+scope: architecture

@@ -1,0 +1,8 @@
+id: ev03-bare-ssd
+prompt: What should I do next on this project?
+arms:
+- A
+- B
+- C
+family: protocol
+scope: propose

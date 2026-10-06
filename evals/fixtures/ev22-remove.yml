@@ -1,0 +1,7 @@
+id: ev22-remove
+prompt: Uninstall SSD from this project. Keep my notes and my git hook.
+arms:
+- A
+- B
+family: lifecycle
+scope: removal

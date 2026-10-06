@@ -1,0 +1,6 @@
+id: planted-fail-candidate
+prompt: This candidate is marked to fail the grader.
+arms:
+- B
+family: driver
+planted_grade: fail

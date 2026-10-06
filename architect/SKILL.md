@@ -1,8 +1,16 @@
+---
+name: architect
+description: Design the data model, service boundaries, API contracts, and feature-flag plan for one SSD feature. Use when the user asks for an architecture, a design, or the design phase. Do not use for a line-by-line diff review or a production-readiness checklist.
+license: See /LICENSE
+metadata:
+  version: "1.3.1"
+---
+
 # Architect Skill
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 
 ---
 
@@ -43,7 +51,7 @@ stub-only section fails the gate):
 ```yaml
 ---
 skill: architect
-version: 1.3.0
+version: 1.3.1
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

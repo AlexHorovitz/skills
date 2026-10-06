@@ -90,3 +90,17 @@ jobs:
         run: pip install pyyaml
       - name: Run parity test
         run: bash scripts/parity-test.sh
+
+  v3-suite:
+    name: SSD v3 deterministic suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install PyYAML
+        run: pip install pyyaml
+      - name: Run the v3 suite
+        run: python3 scripts/v3_suite.py

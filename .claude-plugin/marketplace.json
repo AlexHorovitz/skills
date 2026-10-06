@@ -1,0 +1,15 @@
+{
+  "name": "ssd",
+  "description": "Shippable States Development skills. Bare /ssd proposes the next action. Shipping stays with the human. This catalog does not submit the package anywhere.",
+  "owner": {
+    "name": "Alex Horovitz"
+  },
+  "plugins": [
+    {
+      "name": "ssd",
+      "source": "./",
+      "description": "Shippable States Development skill pack. Local clone and plugin manifests coexist; this file does not submit the package anywhere.",
+      "version": "3.0.0"
+    }
+  ]
+}

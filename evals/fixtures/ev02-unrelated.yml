@@ -1,0 +1,8 @@
+id: ev02-unrelated
+prompt: What is the capital of France?
+arms:
+- A
+- B
+- C
+family: negative
+scope: unrelated

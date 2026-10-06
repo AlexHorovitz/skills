@@ -1,0 +1,88 @@
+{
+  "$id": "ssd://schemas/code-reviewer",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "closed_from_previous_round": {
+      "type": "array"
+    },
+    "consumed_by": {
+      "type": "array"
+    },
+    "execution_method": {
+      "type": "string"
+    },
+    "finding_counts": {
+      "type": "object"
+    },
+    "gate_pass": {
+      "type": "boolean"
+    },
+    "produced_at": {
+      "description": "ISO-8601 string or a YAML timestamp",
+      "type": [
+        "string",
+        "object"
+      ]
+    },
+    "produced_by": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "remediation_mode": {
+      "type": "boolean"
+    },
+    "result_status": {
+      "type": "string"
+    },
+    "reviewed_snapshot": {
+      "type": "string"
+    },
+    "round": {
+      "type": "integer"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "closed_from_previous_round",
+    "consumed_by",
+    "finding_counts",
+    "gate_pass",
+    "produced_at",
+    "produced_by",
+    "project",
+    "remediation_mode",
+    "round",
+    "scope",
+    "skill",
+    "version"
+  ],
+  "title": "code-reviewer",
+  "type": "object",
+  "x-ssd-applies-to": [
+    "04-code-review.md",
+    "04-code-review-round-*.md",
+    "code-review/round-*.md",
+    "review-*.md"
+  ],
+  "x-ssd-notes": [
+    "Generated from methodology/schemas/*.yml. Do not hand-edit.",
+    "Nested field shapes (for example finding_counts members) are documented in the skill, not in the authored YAML. They are not dropped; they were never encoded as required top-level types.",
+    "Schema validity is not a gate result and is not authorization.",
+    "Nested finding_counts members stay documented in code-reviewer/SKILL.md. They are not encoded here, and they are not dropped."
+  ],
+  "x-ssd-source": "code-reviewer.yml"
+}
