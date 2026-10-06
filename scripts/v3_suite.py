@@ -528,7 +528,9 @@ def test_eval_driver() -> None:
         check("eval-reproduce", repro.returncode == 0 and "recorded_revision" in repro.stdout)
     else:
         note("eval-reproduce", "arm C manifest was not written")
-    note("eval-live-model-repetitions", "no model runtime and no spend ceiling; three live repetitions were not executed")
+    units = subprocess.run([sys.executable, str(ROOT / "scripts" / "live_eval_test.py")], cwd=ROOT, capture_output=True, text=True)
+    check("live-eval-units", units.returncode == 0, (units.stdout + units.stderr)[-400:])
+    note("eval-live-model-repetitions", "the live driver is wired; this process did not set a runtime, credential, and spend ceiling, so three live repetitions were not executed")
     note("five-user-pilot", "no five-user session was run; deferred to the owner")
 
 

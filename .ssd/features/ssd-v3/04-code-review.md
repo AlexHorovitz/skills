@@ -17,7 +17,7 @@ gate_pass: true
 remediation_mode: false
 round: 1
 closed_from_previous_round: []
-reviewed_snapshot: "branch cursor/ssd-v3-f373 after the plugin-validate follow-up; parity 384/384 and v3_suite 100 pass, 0 fail, 3 NOT_RUN"
+reviewed_snapshot: "branch cursor/ssd-v3-f373 after the live-eval driver; parity 384/384 and v3_suite 101 pass, 0 fail, 3 NOT_RUN"
 execution_method: inline
 result_status: PASS
 provenance:
@@ -32,6 +32,8 @@ This review records the runner output. It is not an isolated model review. `exec
 ## Findings
 
 MINOR-1. The owner ran `claude plugin validate .` on a Mac. The result was "Validation passed with warnings". The marketplace description and the plugin-root `CLAUDE.md` warning are addressed in this tree. A clean-host plugin install was not run. The clone path remains the tested install. This environment did not re-execute `claude`.
+
+The live evaluation driver is in the tree. This review did not call a model. Live repetitions, review recall, hook delivery, role dispatch, and in-session loading stay `NOT_RUN` until the owner runs `docs/releases/3.0.0/live-evals.md`.
 
 No confirmed blocker or major finding is in the examined checks. A clean result here is those checks, not a claim that every host path is closed.
 

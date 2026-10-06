@@ -8,14 +8,14 @@ scope: ssd-v3
 consumed_by: []
 machine_checked:
   parity: "384/384 exit 0"
-  v3_suite: "100 pass, 0 fail, 3 NOT_RUN"
+  v3_suite: "101 pass, 0 fail, 3 NOT_RUN"
   shellcheck: "exit 0"
 human_review:
   required: true
   note: "owner reviews the pull request; this artifact is not that review"
 block_conditions_met: false
 block_conditions:
-  live_models: "NOT_RUN"
+  live_models: "driver wired; NOT_RUN in this environment (no credential)"
   five_user_pilot: "NOT_RUN"
   native_plugin_validate: "owner ran claude plugin validate . on a Mac; Validation passed with warnings; both warnings addressed"
 result_status: NOT_RUN

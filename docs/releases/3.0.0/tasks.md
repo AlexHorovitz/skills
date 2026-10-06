@@ -5,8 +5,8 @@ Status words: completed means the acceptance check that can run here did run. NO
 | Task | Status | Evidence |
 | --- | --- | --- |
 | T00 | completed | `.ssd/milestones/2026-10-05-v3-baseline/verification.md`. Revision `e732a93`, VERSION 2.14.0, parity 375/375, gate 5 pass / 8 skip / 0 fail. Stops STOP-1..7 and FM-1..6 copied from the repo, not invented |
-| T01 | completed for the offline driver | `scripts/eval_driver.py`, `evals/fixtures/` (16), `evals/held-out/` (2). Arm C, planted candidate failure, planted grader failure, and reproduce ran |
-| T02 | blocked for live; unchanged parity retained | Live repetitions NOT_RUN. The pre-edit parity result is the milestone above. No retrospective green baseline |
+| T01 | completed for the driver | `scripts/eval_driver.py`, `methodology/ssdlib/live_eval.py`, `evals/fixtures/` (16), `evals/held-out/` (2). Offline arm C, planted failures, and reproduce ran. Live adapters are `claude-code` and `anthropic-api`. This environment did not call a model |
+| T02 | driver ready; live repetitions NOT_RUN | The pre-edit parity result is the milestone above. Three live repetitions were not executed here. No retrospective green baseline. The owner command is in `live-evals.md` |
 | T03 | completed for lint | `scripts/skill-frontmatter-check.py`, rule `skill-metadata`, ADR-0021. Negative fixtures in `scripts/v3_suite.py`. Routing against a live model is NOT_RUN |
 | T04 | completed for the line check | Five entrypoints compacted; archives in `references/archive-v2.14.md`. Suite checks line count, required sentences, and links. "References were read by a model" is NOT_RUN |
 | T05 | completed | `methodology/ssdlib/paths.py`, `state.py`. External project, spaces, linked worktree, corrupt versus missing. Suite |

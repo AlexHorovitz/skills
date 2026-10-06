@@ -82,8 +82,8 @@ def capabilities(project: Path | None, library: Path) -> list[dict]:
             "grants live outside the project; in-repo approval files are ignored",
         ),
         ("workflow_engine", "unsupported", "coded workflows are not enabled; the local autorun path is the executor"),
-        ("evaluation_tooling", "supported", "scripts/eval_driver.py runs offline; live model calls are a separate operation"),
-        ("usage_reporting", "unknown", "token counts are not observable in this environment; elapsed time is recorded when a run journal has timestamps"),
+        ("evaluation_tooling", "supported", "scripts/eval_driver.py runs offline and can call a named live runtime; a missing runtime, credential, or ceiling is NOT_RUN"),
+        ("usage_reporting", "unknown", "token counts stay unknown until a live runtime reports them; elapsed time is recorded when a run journal has timestamps"),
     ]
     return [
         {
