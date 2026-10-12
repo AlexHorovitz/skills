@@ -529,7 +529,9 @@ def test_eval_driver() -> None:
     else:
         note("eval-reproduce", "arm C manifest was not written")
     units = subprocess.run([sys.executable, str(ROOT / "scripts" / "live_eval_test.py")], cwd=ROOT, capture_output=True, text=True)
-    check("live-eval-units", units.returncode == 0, (units.stdout + units.stderr)[-400:])
+    unit_log = units.stdout + units.stderr
+    failed_lines = [line for line in unit_log.splitlines() if line.startswith("FAIL ") or line.startswith("SUMMARY ")]
+    check("live-eval-units", units.returncode == 0, "\n".join(failed_lines) if failed_lines else unit_log[-400:])
     note("eval-live-model-repetitions", "the live driver is wired; this process did not set a runtime, credential, and spend ceiling, so three live repetitions were not executed")
     note("five-user-pilot", "no five-user session was run; deferred to the owner")
 

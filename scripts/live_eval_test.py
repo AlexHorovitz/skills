@@ -260,7 +260,11 @@ def test_arm_a_is_not_head() -> None:
         copied = list((work).rglob("ONLY_HEAD.txt"))
     check("missing-baseline-is-not-run", prepared["status"] == "NOT_RUN", prepared["status"])
     check("missing-baseline-does-not-copy-head", copied == [], str(copied))
-    check("real-baseline-is-present", live_eval.revision_available(ROOT, live_eval.DEFAULT_BASELINE))
+    check(
+        "real-baseline-is-present",
+        live_eval.revision_available(ROOT, live_eval.DEFAULT_BASELINE),
+        live_eval.DEFAULT_BASELINE,
+    )
 
 
 def test_observations_and_env() -> None:

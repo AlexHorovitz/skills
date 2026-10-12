@@ -96,6 +96,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Arm A is pinned to e732a93. The default fetch-depth of 1 omits
+          # that commit, and live_eval_test.py then fails real-baseline-is-present.
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
