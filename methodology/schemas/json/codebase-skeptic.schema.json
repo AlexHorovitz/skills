@@ -1,0 +1,86 @@
+{
+  "$id": "ssd://schemas/codebase-skeptic",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "compared_to": {
+      "type": "string"
+    },
+    "consumed_by": {
+      "type": "array"
+    },
+    "execution_method": {
+      "type": "string"
+    },
+    "finding_counts": {
+      "type": "object"
+    },
+    "gate_pass": {
+      "type": "boolean"
+    },
+    "posture": {
+      "type": "string"
+    },
+    "produced_at": {
+      "description": "ISO-8601 string or a YAML timestamp",
+      "type": [
+        "string",
+        "object"
+      ]
+    },
+    "produced_by": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "result_status": {
+      "type": "string"
+    },
+    "reviewed_snapshot": {
+      "type": "string"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "voices_activated": {
+      "type": "array"
+    }
+  },
+  "required": [
+    "consumed_by",
+    "finding_counts",
+    "gate_pass",
+    "posture",
+    "produced_at",
+    "produced_by",
+    "project",
+    "scope",
+    "skill",
+    "version",
+    "voices_activated"
+  ],
+  "title": "codebase-skeptic",
+  "type": "object",
+  "x-ssd-applies-to": [
+    "skeptic-before.md",
+    "skeptic-after.md",
+    "skeptic-*.md"
+  ],
+  "x-ssd-notes": [
+    "Generated from methodology/schemas/*.yml. Do not hand-edit.",
+    "Nested field shapes (for example finding_counts members) are documented in the skill, not in the authored YAML. They are not dropped; they were never encoded as required top-level types.",
+    "Schema validity is not a gate result and is not authorization.",
+    "compared_to is present on after-reports and absent on before-reports, so it is optional. gate_pass here is not a ship grant."
+  ],
+  "x-ssd-source": "codebase-skeptic.yml"
+}

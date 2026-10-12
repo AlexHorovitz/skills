@@ -1,0 +1,95 @@
+{
+  "$id": "ssd://schemas/delegation",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "allowed_operations": {
+      "type": "array"
+    },
+    "approved_specification": {
+      "type": "string"
+    },
+    "budget": {
+      "type": "object"
+    },
+    "diff_base": {
+      "type": "string"
+    },
+    "effective_model": {
+      "type": "string"
+    },
+    "input_artifacts": {
+      "type": "array"
+    },
+    "iteration": {
+      "type": "string"
+    },
+    "output_schema": {
+      "type": "string"
+    },
+    "persist_to": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "repository_root": {
+      "type": "string"
+    },
+    "requested_model": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "string"
+    },
+    "target_snapshot": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "workstream": {
+      "type": "string"
+    },
+    "worktree_root": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "allowed_operations",
+    "approved_specification",
+    "budget",
+    "diff_base",
+    "input_artifacts",
+    "iteration",
+    "output_schema",
+    "persist_to",
+    "phase",
+    "repository_root",
+    "run_id",
+    "skill",
+    "target_snapshot",
+    "task_id",
+    "version",
+    "workstream",
+    "worktree_root"
+  ],
+  "title": "delegation",
+  "type": "object",
+  "x-ssd-applies-to": [
+    "delegation-envelope.yml"
+  ],
+  "x-ssd-notes": [
+    "Generated from methodology/schemas/*.yml. Do not hand-edit.",
+    "Nested field shapes (for example finding_counts members) are documented in the skill, not in the authored YAML. They are not dropped; they were never encoded as required top-level types.",
+    "Schema validity is not a gate result and is not authorization.",
+    "Do not put deploy credentials or an authorization secret in this envelope. effective_model is unknown when the host does not report one. requested_model omitted means inherit."
+  ],
+  "x-ssd-source": "delegation.yml"
+}

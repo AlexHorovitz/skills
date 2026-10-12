@@ -1,8 +1,16 @@
+---
+name: refactor
+description: Plan targeted refactors that each cite a reviewed finding, after the feature has shipped. Use when the user asks to refactor or when a milestone reaches the refactor step. Do not mix refactor commits with unfinished feature work.
+license: See /LICENSE
+metadata:
+  version: "1.3.1"
+---
+
 # Refactoring Skill
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.3.0
+**Version:** 1.3.1
 
 ## Purpose
 Continuously scan codebases for refactoring opportunities—improving code quality, reducing technical debt, and enhancing maintainability without changing external behavior. Be opportunistic but disciplined: refactor with purpose, not for sport.
@@ -30,7 +38,7 @@ not in scope. This enforces the loop-closure contract: every refactor traces to 
 ```yaml
 ---
 skill: refactor
-version: 1.3.0
+version: 1.3.1
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

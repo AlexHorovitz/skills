@@ -1,0 +1,8 @@
+id: ho-ambiguous
+prompt: Look at this and tell me if it is fine.
+arms:
+- A
+- B
+- C
+held_out: true
+family: held-out

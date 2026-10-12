@@ -66,3 +66,8 @@ real-world-artifacts/
 # up as untracked. It is regenerated on sync and versioned upstream — committing it would be churn.
 # Deliberately NOT in methodology/selective.gitignore: no other SSD project lives at that path.
 synced/
+
+# Live evaluation traces from scripts/eval_driver.py live. They can contain model
+# output. Credentials are redacted before write, and the directory stays untracked.
+# Deliberately NOT in methodology/selective.gitignore: other projects do not run this harness.
+evals/results/

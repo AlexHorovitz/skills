@@ -1,0 +1,8 @@
+id: ev01-implement
+prompt: Add a function that reverses a string and a test that proves it.
+arms:
+- A
+- B
+- C
+family: outcome
+scope: implementation

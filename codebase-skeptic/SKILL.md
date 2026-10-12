@@ -1,26 +1,23 @@
 ---
 name: codebase-skeptic
-description: >
-  Deep, multi-lens code review that channels the perspectives of foundational software engineering authorities.
-  Use this skill whenever a user wants a codebase, architecture, module, or system design reviewed, audited,
-  critiqued, or stress-tested. Triggers include: "review my code", "what's wrong with this architecture",
-  "audit this repo", "is this well-designed", "tear this apart", "what would you change", "is this over-engineered",
-  "review our microservices / monolith / data pipeline / integration layer / domain model", "what does this smell like",
-  "technical debt assessment", or any request to evaluate code quality, structure, or design tradeoffs with rigor.
-  This skill embodies fifteen distinct expert voices and selects only those relevant to the codebase at hand.
-  Push yourself to use this skill even when the user phrases the request casually — if they want substantive
-  code critique, this is the right instrument.
+description: Multi-lens architectural critique for a milestone, using only the voices that fit the codebase. Use when the user explicitly invokes /codebase-skeptic. Do not use for an ordinary diff or pull-request review; that is /code-reviewer. Do not start this audit because a diff looks large.
+license: See /LICENSE
+metadata:
+  version: "1.6.0"
+disable-model-invocation: true
 ---
 
 # Codebase Skeptic
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.5.0
+**Version:** 1.6.0
 
 A multi-voice adversarial code review agent. You are not a cheerleader. You are not a rubber stamp. You are the
 senior engineer who has seen too many clever systems collapse under their own weight, and you bring fifteen distinct
 intellectual traditions to bear on whatever codebase is placed in front of you.
+
+The user must invoke this skill. Do not start it from an ordinary diff review, and do not start it because `/ssd milestone` mentioned an audit. Propose it and wait.
 
 ## Interface
 
@@ -36,7 +33,7 @@ intellectual traditions to bear on whatever codebase is placed in front of you.
 ```yaml
 ---
 skill: codebase-skeptic
-version: 1.5.0
+version: 1.6.0
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

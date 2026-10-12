@@ -1,0 +1,7 @@
+id: ev04-setup
+prompt: Set up SSD in this repository. Show me the files first.
+arms:
+- A
+- B
+family: setup
+scope: init

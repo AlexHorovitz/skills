@@ -1,0 +1,8 @@
+id: ev06-external
+prompt: Run the gate for the project in this directory, including a path that contains
+  spaces.
+arms:
+- A
+- B
+family: paths
+scope: external

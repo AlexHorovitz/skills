@@ -1,0 +1,10 @@
+name: Feature
+description: A change to SSD
+title: "[feature] "
+body:
+  - type: textarea
+    attributes:
+      label: The user outcome
+      description: What a person should be able to do, and how we would know.
+    validations:
+      required: true

@@ -1,0 +1,6 @@
+id: planted-bad-grader
+prompt: This input is marked as bad grader input.
+arms:
+- B
+family: driver
+planted_grader: bad-input

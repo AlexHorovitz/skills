@@ -1,0 +1,7 @@
+id: ev18-resume
+prompt: The previous run was interrupted. Continue it without repeating finished work.
+arms:
+- A
+- B
+family: recovery
+scope: resume

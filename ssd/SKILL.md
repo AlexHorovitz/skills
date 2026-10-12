@@ -1,8 +1,16 @@
+---
+name: ssd
+description: Orchestrate Shippable States Development. Bare /ssd reads project state and proposes the next action. It does not implement and it does not start an audit. Use when the user invokes /ssd or asks what to do next on an SSD project. Explicit verbs include start, feature, design, gate, ship, doctor, resume, upgrade, and run.
+license: See /LICENSE
+metadata:
+  version: "3.0.0"
+---
+
 # SSD Meta-Skill
 
 <!-- License: See /LICENSE -->
 
-**Version:** 2.14.0
+**Version:** 3.0.0
 
 > **On skill-version vs. library-version (banner-lag pattern).** A skill's `**Version:**` banner
 > tracks the **library** version *at the point this skill last changed*. When a release touches
@@ -11,6 +19,14 @@
 > not a bug — it records when the skill itself last moved. (Refactor R7, post-v1.19 milestone.)
 
 **Canonical methodology**: [Shippable States Development at insanelygreat.com/ssd.html](https://insanelygreat.com/ssd.html). For doctrine questions, the in-repo source of truth is `methodology/core.md`; for end-user-facing language and external citations, the website is authoritative.
+
+## Rule zero and the ship wall
+
+Bare `/ssd` reads state and proposes the next action. It does not implement, and it does not start Feynman, software-standards, or codebase-skeptic. Those start only when the user invokes them.
+
+Under an opt-in autonomy rung, surfaced means **announce, then log, then act**. The record is written before the phase runs.
+
+No autonomy rung ships, deploys, publishes, or removes a release control. `/ssd ship` is the human's command. There is no `--force`. A missing autorun lock is not approval. When the requested mode cannot be enforced, say the effective mode is `propose` and why. Do not rewrite the user's configuration to hide that.
 
 ## Purpose
 Orchestrate the full skill chain for Shippable States Development (SSD), the engineering discipline originated by [Alex Horovitz](https://insanelygreat.com/about.html). Every work session ends in a deployable, production-ready state. If you can't ship it right now, you don't have a product — you have a construction site.
@@ -66,6 +82,8 @@ is still directly invokable, just documented in the chapters rather than taught 
 | run parallel workstreams | `feature new` · `switch` · `worktree` | [`chapters/workstreams.md`](chapters/workstreams.md) |
 | keep `.ssd/` in a separate private repo | `store` | [`chapters/phases.md`](chapters/phases.md) |
 | delegate consecutive rail phases to the orchestrator | `run` | [`chapters/autonomy.md`](chapters/autonomy.md) |
+| continue an interrupted run without resetting its budget | `resume <run-id>` | [`chapters/autonomy.md`](chapters/autonomy.md) |
+| read installation, state, and capability health | `doctor` | [`chapters/doctor.md`](chapters/doctor.md) |
 
 The command path is a **thin alias** that lowers into the conversational path — a power-user
 shorthand, **not** a co-equal surface with its own state. Everything a command does, `/ssd` can
@@ -295,7 +313,8 @@ lives in `ssd/chapters/` and loads when the relevant work begins:
 | [`chapters/artifacts.md`](chapters/artifacts.md) | the `.ssd/` artifact tree + selective-commit split |
 | [`chapters/state.md`](chapters/state.md) | structured output + iterations + session continuity |
 | [`chapters/enforcement.md`](chapters/enforcement.md) | `gate-rules.sh` enforcement table |
-| [`chapters/autonomy.md`](chapters/autonomy.md) | the autonomy ladder — `advance` mode · `/ssd run` |
+| [`chapters/autonomy.md`](chapters/autonomy.md) | the autonomy ladder — `advance` mode · `/ssd run` · `/ssd resume` |
+| [`chapters/doctor.md`](chapters/doctor.md) | `/ssd doctor` — read-only installation and capability report |
 | [`chapters/skills.md`](chapters/skills.md) | sub-skill reference + review tiers + overlap |
 | [`rails.md`](rails.md) | the eight-step canonical path + critic-grade invariants |
 

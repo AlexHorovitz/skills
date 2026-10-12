@@ -1,0 +1,15 @@
+name: Bug
+description: A defect in the SSD skill pack
+title: "[bug] "
+body:
+  - type: textarea
+    attributes:
+      label: What happened
+      description: Include the command, the revision, and whether the result was PASS, FAIL, ERROR, or NOT_RUN.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: What you expected
+    validations:
+      required: true

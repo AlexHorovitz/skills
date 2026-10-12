@@ -1,0 +1,60 @@
+# Producer and consumer coverage.
+# One row per skill. "none" is an explicit explanation, not a missing schema.
+
+skills:
+  architect:
+    artifact: .ssd/features/<slug>/01-architect.md
+    schema: methodology/schemas/architect.yml
+  systems-designer:
+    artifact: .ssd/features/<slug>/02-systems-designer.md
+    schema: methodology/schemas/systems-designer.yml
+  coder:
+    artifact: .ssd/features/<slug>/03-coder-status.md
+    schema: methodology/schemas/coder.yml
+  code-reviewer:
+    artifact: .ssd/features/<slug>/04-code-review.md
+    schema: methodology/schemas/code-reviewer.yml
+  codebase-skeptic:
+    artifact: .ssd/milestones/<topic>/skeptic-before.md
+    schema: methodology/schemas/codebase-skeptic.yml
+  feynman:
+    artifact: .ssd/milestones/<topic>/feynman.md
+    schema: methodology/schemas/feynman.yml
+  refactor:
+    artifact: .ssd/milestones/<topic>/refactor-plan.md
+    schema: none
+    why: >
+      The gate contract treats refactor-plan.md as unmatched. scripts/parity-test.sh
+      fixture frontmatter-valid-names-schemaless writes a minimal plan and requires
+      the result "in scope, none with a matching schema". A schema with the fields
+      a real plan needs would FAIL that fixture and historical notes that never
+      carried them. Do not add one until that contract is deliberately revised.
+  ssd:
+    artifact: .ssd/features/<slug>/auto-runs/*-run.md
+    schema: methodology/schemas/autorun.yml
+  brief:
+    artifact: .ssd/features/<slug>/00-brief.md
+    schema: methodology/schemas/brief.yml
+    producer: ssd orchestrator or the human
+  deploy:
+    artifact: .ssd/features/<slug>/05-deploy.md
+    schema: methodology/schemas/deploy.yml
+    producer: human ship record
+  software-standards:
+    artifact: .ssd/audits/<date>/standards-report.md
+    schema: none
+    why: audits are gitignored; no committed historical report exists to pin a required shape. The skill documents the frontmatter. A schema is not added until a committed artifact can be checked against it.
+  ssd-init:
+    artifact: none
+    why: writes project scaffolding (.ssd/project.yml, gate.yml, init-log.md), not a numbered feature artifact validated by frontmatter-validate.py.
+  methodology:
+    artifact: none
+    why: reference skill. /methodology score may write a dated note; that note is not a rail artifact and has no consumer in the gate.
+  verification-notes:
+    artifact: .ssd/milestones/<topic>/verification.md
+    schema: none
+    why: milestone bookkeeping. Intentionally unmatched so a free-form verification note is not forced into a skill schema.
+  refactor-prs:
+    artifact: .ssd/milestones/<topic>/refactor-prs.md
+    schema: none
+    why: a list of pull requests, not the refactor plan. Intentionally unmatched.

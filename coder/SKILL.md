@@ -1,8 +1,16 @@
+---
+name: coder
+description: Implement an approved architect spec behind a feature flag and write the coder-status report. Use when the user asks to implement, code, or build a feature from its spec. Do not change the brief or the acceptance criteria to make tests pass.
+license: See /LICENSE
+metadata:
+  version: "1.4.1"
+---
+
 # Coder Skill
 
 <!-- License: See /LICENSE -->
 
-**Version:** 1.4.0
+**Version:** 1.4.1
 
 ## Purpose
 
@@ -28,7 +36,7 @@ Translate designs, specifications, and requirements into clean, working code tha
 ```yaml
 ---
 skill: coder
-version: 1.4.0
+version: 1.4.1
 produced_at: <ISO-8601>
 produced_by: <agent-name>
 project: <project-name>

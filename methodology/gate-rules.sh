@@ -69,7 +69,7 @@ done
 # AUDIT FIX (unknown --rules names): a typo'd or space-padded name (`--rules no-leaky-stat`,
 # `--rules "a, b"`) used to match nothing, run zero rules and exit 0 -- and on bash 3.2 crash on the
 # empty RESULTS array. Strip spaces and reject unknown names as a usage error, like any other bad arg.
-KNOWN_RULES=" wip-commits tests-pass feature-flag-present adr-delta frontmatter-valid no-leaky-state store-link-sane skill-version-sync migration-manifest-current rails-walked deviations-recorded feynman-clean issue-sync-current "
+KNOWN_RULES=" wip-commits tests-pass feature-flag-present adr-delta frontmatter-valid no-leaky-state store-link-sane skill-version-sync migration-manifest-current rails-walked deviations-recorded feynman-clean issue-sync-current skill-metadata "
 if [[ -n "$RULES_FILTER" ]]; then
   RULES_FILTER="${RULES_FILTER// /}"
   _rules_n=0
@@ -102,6 +102,27 @@ emit() {
   local status="$1" rule="$2" detail="$3"
   RESULTS+=("$status $rule :: $detail")
   [[ "$status" == "FAIL" ]] && FAIL_COUNT=$((FAIL_COUNT + 1))
+}
+
+# Library that contains this script. Used only when the project has not vendored
+# methodology/frontmatter-validate.py. Fixtures and the skills repo itself hit
+# the project copy first, so their schemas stay the ones under test.
+ssd_library_root() {
+  cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
+}
+
+resolve_frontmatter_validator() {
+  if [[ -f "$PROJECT_ROOT/methodology/frontmatter-validate.py" ]]; then
+    printf '%s\n' "$PROJECT_ROOT/methodology/frontmatter-validate.py"
+    return 0
+  fi
+  local lib
+  lib="$(ssd_library_root)"
+  if [[ -f "$lib/methodology/frontmatter-validate.py" ]]; then
+    printf '%s\n' "$lib/methodology/frontmatter-validate.py"
+    return 0
+  fi
+  return 1
 }
 
 # ----- helpers ---------------------------------------------------------------
@@ -612,8 +633,9 @@ rule_adr_delta() {
 
 # ----- rule: frontmatter-valid -----------------------------------------------
 rule_frontmatter_valid() {
-  local validator="$PROJECT_ROOT/methodology/frontmatter-validate.py"
-  if [[ ! -f "$validator" ]]; then
+  local validator
+  validator="$(resolve_frontmatter_validator || true)"
+  if [[ -z "$validator" || ! -f "$validator" ]]; then
     emit "SKIP" "frontmatter-valid" "validator not found at methodology/frontmatter-validate.py"
     return
   fi
@@ -882,8 +904,9 @@ rule_store_link_sane() {
 # SKILL.md example blocks, so it's a no-op outside the skills library itself.
 # Doctrine cite: core.md §2 (docs as a first-class deliverable; keep examples honest).
 rule_skill_version_sync() {
-  local validator="$PROJECT_ROOT/methodology/frontmatter-validate.py"
-  if [[ ! -f "$validator" ]]; then
+  local validator
+  validator="$(resolve_frontmatter_validator || true)"
+  if [[ -z "$validator" || ! -f "$validator" ]]; then
     emit "SKIP" "skill-version-sync" "validator not found at methodology/frontmatter-validate.py"
     return
   fi
@@ -1314,6 +1337,33 @@ rule_feynman_clean() {
   fi
 }
 
+# ----- rule: skill-metadata --------------------------------------------------
+# Portable frontmatter on this library's skills. SKIPs in every other project:
+# a fixture or a consuming repo has no migrations manifest plus this checker.
+# A missing parser is a visible failure (exit 2 from the checker), not a PASS.
+rule_skill_metadata() {
+  local manifest="$PROJECT_ROOT/methodology/migrations.yml"
+  local checker="$PROJECT_ROOT/scripts/skill-frontmatter-check.py"
+  if [[ ! -f "$manifest" || ! -f "$checker" ]]; then
+    emit "SKIP" "skill-metadata" "not the skills library (no manifest and skill-frontmatter checker)"
+    return
+  fi
+  local out exit_code
+  out=$(python3 "$checker" "$PROJECT_ROOT" 2>&1)
+  exit_code=$?
+  if [[ $exit_code -eq 0 ]]; then
+    local count
+    count=$(echo "$out" | grep -c '^PASS ' || true)
+    emit "PASS" "skill-metadata" "$count skill(s) have valid frontmatter"
+  elif [[ $exit_code -eq 2 ]]; then
+    emit "FAIL" "skill-metadata" "checker could not run: $(echo "$out" | head -1)"
+  else
+    local fail_lines
+    fail_lines=$(echo "$out" | grep -E '^(FAIL|ERROR) ' | head -3 | tr '\n' '|')
+    emit "FAIL" "skill-metadata" "$fail_lines"
+  fi
+}
+
 # ----- run all rules ---------------------------------------------------------
 should_run wip-commits        && rule_wip_commits
 should_run tests-pass         && rule_tests_pass
@@ -1328,6 +1378,7 @@ should_run rails-walked       && rule_rails_walked
 should_run deviations-recorded && rule_deviations_recorded
 should_run feynman-clean      && rule_feynman_clean
 should_run issue-sync-current && rule_issue_sync_current
+should_run skill-metadata     && rule_skill_metadata
 
 # ----- emit results ----------------------------------------------------------
 # A gate that exits zero because most of its checks never ran is not a passing gate — it is an

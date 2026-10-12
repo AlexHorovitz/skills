@@ -1,0 +1,32 @@
+# Delegation envelope. Not a rail artifact. frontmatter-validate matches it only
+# when a file is named delegation-envelope.yml, which no historical artifact is.
+# Schema validity is not authorization and is not a gate result.
+
+skill: delegation
+applies_to:
+  - delegation-envelope.yml
+
+required:
+  skill: string
+  version: string
+  task_id: string
+  run_id: string
+  repository_root: string
+  worktree_root: string
+  workstream: string
+  iteration: string
+  phase: string
+  approved_specification: string
+  input_artifacts: list
+  diff_base: string
+  target_snapshot: string
+  output_schema: string
+  allowed_operations: list
+  budget: dict
+  persist_to: string
+
+optional:
+  requested_model: string
+  effective_model: string
+
+notes: "Do not put deploy credentials or an authorization secret in this envelope. effective_model is unknown when the host does not report one. requested_model omitted means inherit."

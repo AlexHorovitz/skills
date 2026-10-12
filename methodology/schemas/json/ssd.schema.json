@@ -1,0 +1,56 @@
+{
+  "$id": "ssd://schemas/ssd",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "consumed_by": {
+      "type": "array"
+    },
+    "produced_at": {
+      "description": "ISO-8601 string or a YAML timestamp",
+      "type": [
+        "string",
+        "object"
+      ]
+    },
+    "produced_by": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
+    },
+    "run": {
+      "type": "object"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "consumed_by",
+    "produced_at",
+    "produced_by",
+    "project",
+    "run",
+    "scope",
+    "skill",
+    "version"
+  ],
+  "title": "ssd",
+  "type": "object",
+  "x-ssd-applies-to": [
+    "auto-runs/*-run.md"
+  ],
+  "x-ssd-notes": [
+    "Generated from methodology/schemas/*.yml. Do not hand-edit.",
+    "Nested field shapes (for example finding_counts members) are documented in the skill, not in the authored YAML. They are not dropped; they were never encoded as required top-level types.",
+    "Schema validity is not a gate result and is not authorization."
+  ],
+  "x-ssd-source": "autorun.yml"
+}

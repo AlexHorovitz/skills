@@ -1,0 +1,21 @@
+{
+  "name": "ssd",
+  "version": "3.0.0",
+  "description": "Shippable States Development. Bare /ssd proposes the next action. Setup and broad audits are explicit. Shipping stays with the human.",
+  "author": {
+    "name": "Alex Horovitz"
+  },
+  "skills": [
+    "./architect",
+    "./code-reviewer",
+    "./codebase-skeptic",
+    "./coder",
+    "./feynman",
+    "./methodology",
+    "./refactor",
+    "./software-standards",
+    "./ssd",
+    "./ssd-init",
+    "./systems-designer"
+  ]
+}

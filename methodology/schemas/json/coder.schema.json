@@ -1,0 +1,85 @@
+{
+  "$id": "ssd://schemas/coder",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "properties": {
+    "consumed_by": {
+      "type": "array"
+    },
+    "feature_flag": {
+      "type": "object"
+    },
+    "files_touched": {
+      "type": "array"
+    },
+    "lint_results": {
+      "type": "object"
+    },
+    "produced_at": {
+      "description": "ISO-8601 string or a YAML timestamp",
+      "type": [
+        "string",
+        "object"
+      ]
+    },
+    "produced_by": {
+      "type": "string"
+    },
+    "project": {
+      "type": "string"
+    },
+    "review_markers": {
+      "type": "integer"
+    },
+    "scope": {
+      "type": "string"
+    },
+    "skill": {
+      "type": "string"
+    },
+    "spec_drift": {
+      "type": "boolean"
+    },
+    "test_results": {
+      "type": "object"
+    },
+    "tests_added": {
+      "type": "array"
+    },
+    "type_check_results": {
+      "type": "object"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "consumed_by",
+    "feature_flag",
+    "files_touched",
+    "lint_results",
+    "produced_at",
+    "produced_by",
+    "project",
+    "review_markers",
+    "scope",
+    "skill",
+    "spec_drift",
+    "test_results",
+    "tests_added",
+    "type_check_results",
+    "version"
+  ],
+  "title": "coder",
+  "type": "object",
+  "x-ssd-applies-to": [
+    "03-coder-status.md",
+    "coder-status.md"
+  ],
+  "x-ssd-notes": [
+    "Generated from methodology/schemas/*.yml. Do not hand-edit.",
+    "Nested field shapes (for example finding_counts members) are documented in the skill, not in the authored YAML. They are not dropped; they were never encoded as required top-level types.",
+    "Schema validity is not a gate result and is not authorization."
+  ],
+  "x-ssd-source": "coder.yml"
+}

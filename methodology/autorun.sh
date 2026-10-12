@@ -17,6 +17,8 @@
 #   finish     --slug <s> --stop <STOP-N> --phase-reached <p>
 #              [--gate-output <file> | --gate-result <pass|fail|not_run>]
 #   clear      --slug <s> [--confirm]           hand-clear a stale lock (FR-8 recovery)
+#   resume     --run-id <file> [--slug <s>]     validate a record before continuing it
+#              Does not reset budgets and does not restore shipping authority.
 #
 # Every subcommand prints ONE machine-readable line first: `state=ok|stop|refused reason=<...>`.
 # The orchestrator executes a phase IFF the preceding `transition` printed `state=ok` AND exited 0.
@@ -44,13 +46,14 @@ die() { echo "autorun: $1" >&2; exit "${2:-3}"; }
 
 SUBCMD="${1:-}"
 case "$SUBCMD" in
-  preflight|status|plan|start|transition|finish|clear) shift ;;
+  preflight|status|plan|start|transition|finish|clear|resume) shift ;;
   -h|--help|"") usage ;;
-  *) die "unknown subcommand '${SUBCMD}' (expected: preflight | status | plan | start | transition | finish | clear)" 2 ;;
+  *) die "unknown subcommand '${SUBCMD}' (expected: preflight | status | plan | start | transition | finish | clear | resume)" 2 ;;
 esac
 
 SLUG=""; MODE=""; UNTIL=""; FROM=""; TO=""; REASON=""; STOP=""; PHASE_REACHED=""
 GATE_RESULT=""; GATE_OUTPUT=""; MAX_LOOPS=""; BUDGET_TRANSITIONS=""; BUDGET_WALL=""; CONFIRM=""
+FINGERPRINT=""; CHILD_TRANSITIONS=""; RUN_ID=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -68,6 +71,9 @@ while [[ $# -gt 0 ]]; do
     --budget-transitions) BUDGET_TRANSITIONS="${2:-}"; shift 2 ;;
     --budget-wall-minutes) BUDGET_WALL="${2:-}";       shift 2 ;;
     --confirm)            CONFIRM="1";                 shift   ;;
+    --fingerprint)        FINGERPRINT="${2:-}";        shift 2 ;;
+    --child-transitions)  CHILD_TRANSITIONS="${2:-}";  shift 2 ;;
+    --run-id)             RUN_ID="${2:-}";             shift 2 ;;
     *) die "unknown option '$1'" 2 ;;
   esac
 done
@@ -89,6 +95,9 @@ validate_slug() {
 case "$SUBCMD" in
   status)   [[ -z "$SLUG" ]] || validate_slug "$SLUG" ;;
   preflight) : ;;
+  resume)
+    [[ -n "$RUN_ID" ]] || die "--run-id is required for 'resume'" 2
+    ;;
   *) [[ -n "$SLUG" ]] || die "--slug is required for '$SUBCMD'" 2; validate_slug "$SLUG" ;;
 esac
 
@@ -153,7 +162,14 @@ python3 -c "import yaml" >/dev/null 2>&1 || die "PyYAML is required (pip3 instal
 export AR_SUBCMD="$SUBCMD" AR_SLUG="$SLUG" AR_MODE="$MODE" AR_UNTIL="$UNTIL" AR_FROM="$FROM" \
        AR_TO="$TO" AR_REASON="$REASON" AR_STOP="$STOP" AR_PHASE_REACHED="$PHASE_REACHED" \
        AR_GATE_RESULT="$GATE_RESULT" AR_GATE_OUTPUT="$GATE_OUTPUT" AR_MAX_LOOPS="$MAX_LOOPS" \
-       AR_BUDGET_TRANSITIONS="$BUDGET_TRANSITIONS" AR_BUDGET_WALL="$BUDGET_WALL" AR_CONFIRM="$CONFIRM"
+       AR_BUDGET_TRANSITIONS="$BUDGET_TRANSITIONS" AR_BUDGET_WALL="$BUDGET_WALL" AR_CONFIRM="$CONFIRM" \
+       AR_FINGERPRINT="$FINGERPRINT" AR_CHILD_TRANSITIONS="$CHILD_TRANSITIONS" AR_RUN_ID="$RUN_ID"
+
+if [[ "$SUBCMD" == "resume" ]]; then
+  SSD_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  export SSD_LIB
+  exec python3 "$SSD_LIB/methodology/ssdlib/resume_cmd.py"
+fi
 
 python3 - <<'PY'
 import datetime, fcntl, os, re, shutil, sys, tempfile
@@ -720,6 +736,40 @@ def cmd_transition():
                   file=sys.stderr)
             return
 
+        # Child work counts against the same budget. Absent means zero, which is the v2.14 path.
+        child = env("CHILD_TRANSITIONS")
+        if child:
+            try:
+                child_n = int(child)
+            except ValueError:
+                fail(f"--child-transitions '{child}' is not an integer")
+            if child_n < 0:
+                fail("--child-transitions must be >= 0")
+            if len(run["transitions"]) + child_n > budgets["transitions"]:
+                out("state=stop reason=STOP-3")
+                print("autorun: child work would exceed the transition budget. Handing back.",
+                      file=sys.stderr)
+                return
+
+        # Identity-bound replay. Only when the caller supplies a fingerprint, so a review loop
+        # that repeats review -> code without one still counts (STOP-1). Same identity and same
+        # edge is not executed again. Same identity and a different edge stops for reconciliation
+        # (STOP-4: proceeding would mean guessing). ADR-0023.
+        fingerprint = env("FINGERPRINT")
+        if fingerprint:
+            for entry in run["transitions"]:
+                if entry.get("fingerprint") != fingerprint:
+                    continue
+                if entry.get("from") == frm and entry.get("to") == to:
+                    out(f"state=ok reason=replay lowered={entry['lowered']} "
+                        f"transition={len(run['transitions'])}/{budgets['transitions']} "
+                        f"loops={run['loops_consumed']}/{budgets['review_loops']}")
+                    return
+                out("state=stop reason=STOP-4")
+                print("autorun: this fingerprint was already logged for a different edge. "
+                      "A conflicting replay stops for reconciliation.", file=sys.stderr)
+                return
+
         started_at = parse_stamp(meta.get("produced_at"))
         # TWO numbers, because one field was carrying two meanings (review round 1, MINOR-4):
         # `since_start_minutes` is what the wall budget is measured against, and `phase_minutes` is
@@ -753,7 +803,7 @@ def cmd_transition():
             loops += 1
 
         lowered = lowered_command(to)
-        run["transitions"].append({
+        entry = {
             "ts": stamp(now()),
             "from": frm,
             "to": to,
@@ -761,7 +811,10 @@ def cmd_transition():
             "reason": normalise_reason(env("REASON")) or None,
             "since_start_minutes": since_start_minutes,
             "phase_minutes": phase_minutes,
-        })
+        }
+        if fingerprint:
+            entry["fingerprint"] = fingerprint
+        run["transitions"].append(entry)
         run["loops_consumed"] = loops
         run["phase_reached"] = to
         write_record(record_path, meta, render_body(meta))
